@@ -4,7 +4,7 @@ import { api, get, post } from './api.js';
 import { renderBulkBar } from './components.js';
 import { closeDrawer, openService } from './drawer.js';
 import { clear, h, icon, toast, relTime } from './dom.js';
-import { store, notify, refresh, subscribe, allServices, can, favorites, recents, svcKey } from './store.js';
+import { STATUS, store, notify, refresh, subscribe, allServices, can, favorites, recents, svcKey } from './store.js';
 import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './views2.js';
 import { avatar, profilePage, usersPage } from './pages-users.js';
 import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead } from './views.js';
@@ -75,13 +75,14 @@ function route() {
 function renderChrome() {
   if (!shell) return;
   const r = route();
-  const chromeSig = JSON.stringify([r.hash, r.a, r.b, store.user?.role, store.panels.map((p) => [p.id, p.name, p.status, (p.tree?.projects ?? []).flatMap((x) => x.services).filter((x) => !x.enabled).length])]);
+  const chromeSig = JSON.stringify([r.hash, r.a, r.b, store.user?.role, store.panels.map((p) => [p.id, p.name, p.status, p.color, (p.tree?.projects ?? []).flatMap((x) => x.services).filter((x) => !x.enabled).length])]);
   const rebuild = chromeSig !== shell.chromeSig; shell.chromeSig = chromeSig;
   if (rebuild) clear(shell.nav).append(...NAV.filter(([, , , need]) => !need || can(need)).map(([href, ic, label]) => h('a', { class: `nav-item ${(href === '#/' ? r.hash === '#/' : r.hash.startsWith(href)) ? 'active' : ''}`, href, onclick: () => document.body.classList.remove('nav-open') }, icon(ic, 17), label)));
   if (rebuild) clear(shell.panelsList).append(...(store.panels.length ? store.panels.map((p) => {
     const stopped = (p.tree?.projects ?? []).flatMap((x) => x.services).filter((s) => !s.enabled).length;
     return h('a', { class: `nav-panel ${r.a === 'panel' && Number(r.b) === p.id ? 'active' : ''}`, href: `#/panel/${p.id}`, onclick: () => document.body.classList.remove('nav-open') },
-      h('i', { class: `dot ${dotClass(p.status)}` }), h('span', { class: 'np-name' }, p.name), stopped ? h('span', { class: 'count warn', title: 'Остановлено сервисов' }, stopped) : null);
+      h('i', { class: 'swatch', style: { background: p.color } }), h('span', { class: 'np-name' }, p.name), stopped ? h('span', { class: 'count warn', title: 'Остановлено сервисов' }, stopped) : null,
+      h('i', { class: `dot ${dotClass(p.status)}`, title: (STATUS[p.status] ?? STATUS.unknown)[0] }));
   }) : [h('div', { class: 'muted small pad' }, 'Пока пусто')]));
   shell.updated.textContent = store.loadedAt ? `Обновлено ${relTime(store.loadedAt)}` : '';
   shell.refreshBtn.classList.toggle('spin', store.loading && !store.quiet);
