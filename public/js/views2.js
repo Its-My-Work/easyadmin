@@ -240,7 +240,7 @@ async function reissueCert(p, c, reload) {
     const fmt = (t) => (t ? new Date(t).toLocaleDateString(locale()) : '—');
     modal({ title: r.renewed ? 'Сертификат перевыпущен' : 'Запрос на перевыпуск отправлен',
       body: h('div', { class: 'stack' }, h('div', { class: 'card flat' }, h('div', { class: 'kv' }, h('span', null, 'Домен'), h('b', null, domain)), h('div', { class: 'kv' }, h('span', null, 'Было до'), h('b', null, fmt(r.before))), h('div', { class: 'kv' }, h('span', null, 'Стало до'), h('b', null, r.after ? fmt(r.after) : '—'))),
-        r.renewed ? h('div', { class: 'callout' }, icon('check'), 'Новый сертификат уже выдан.') : h('div', { class: 'callout warn' }, icon('alert'), 'Старый сертификат удалён, но новый пока не виден. Панель может выпускать его до минуты — обновите страницу позже. Если срок не изменится, проверьте, что домен указывает на сервер и порты 80/443 открыты.')),
+        r.renewed ? h('div', { class: 'callout' }, icon('check'), 'Новый сертификат уже выдан.') : !r.resaved ? h('div', { class: 'callout warn' }, icon('alert'), `Сертификат удалён, но домен не найден среди сервисов${r.resaveError ? ` (${r.resaveError})` : ''} — выпуск не запущен. Откройте сервис → «Домены» → изменить → сохранить, либо нажмите «Деплой».`) : h('div', { class: 'callout warn' }, icon('alert'), 'Старый сертификат удалён, но новый пока не виден. Панель может выпускать его до минуты — обновите страницу позже. Если срок не изменится, проверьте, что домен указывает на сервер и порты 80/443 открыты.')),
       actions: [{ label: 'Закрыть', kind: 'primary' }] });
     reload();
   } catch (e) { toast(e.message, 'error', 8000); }

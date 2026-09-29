@@ -87,10 +87,16 @@ export function extraRoutes(d) {
       const row = panelOr404(ctx.params.id);
       const c = manager.clientFor(row);
       const procs = ['projects.listProjectsAndServices', 'projects.listProjects', 'monitor.getSystemStats', 'monitor.getAdvancedStats', 'projects.getDockerContainers', 'certificates.listCertificates', 'actions.listActions'];
+      // getDockerContainers требует projectName, listDomains — проект и сервис: подставляем первые из дерева
+      const tree = await treeOf(row).catch(() => []);
+      const p0 = tree.find((p) => p.services.length) ?? tree[0], s0 = p0?.services.find((x) => x.type === 'app') ?? p0?.services[0];
+      if (s0) procs.push('domains.listDomains');
+      const inputOf = (proc) => (proc === 'actions.listActions' ? {} : proc === 'projects.getDockerContainers' && p0 ? { projectName: p0.name }
+        : proc === 'domains.listDomains' ? { projectName: p0.name, serviceName: s0.name } : undefined);
       const results = await Promise.all(procs.map(async (proc) => {
         const t0 = now();
         try {
-          const v = await c.query(proc, proc === 'actions.listActions' ? {} : undefined);
+          const v = await c.query(proc, inputOf(proc));
           const sample = JSON.stringify(redact(v), null, 1) ?? 'undefined';
           return { proc, ok: true, ms: now() - t0, shape: shapeOf(v), sample: sample.slice(0, 2500), ...(proc === 'projects.listProjectsAndServices' ? { recognized: normalizeTree(v).projects.map((p) => `${p.name} (${p.services.length})`) } : {}) };
         } catch (e) { return { proc, ok: false, ms: now() - t0, error: e.message, kind: e.kind, status: e.status, body: e.body ? redactJson(e.body) : undefined }; }
@@ -393,6 +399,19 @@ export function extraRoutes(d) {
     const req = https.request({ host, port: config.tlsProbePort ?? 443, path: '/', method: 'GET', servername: host, rejectUnauthorized: false, timeout: 5000 }, (res) => { res.resume(); resolve(); });
     req.on('error', resolve); req.on('timeout', () => { req.destroy(); resolve(); }); req.end();
   });
+  /* Traefik сам не запросит сертификат после удаления записи — перезаписываем домен у владельца, чтобы панель пересобрала конфиг и выпустила заново. */
+  async function resaveDomain(row, host) {
+    const c = manager.clientFor(row);
+    const svcs = (await treeOf(row)).flatMap((p) => p.services.map((s) => ({ ...s, project: s.project ?? p.name }))).filter((s) => s.type === 'app');
+    for (const s of svcs) {
+      let list; try { list = await c.query('domains.listDomains', { projectName: s.project, serviceName: s.name }); } catch { continue; }
+      const dom = (Array.isArray(list) ? list : []).find((x) => (x.host ?? x.domain) === host);
+      if (!dom) continue;
+      await runServiceOp(c, 'domainUpdate', { type: s.type, project: s.project, name: s.name }, { id: dom.id ?? dom._id, original: dom, host, https: dom.https ?? true });
+      return `${s.project}/${s.name}`;
+    }
+    return null;
+  }
   const reissueRoutes = [
     ['POST', '/api/panels/:id/certs/reissue', async (ctx) => {
       const row = panelOr404(ctx.params.id);
@@ -405,6 +424,8 @@ export function extraRoutes(d) {
         const c = manager.clientFor(row);
         const raw = item.raw && typeof item.raw === 'object' ? item.raw : {};
         await mutateAudited(ctx, row, 'cert.reissue', domain, () => firstOk(c, 'certificates.removeCertificate', [raw, { domain }, { domain: { main: domain } }, { main: domain }, { name: domain }]));
+        let resaved = null, resaveError = null;
+        try { resaved = await resaveDomain(row, domain); } catch (e) { resaveError = e.message; }
         let after = null;
         if (config.tlsProbe && !domain.startsWith('*.')) {
           tlsCache.delete(domain);
@@ -415,7 +436,7 @@ export function extraRoutes(d) {
             if (after && (!before || after > before + 3600_000)) break;
           }
         }
-        return { ok: true, removed: true, before, after, renewed: !!(after && before && after > before + 3600_000) };
+        return { ok: true, removed: true, resaved, resaveError, before, after, renewed: !!(after && before && after > before + 3600_000) };
       } catch (e) { throw asHttp(e); }
     }, { admin: true }],
   ];

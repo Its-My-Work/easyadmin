@@ -402,15 +402,17 @@ export const SERVICE_OPS = {
   sourceGithub: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateSourceGithub'), {
     ...r, owner: p.owner, repo: p.repo, ref: p.branch || 'main', branch: p.branch || 'main', path: p.path || '/',
   }),
+  sourceGit: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateSourceGit'), { ...r, repo: String(p.repo), ref: p.branch || 'main', branch: p.branch || 'main', path: p.path || '/' }),
   domainAdd: (c, r, _s, p) => c.mutate('domains.createDomain', {
     ...r, host: p.host, https: p.https !== false, port: num(p.port) ?? 80, path: p.path || '/',
   }),
   domainUpdate: (c, r, _s, p) => {
     // отправляем исходный объект целиком (на случай полей, о которых мы не знаем) + правки
     const o = plain(p.original); const id = p.id ?? o.id ?? o._id;
-    const port = num(p.port) ?? o.port ?? o.service?.port; const path = p.path ?? o.path ?? o.service?.path ?? '/';
-    const body = { ...o, ...r, id, domainId: id, host: p.host ?? o.host, https: p.https ?? o.https, port, path };
-    if (o.service && typeof o.service === 'object') body.service = { ...o.service, port, path };
+    const dk = ['serviceDestination', 'destination', 'service'].find((k) => o[k] && typeof o[k] === 'object');
+    const port = num(p.port) ?? o.port ?? o[dk]?.port; const path = p.path ?? o.path ?? o[dk]?.path ?? '/';
+    const body = { ...o, ...r, id, domainId: id, host: p.host ?? o.host, https: p.https ?? o.https, path };
+    if (dk) body[dk] = { ...o[dk], port, path }; else body.port = port;
     return c.mutate('domains.updateDomain', body);
   },
   domainDelete: (c, r, _s, p) => c.mutate('domains.deleteDomain', { ...r, id: p.id, domainId: p.id }),

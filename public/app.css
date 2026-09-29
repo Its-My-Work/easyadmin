@@ -235,3 +235,9 @@ tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
 @media (max-width: 1100px) { .grid-cols { grid-template-columns: 1fr; } .profile-meta { text-align: left; } }
 
 .w-actions .inline { flex-wrap: nowrap; } .user > div { min-width: 0; } .user b { display: block; max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.src-sec > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; }
+.src-sec > summary::-webkit-details-marker { display: none; }
+.src-sec > summary h4 { margin: 0; }
+.src-sec[open] > summary { margin-bottom: 12px; }
+.src-sec:not(.active) { opacity: .85; }

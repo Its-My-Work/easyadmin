@@ -25,7 +25,20 @@ const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return nu
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
 
 /** Поля домена/порта/тома из ответа панели — с запасными названиями на случай другой версии API. */
-const domainOf = (x) => ({ id: x.id ?? x._id, host: x.host ?? x.domain ?? '', https: x.https ?? x.ssl ?? true, port: x.port ?? x.service?.port ?? x.destinationPort ?? x.targetPort ?? '', path: x.path ?? x.service?.path ?? '/' });
+/** Порт/путь домена: у разных версий панели лежат в разных местах (serviceDestination, service, proxy…) — ищем по известным путям, затем рекурсивно. */
+const DEST_KEYS = ['serviceDestination', 'destination', 'service', 'target', 'proxy', 'upstream'];
+const findDeep = (x, re, depth = 0) => {
+  if (!x || typeof x !== 'object' || depth > 3) return undefined;
+  for (const [k, v] of Object.entries(x)) if (re.test(k) && (typeof v === 'number' || (typeof v === 'string' && v !== '' && !Number.isNaN(Number(v))))) return v;
+  for (const v of Object.values(x)) { const r = findDeep(v, re, depth + 1); if (r !== undefined) return r; }
+  return undefined;
+};
+const destOf = (x) => DEST_KEYS.map((k) => x[k]).find((v) => v && typeof v === 'object' && !Array.isArray(v)) ?? {};
+const domainOf = (x, fallbackPort = '') => {
+  const d = destOf(x);
+  return { id: x.id ?? x._id, host: x.host ?? x.domain ?? '', https: x.https ?? x.ssl ?? true,
+    port: x.port ?? d.port ?? x.destinationPort ?? x.targetPort ?? findDeep(x, /port/i) ?? fallbackPort, path: x.path ?? d.path ?? '/' };
+};
 const portOf = (x) => ({ id: x.id ?? x._id, published: x.published ?? x.publishedPort ?? x.external ?? x.hostPort ?? '', target: x.target ?? x.targetPort ?? x.internal ?? x.containerPort ?? '', protocol: String(x.protocol ?? 'tcp').toLowerCase() });
 const mountOf = (x) => ({ id: x.id ?? x._id, type: x.type ?? 'volume', name: x.name ?? x.volume ?? '', hostPath: x.hostPath ?? x.source ?? '', mountPath: x.mountPath ?? x.target ?? x.path ?? '', content: x.content ?? '' });
 
@@ -176,8 +189,9 @@ export function openService(s) {
   const dialog = (title, body, onSave, saveLabel = 'Сохранить') => modal({ title, body, actions: [{ label: 'Отмена', kind: 'ghost' }, { label: saveLabel, kind: 'primary', onClick: onSave }] });
 
   /* ---- Домены ---- */
+  let svcPort = '';
   function domainForm(x) {
-    const v = x ? domainOf(x) : { host: '', port: 80, path: '/', https: true };
+    const v = x ? domainOf(x, svcPort) : { host: '', port: svcPort || 80, path: '/', https: true };
     const host = h('input', { class: 'input', placeholder: 'app.example.com', value: v.host }), port = h('input', { class: 'input', type: 'number', min: 1, max: 65535, value: v.port }), path = h('input', { class: 'input mono', value: v.path });
     const https = check(v.https !== false, 'HTTPS (Let’s Encrypt)');
     dialog(x ? 'Изменить домен' : 'Добавить домен', h('div', { class: 'stack' }, field('Хост', host), h('div', { class: 'grid-2' }, field('Порт контейнера', port), field('Путь', path)), https.el), async () => {
@@ -186,11 +200,12 @@ export function openService(s) {
       return x ? op('domainUpdate', params, 'Домен обновлён') : op('domainAdd', params, 'Домен добавлен');
     });
   }
-  function domains(_svc, d) {
+  function domains(svc, d) {
+    svcPort = svc?.proxy?.port ?? findDeep(svc?.proxy, /port/i) ?? '';
     const list = asList(d.domains);
     return h('div', { class: 'stack' }, sectionHead('Домены', () => domainForm(), 'Добавить домен'),
       list.length ? h('div', { class: 'list' }, list.map((x) => {
-        const v = domainOf(x);
+        const v = domainOf(x, svcPort);
         return h('div', { class: 'list-item' },
           h('div', null, h('a', { class: 'link-row', href: `${v.https === false ? 'http' : 'https'}://${v.host}${v.path && v.path !== '/' ? v.path : ''}`, target: '_blank', rel: 'noopener' }, h('b', null, v.host), icon('external', 12)),
             h('div', { class: 'muted small' }, `порт ${v.port === '' ? '—' : v.port} · ${v.https === false ? 'HTTP' : 'HTTPS'}${v.path && v.path !== '/' ? ` · ${v.path}` : ''}`)),
@@ -254,17 +269,23 @@ export function openService(s) {
   /* ---- Источник ---- */
   function source(svc) {
     const src = svc.source || {};
-    const image = h('input', { class: 'input mono', placeholder: 'nginx:latest', value: src.image ?? '' });
-    const owner = h('input', { class: 'input', placeholder: 'owner', value: src.owner ?? '' });
-    const repo = h('input', { class: 'input', placeholder: 'repo', value: src.repo ?? '' });
-    const branch = h('input', { class: 'input', placeholder: 'main', value: src.ref ?? src.branch ?? '' });
-    const path = h('input', { class: 'input', placeholder: '/', value: src.path ?? '' });
+    const kind = src.type && ['image', 'github', 'git'].includes(src.type) ? src.type
+      : src.image ? 'image' : src.owner ? 'github' : /^(git@|https?:|ssh:)/.test(String(src.repo ?? '')) || src.repo ? 'git' : 'image';
+    const inp = (ph, v, cls = 'input') => h('input', { class: cls, placeholder: ph, value: v ?? '' });
+    const image = inp('nginx:latest', src.image, 'input mono');
+    const owner = inp('owner', src.owner), repo = inp('repo', kind === 'github' ? src.repo : ''), branch = inp('main', kind === 'github' ? (src.ref ?? src.branch) : ''), path = inp('/', kind === 'github' ? src.path : '');
+    const gUrl = inp('git@github.com:owner/repo.git', kind === 'git' ? src.repo : '', 'input mono'), gRef = inp('main', kind === 'git' ? (src.ref ?? src.branch) : ''), gPath = inp('/', kind === 'git' ? src.path : '');
+    const apply = (label, fn, primary) => h('div', null, h('button', { class: `btn ${primary ? 'primary' : ''}`, disabled: ro, onclick: fn }, label));
+    const section = (id, title, body) => h('details', { class: `card flat src-sec ${id === kind ? 'active' : ''}`, open: id === kind },
+      h('summary', null, h('h4', null, title), id === kind ? h('span', { class: 'badge ok' }, h('i', { class: 'dot' }), 'Активен') : h('span', { class: 'muted small' }, 'не используется')),
+      h('div', { class: 'stack' }, body));
     return h('div', { class: 'stack' },
-      h('div', { class: 'card flat stack' }, h('h4', null, 'Docker-образ'), field('Образ', image),
-        h('div', null, h('button', { class: 'btn primary', onclick: () => { if (!image.value.trim()) return toast('Укажите образ', 'error'); op('sourceImage', { image: image.value.trim() }, 'Источник обновлён'); } }, 'Применить образ'))),
-      h('div', { class: 'card flat stack' }, h('h4', null, 'GitHub'), h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo), field('Ветка', branch), field('Путь сборки', path)),
-        h('div', null, h('button', { class: 'btn', onclick: () => { if (!owner.value || !repo.value) return toast('Укажите владельца и репозиторий', 'error'); op('sourceGithub', { owner: owner.value, repo: repo.value, branch: branch.value, path: path.value }, 'Источник обновлён'); } }, 'Применить репозиторий'))),
-      h('p', { class: 'muted small' }, 'После смены источника выполните деплой, чтобы изменения вступили в силу.'));
+      section('image', 'Docker-образ', [field('Образ', image), apply('Применить образ', () => { if (!image.value.trim()) return toast('Укажите образ', 'error'); op('sourceImage', { image: image.value.trim() }, 'Источник обновлён'); }, kind === 'image')]),
+      section('github', 'GitHub', [h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo), field('Ветка', branch), field('Путь сборки', path)),
+        apply('Применить репозиторий', () => { if (!owner.value || !repo.value) return toast('Укажите владельца и репозиторий', 'error'); op('sourceGithub', { owner: owner.value, repo: repo.value, branch: branch.value, path: path.value }, 'Источник обновлён'); }, kind === 'github')]),
+      section('git', 'Git', [field('Адрес репозитория', gUrl), h('div', { class: 'grid-2' }, field('Ветка', gRef), field('Путь сборки', gPath)),
+        apply('Применить Git', () => { if (!gUrl.value.trim()) return toast('Укажите адрес репозитория', 'error'); op('sourceGit', { repo: gUrl.value.trim(), branch: gRef.value, path: gPath.value }, 'Источник обновлён'); }, kind === 'git')]),
+      h('p', { class: 'muted small' }, 'У сервиса один источник: активный раскрыт, остальные свёрнуты. Применение другого источника заменит текущий. После смены источника выполните деплой.'));
   }
 
   /* ---- Логи (SSE ← WebSocket панели) ---- */

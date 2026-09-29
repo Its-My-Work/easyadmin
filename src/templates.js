@@ -27,6 +27,7 @@ export async function applyConfig(client, target, cfg, { deploy = false, ensureP
   if (!await step('создание сервиса', () => createService(client, { ...ref, image }))) return steps;
   if (cfg.env) await step('переменные окружения', () => runServiceOp(client, 'env', ref, { env: cfg.env }));
   if (cfg.type === 'app' && src?.type === 'image' && image) await step('источник (образ)', () => runServiceOp(client, 'sourceImage', ref, { image }));
+  if (cfg.type === 'app' && src?.type === 'git') await step('источник (Git)', () => runServiceOp(client, 'sourceGit', ref, { repo: src.repo, branch: src.ref ?? src.branch, path: src.path }));
   if (cfg.type === 'app' && src?.type === 'github') await step('источник (GitHub)', () => runServiceOp(client, 'sourceGithub', ref, { owner: src.owner, repo: src.repo, branch: src.ref ?? src.branch, path: src.path }));
   if (cfg.resources && ['memoryLimit', 'memoryReservation', 'cpuLimit', 'cpuReservation'].some((k) => cfg.resources[k])) await step('ресурсы', () => runServiceOp(client, 'resources', ref, cfg.resources));
   if (deploy && (cfg.type === 'app' || cfg.type === 'compose')) await step('деплой', () => runAction(client, { ...ref, action: 'deploy' }));
