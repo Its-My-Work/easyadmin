@@ -5,7 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
-import { PanelClient, normalizeTree, redact, shapeOf } from '../src/easypanel.js';
+import { PanelClient, normalizeTree, redact, shapeOf, unwrapJson } from '../src/easypanel.js';
 
 // «Чужая» версия панели: без superjson и с другой формой списка проектов
 let panel, url, app, base, cookie, id;
@@ -34,6 +34,24 @@ describe('совместимость с другими формами ответ
   test('клиент понимает ответ без superjson-обёртки', async () => {
     const v = await new PanelClient({ url, token: 't' }).query('projects.listProjectsAndServices');
     assert.equal(v.data.items[0].name, 'blog');
+  });
+  test('двойная обёртка {json:{json:X}} снимается (как у панели пользователя)', async () => {
+    const saved = answers['monitor.getSystemStats'];
+    answers['projects.listProjectsAndServices'] = { result: { data: { json: { json: { projects: [{ name: 'main' }, { name: 'hh' }], services: [{ name: 'hh', projectName: 'hh', type: 'app', enabled: true }] } } } } };
+    const v = await new PanelClient({ url, token: 't' }).query('projects.listProjectsAndServices');
+    assert.equal(v.projects.length, 2);
+    assert.deepEqual(unwrapJson({ json: { json: 5, meta: {} }, meta: {} }), 5);
+    assert.deepEqual(unwrapJson({ json: 1, other: 2 }), { json: 1, other: 2 }, 'чужие поля не трогаем');
+    answers['monitor.getSystemStats'] = saved;
+    const t = normalizeTree(v);
+    assert.deepEqual(t.projects.map((p) => [p.name, p.services.length]), [['hh', 1], ['main', 0]]);
+  });
+  test('нераспознанная статистика → «частично» с пояснением', async () => {
+    answers['projects.listProjectsAndServices'] = { result: { data: { json: { projects: [{ name: 'p' }], services: [] } } } };
+    answers['monitor.getSystemStats'] = { result: { data: { json: { something: 'else' } } } };
+    const ov = await (await fetch(base + '/api/overview?force=1', { headers: { Cookie: cookie } })).json();
+    assert.equal(ov[0].status, 'degraded'); assert.match(ov[0].error, /Статистика/);
+    answers['monitor.getSystemStats'] = { result: { data: { json: { cpuInfo: { usedPercentage: 5 } } } } };
   });
   test('normalizeTree находит проекты и сервисы в нестандартных формах', () => {
     assert.equal(normalizeTree({ data: { items: [{ name: 'a', services: [{ name: 's' }] }] } }).projects[0].services[0].name, 's');

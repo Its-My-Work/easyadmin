@@ -77,7 +77,8 @@ export class PanelClient {
           if (json === undefined) return finish(reject, new PanelError('Ответ не похож на API Easypanel (проверьте адрес)', { status }));
           const payload = json?.result?.data;
           // superjson: {result:{data:{json}}}; без superjson: {result:{data}}; void-процедура: {result:{}} → null
-          finish(resolve, payload && typeof payload === 'object' && !Array.isArray(payload) && 'json' in payload ? payload.json : (json?.result ? (payload ?? null) : json));
+          const value = payload && typeof payload === 'object' && !Array.isArray(payload) && 'json' in payload ? payload.json : (json?.result ? (payload ?? null) : json);
+          finish(resolve, unwrapJson(value));
         });
       });
       req.on('error', (e) => finish(reject, new PanelError(e.code === 'ECONNREFUSED' ? 'Соединение отклонено' : e.message, { kind: 'network' })));
@@ -86,6 +87,12 @@ export class PanelClient {
       req.end();
     });
   }
+}
+
+/** Некоторые панели оборачивают ответ дважды: {json:{json:X}} — снимаем лишние слои {json, meta?}. */
+export function unwrapJson(v) {
+  for (let i = 0; i < 4 && v && typeof v === 'object' && !Array.isArray(v) && 'json' in v && Object.keys(v).every((k) => k === 'json' || k === 'meta'); i++) v = v.json;
+  return v;
 }
 
 /** Вход по email/паролю: возвращает сессионный токен (живёт ~30 дней). */

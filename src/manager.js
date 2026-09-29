@@ -39,6 +39,9 @@ export function createManager({ db, key, config }) {
         stats: stats.status === 'fulfilled' ? normalizeStats(stats.value) : null,
       };
     }
+    if (snap.status === 'online' && stats.status === 'fulfilled' && snap.stats && snap.stats.cpu == null && snap.stats.memPct == null && snap.stats.diskPct == null) {
+      snap.status = 'degraded'; snap.error = 'Статистика получена, но формат не распознан (см. «Диагностика»)';
+    }
     snap.latencyMs = Date.now() - t0;
     snap.fetchedAt = Date.now();
     cache.set(row.id, snap);
