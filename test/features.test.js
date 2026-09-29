@@ -324,6 +324,32 @@ describe('срок сертификата по TLS-рукопожатию', () =
   });
 });
 
+describe('перевыпуск сертификата', () => {
+  test('удаляет сертификат на панели, «будит» домен и сообщает о новом сроке', { skip: (() => { try { execFileSync('openssl', ['version']); return false; } catch { return 'нет openssl'; } })() }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ea-reissue-'));
+    const mk = (name, days) => { execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', `${dir}/${name}.key`, '-out', `${dir}/${name}.crt`, '-days', String(days), '-subj', '/CN=localhost'], { stdio: 'ignore' }); return { key: fs.readFileSync(`${dir}/${name}.key`), cert: fs.readFileSync(`${dir}/${name}.crt`) }; };
+    const old = mk('old', 30), fresh = mk('new', 90);
+    const srv = tls.createServer(old, (s) => s.end());
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const removed = [];
+    const M = createMockPanel({ token: 'R', certs: [{ domain: { main: 'localhost' } }], onRemove: (d) => { removed.push(d); srv.setSecureContext(fresh); } });
+    const url = await M.listen();
+    const pid = (await api('admin', 'POST', '/api/panels', { name: 'Re', url, token: 'R' })).data.id;
+    Object.assign(cfgRef, { tlsProbe: true, tlsProbePort: srv.address().port, reissueDelaysMs: [0, 0] });
+    try {
+      const r = await api('admin', 'POST', `/api/panels/${pid}/certs/reissue`, { domain: 'localhost' });
+      assert.equal(r.status, 200, JSON.stringify(r.data));
+      assert.deepEqual(removed, ['localhost']);
+      assert.equal(r.data.renewed, true);
+      assert.ok((r.data.before - Date.now()) / 86400000 < 31 && (r.data.after - Date.now()) / 86400000 > 89);
+      assert.ok((await api('admin', 'GET', '/api/audit?q=cert.reissue')).data.some((a) => a.action === 'cert.reissue' && a.target === 'localhost' && a.ok === 1));
+      assert.equal((await api('admin', 'POST', `/api/panels/${pid}/certs/reissue`, { domain: 'localhost' })).status, 400, 'повторно — сертификата уже нет');
+      assert.equal((await api('admin', 'POST', `/api/panels/${pid}/certs/reissue`, { domain: 'bad domain!' })).status, 400);
+      assert.equal((await api('ro', 'POST', `/api/panels/${pid}/certs/reissue`, { domain: 'localhost' })).status, 403);
+    } finally { Object.assign(cfgRef, { tlsProbe: false, reissueDelaysMs: [2500, 4000, 4000] }); srv.close(); await api('admin', 'DELETE', `/api/panels/${pid}`); await M.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe('экспорт, бэкап, метрики', () => {
   test('audit CSV с экранированием формул', async () => {
     await api('admin', 'POST', `/api/panels/${idA}/service/action`, { type: 'app', project: 'web', name: 'nope', action: 'stop' });

@@ -227,9 +227,11 @@ export function applyHealth(tree, containers) {
   return tree;
 }
 
+/** Статистика в известном виде ({cpuInfo, memInfo, diskInfo…}); если поля не нашлись — «нечёткий» разбор произвольной формы. */
 export function normalizeStats(s) {
+  s = unwrapJson(s);
   if (!s || typeof s !== 'object') return null;
-  return {
+  const std = {
     uptime: s.uptime ?? null,
     cpu: s.cpuInfo?.usedPercentage ?? null,
     cpus: s.cpuInfo?.count ?? null,
@@ -243,6 +245,68 @@ export function normalizeStats(s) {
     netIn: s.network?.inputMb ?? null,
     netOut: s.network?.outputMb ?? null,
   };
+  return looksLikeStats(std) ? std : { ...std, ...Object.fromEntries(Object.entries(fuzzyStats(s)).filter(([, v]) => v != null)) };
+}
+
+export const looksLikeStats = (st) => [st?.cpu, st?.memPct, st?.diskPct].filter((x) => x != null).length >= 2;
+
+const asNum = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : typeof x === 'string' && /^-?\d+(\.\d+)?$/.test(x.trim()) ? Number(x) : null);
+function findKey(v, re, depth = 0) {
+  if (!v || typeof v !== 'object' || depth > 4) return null;
+  for (const [k, x] of Object.entries(v)) if (re.test(k)) return [k, x];
+  for (const x of Object.values(v)) if (x && typeof x === 'object') { const r = findKey(x, re, depth + 1); if (r) return r; }
+  return null;
+}
+function percentFrom(node) {
+  if (asNum(node) != null) return asNum(node);
+  if (!node || typeof node !== 'object') return null;
+  for (const [k, x] of Object.entries(node)) if (/percent|pct|usage|load/i.test(k) && !/mb|gb|byte/i.test(k) && asNum(x) != null) return asNum(x);
+  const used = asNum(findKey(node, /^used/i)?.[1]), total = asNum(findKey(node, /^total|^limit/i)?.[1]);
+  return used != null && total ? (used / total) * 100 : null;
+}
+const amount = (node, re, unit) => { const r = node && typeof node === 'object' ? findKey(node, re) : null; return r && asNum(r[1]) != null && unit.test(r[0]) ? asNum(r[1]) : null; };
+
+/** Разбор статистики произвольной формы: ищет вложенные cpu / memory / disk по названиям ключей. */
+export function fuzzyStats(v) {
+  v = unwrapJson(v);
+  if (!v || typeof v !== 'object') return {};
+  const cpu = findKey(v, /cpu|processor/i)?.[1], mem = findKey(v, /^(mem|memory|ram)|meminfo/i)?.[1], disk = findKey(v, /disk|storage|filesystem|^fs$/i)?.[1];
+  const up = asNum(findKey(v, /uptime/i)?.[1]);
+  return {
+    uptime: up, cpu: percentFrom(cpu), cpus: asNum(findKey(cpu, /^(count|cores?|cpus)$/i)?.[1]), load: null,
+    memPct: percentFrom(mem), memUsedMb: amount(mem, /^used/i, /mb$/i), memTotalMb: amount(mem, /^total/i, /mb$/i),
+    diskPct: percentFrom(disk), diskUsedGb: amount(disk, /^used/i, /gb$/i), diskTotalGb: amount(disk, /^total/i, /gb$/i),
+    netIn: null, netOut: null,
+  };
+}
+
+/**
+ * Имена процедур из интерфейса самой панели: разбираем её JS-бандлы (как делает сам фронтенд).
+ * Нужно, когда в новой версии панели процедуры переименованы. Возвращает уникальные имена «роутер.процедура».
+ */
+export async function discoverProcedures(baseUrl, { insecure = false, timeoutMs = 10_000 } = {}) {
+  const agent = insecure && baseUrl.startsWith('https:') ? new https.Agent({ rejectUnauthorized: false }) : undefined;
+  const get = (url, max = 8 * 1024 * 1024) => new Promise((resolve) => {
+    const u = new URL(url); const mod = u.protocol === 'https:' ? https : http;
+    const req = mod.get(u, { agent, timeout: timeoutMs, headers: { Accept: '*/*' } }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return resolve(''); }
+      res.setEncoding('utf8'); let data = '';
+      res.on('data', (c) => { data += c; if (data.length > max) { req.destroy(); resolve(data); } });
+      res.on('end', () => resolve(data)); res.on('error', () => resolve(''));
+    });
+    req.on('timeout', () => { req.destroy(); resolve(''); }); req.on('error', () => resolve(''));
+  });
+  const base = baseUrl.replace(/\/+$/, '/');
+  const html = await get(base, 1024 * 1024);
+  const scripts = [...new Set([...html.matchAll(/(?:src|href)=[\x22\x27]([^\x22\x27]+\.js[^\x22\x27]*)[\x22\x27]/g)].map((m) => m[1]))].slice(0, 10);
+  const names = new Set();
+  const VERB = /^(get|list|create|update|delete|remove|set|enable|disable|start|stop|restart|deploy|destroy|inspect|run|check|refresh|expose|kill|use|load|send|generate|revoke|activate|deactivate|rename|can|add|subscribe)[A-Z0-9]/;
+  for (const src of scripts) {
+    let url; try { url = new URL(src, base); } catch { continue; }
+    if (url.origin !== new URL(base).origin) continue; // только собственные файлы панели
+    for (const m of (await get(url.toString())).matchAll(/[\x22\x27\x60]([a-z][A-Za-z0-9]{2,30})\.([a-z][A-Za-z0-9]{2,50})[\x22\x27\x60]/g)) if (VERB.test(m[2])) names.add(`${m[1]}.${m[2]}`);
+  }
+  return [...names].sort();
 }
 
 /* ------------------------------------------------------------------ */
@@ -313,7 +377,7 @@ function mountVariants(r, s, p, o, id) {
 }
 
 /** Выполняет мутацию, пробуя варианты входных данных, пока не пройдёт валидация панели. */
-async function firstOk(c, proc, variants) {
+export async function firstOk(c, proc, variants) {
   let first;
   for (const [i, body] of variants.entries()) {
     try { return await c.mutate(proc, body); } catch (e) {

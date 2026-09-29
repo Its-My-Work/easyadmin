@@ -1,5 +1,5 @@
 import { decrypt, encrypt } from './crypto.js';
-import { PanelClient, applyHealth, normalizeStats, normalizeTree } from './easypanel.js';
+import { PanelClient, PanelError, applyHealth, discoverProcedures, fuzzyStats, looksLikeStats, normalizeStats, normalizeTree } from './easypanel.js';
 
 /** Управляет клиентами панелей, кэшем снимков и статусами. */
 export function createManager({ db, key, config }) {
@@ -13,6 +13,36 @@ export function createManager({ db, key, config }) {
       url: row.url, token: decrypt(key, row.token_enc),
       insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs,
     });
+  }
+
+  /**
+   * Статистика сервера. В новых версиях панели monitor.getSystemStats может отсутствовать (404): тогда один раз в 6 часов
+   * ищем подходящие процедуры в интерфейсе самой панели, пробуем их и запоминаем рабочую.
+   */
+  const statsProcs = new Map(); // panelId → { proc | null, at, candidates }
+  const is404 = (e) => e.status === 404 || /not found/i.test(e.message);
+  const rank = (n) => (/system/i.test(n) ? 3 : 0) + (/stats?|usage|metric/i.test(n) ? 2 : 0) + (/^monitor\./.test(n) ? 1 : 0);
+  async function fetchStats(client, row) {
+    const st = statsProcs.get(row.id);
+    const remember = (v) => statsProcs.set(row.id, { ...(statsProcs.get(row.id) ?? {}), ...v });
+    if (st?.proc && st.proc !== 'monitor.getSystemStats') { // найденная ранее процедура
+      try { return await client.query(st.proc); } catch (e) { if (!is404(e)) throw e; remember({ proc: null, at: 0 }); }
+    }
+    try { const v = await client.query('monitor.getSystemStats'); remember({ proc: 'monitor.getSystemStats', at: Date.now() }); return v; } catch (e) { if (!is404(e)) throw e; } // дешёвый 404 не страшен; обнаружение — не чаще раза в 6 ч
+    const cur = statsProcs.get(row.id);
+    if (!cur?.at || Date.now() - cur.at > 6 * 3600_000) {
+      const found = (await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => []))
+        .filter((n) => { const pr = n.split('.')[1]; return /^(get|list|inspect)/.test(pr) && /(system|server|host|resource|usage|metric|stats?|overview|cpu|mem)/i.test(n) && !/(service|project|task|table|storage|database|backup|domain|cert)/i.test(pr) && n !== 'monitor.getSystemStats'; })
+        .sort((x, y) => rank(y) - rank(x));
+      let chosen = null;
+      for (const cand of found.slice(0, 10)) {
+        try { const v = await client.query(cand); if (looksLikeStats(fuzzyStats(v)) || looksLikeStats(normalizeStats(v))) { chosen = { cand, v }; break; } } catch { /* пробуем следующую */ }
+      }
+      remember({ proc: chosen?.cand ?? null, at: Date.now(), candidates: found });
+      if (chosen) return chosen.v;
+    }
+    const names = statsProcs.get(row.id)?.candidates ?? [];
+    throw new PanelError(`Панель не поддерживает запрос статистики monitor.getSystemStats (404). Найдено в интерфейсе панели: ${names.length ? names.slice(0, 8).join(', ') : 'ничего похожего'}`, { status: 404 });
   }
 
   const containersMode = new Map(); // panelId → { mode: 'global' | 'project' | 'none', at }
@@ -37,7 +67,7 @@ export function createManager({ db, key, config }) {
     const client = clientFor(row);
     const [tree, stats] = await Promise.allSettled([
       client.query('projects.listProjectsAndServices'),
-      client.query('monitor.getSystemStats'),
+      fetchStats(client, row),
     ]);
     // контейнеры — best-effort: сначала по всей панели, а если панель требует projectName — по каждому проекту
     let containers = { status: 'rejected' };

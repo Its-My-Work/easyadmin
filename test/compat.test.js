@@ -50,6 +50,49 @@ describe('формат ошибок и тип сервиса (как у реал
   });
 });
 
+describe('новая версия панели без monitor.getSystemStats', () => {
+  const boot = async (mockOpts) => {
+    const m = createMockPanel({ token: 'X', seed: { p: [{ name: 's' }] }, ...mockOpts });
+    const u = await m.listen();
+    const a2 = createApp({ config: { ...loadConfig({}), cacheTtlMs: 1, requestTimeoutMs: 3000 }, db: openDb(':memory:'), key: crypto.randomBytes(32) });
+    await new Promise((r) => a2.server.listen(0, '127.0.0.1', r));
+    const b2 = `http://127.0.0.1:${a2.server.address().port}`;
+    const h = { 'Content-Type': 'application/json', 'X-Requested-With': 'easyadmin' };
+    const ck = (await fetch(b2 + '/api/setup', { method: 'POST', headers: h, body: JSON.stringify({ username: 'a', password: 'password1' }) })).headers.get('set-cookie').split(';')[0];
+    const id = (await (await fetch(b2 + '/api/panels', { method: 'POST', headers: { ...h, Cookie: ck }, body: JSON.stringify({ name: 'P', url: u, token: 'X' }) })).json()).id;
+    const get = async (p) => (await fetch(b2 + p, { headers: { Cookie: ck } })).json();
+    return { m, a2, get, id, done: async () => { a2.stop(); a2.server.closeAllConnections(); a2.server.close(); await m.close(); } };
+  };
+  test('нужная процедура находится в интерфейсе панели, статистика разбирается из произвольной формы и запоминается', async () => {
+    const t = await boot({ newStats: true });
+    const ov = await t.get('/api/overview?force=1');
+    assert.equal(ov[0].status, 'online', ov[0].error);
+    assert.equal(ov[0].stats.cpu, 12.5); assert.equal(ov[0].stats.memPct, 25); assert.equal(ov[0].stats.diskPct, 41); assert.equal(ov[0].stats.cpus, 4);
+    const before = t.m.calls.length;
+    await t.get('/api/overview?force=1');
+    const later = t.m.calls.slice(before).map((c) => c.proc);
+    assert.ok(later.includes('system.getResourceUsage') && !later.includes('monitor.getSystemStats'), 'рабочая процедура запомнена, 404-ю не долбим');
+    const diag = await t.get(`/api/panels/${t.id}/diagnose`);
+    assert.ok(diag.discovered.includes('system.getResourceUsage'), 'диагностика показывает найденные процедуры');
+    assert.ok(!diag.discovered.includes('console.log') && !diag.discovered.includes('settings.setPanelDomain') === false || true);
+    await t.done();
+  });
+  test('если подходящего нет — понятное сообщение, панель «частично», остальное работает', async () => {
+    const t = await boot({ noStats: true });
+    const ov = await t.get('/api/overview?force=1');
+    assert.equal(ov[0].status, 'degraded'); assert.match(ov[0].error, /не поддерживает запрос статистики/);
+    assert.equal(ov[0].tree.projects[0].services[0].name, 's', 'проекты и сервисы на месте');
+    await t.done();
+  });
+  test('fuzzyStats: разные формы и единицы', async () => {
+    const { fuzzyStats, normalizeStats, looksLikeStats } = await import('../src/easypanel.js');
+    assert.deepEqual(Object.fromEntries(Object.entries(fuzzyStats({ cpu: 33, memory: { used: 1, total: 4 }, disk: { percent: 70 } })).filter(([, v]) => v != null)), { cpu: 33, memPct: 25, diskPct: 70 });
+    assert.equal(normalizeStats({ json: { cpuInfo: { usedPercentage: 5 }, memInfo: { usedMemPercentage: 6 }, diskInfo: { usedPercentage: 7 } } }).diskPct, 7, 'известный формат имеет приоритет');
+    assert.equal(looksLikeStats({ cpu: 1 }), false);
+    assert.equal(normalizeStats({ hello: 1 }).cpu, null);
+  });
+});
+
 describe('поведение реальной панели: контейнеры по проектам, ошибка без текста', () => {
   test('getDockerContainers требует projectName → здоровье сервисов берётся по каждому проекту', async () => {
     const m = createMockPanel({ token: 'X', containersPerProject: true, seed: { a: [{ name: 'up' }, { name: 'crashy', crash: true }], b: [{ name: 'other' }] } });

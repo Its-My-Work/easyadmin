@@ -229,6 +229,23 @@ async function imagesView(body, force = false) {
   } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
 }
 
+/** Перевыпуск: панель выпускает сертификаты автоматически, поэтому удаляем текущий и проверяем, что появился новый. */
+async function reissueCert(p, c, reload) {
+  const domain = c.domain.split(', ')[0];
+  if (!await confirmDialog({ title: 'Перевыпустить сертификат?', confirmText: 'Перевыпустить', danger: true,
+    message: `Сертификат ${domain} на панели «${p.panelName}» будет удалён, и панель запросит новый (Let’s Encrypt). Пока новый не выпущен, HTTPS для этого домена может быть недоступен. У Let’s Encrypt есть лимиты на выпуск — не повторяйте без необходимости.` })) return;
+  toast(`Перевыпуск: ${domain}…`);
+  try {
+    const r = await post(`/api/panels/${p.panelId}/certs/reissue`, { domain });
+    const fmt = (t) => (t ? new Date(t).toLocaleDateString(locale()) : '—');
+    modal({ title: r.renewed ? 'Сертификат перевыпущен' : 'Запрос на перевыпуск отправлен',
+      body: h('div', { class: 'stack' }, h('div', { class: 'card flat' }, h('div', { class: 'kv' }, h('span', null, 'Домен'), h('b', null, domain)), h('div', { class: 'kv' }, h('span', null, 'Было до'), h('b', null, fmt(r.before))), h('div', { class: 'kv' }, h('span', null, 'Стало до'), h('b', null, r.after ? fmt(r.after) : '—'))),
+        r.renewed ? h('div', { class: 'callout' }, icon('check'), 'Новый сертификат уже выдан.') : h('div', { class: 'callout warn' }, icon('alert'), 'Старый сертификат удалён, но новый пока не виден. Панель может выпускать его до минуты — обновите страницу позже. Если срок не изменится, проверьте, что домен указывает на сервер и порты 80/443 открыты.')),
+      actions: [{ label: 'Закрыть', kind: 'primary' }] });
+    reload();
+  } catch (e) { toast(e.message, 'error', 8000); }
+}
+
 async function certsView(body) {
   try {
     const data = await get('/api/certs');
@@ -236,7 +253,8 @@ async function certsView(body) {
       p.error ? h('div', { class: 'callout warn' }, icon('alert'), p.error) : p.certs.length ? h('table', { class: 'tbl' }, h('tbody', null, p.certs.sort((a, b) => (a.expiresAt ?? 9e15) - (b.expiresAt ?? 9e15)).map((c) => {
         const days = c.expiresAt ? Math.floor((c.expiresAt - Date.now()) / 86_400_000) : null;
         return h('tr', null, h('td', null, h('b', null, c.domain), c.sans?.length ? h('div', { class: 'muted small' }, c.sans.join(', ')) : null), h('td', { class: 'muted', title: c.source === 'tls' ? 'Срок получен по TLS-соединению с доменом' : null }, c.expiresAt ? new Date(c.expiresAt).toLocaleDateString(locale()) : '—'),
-          h('td', { class: 'w-actions' }, days == null ? h('span', { class: 'badge muted' }, 'срок неизвестен') : h('span', { class: `badge ${days < 7 ? 'err' : days < 30 ? 'warn' : 'ok'}` }, days < 0 ? 'истёк' : `${days} дн.`)));
+          h('td', { class: 'w-actions' }, days == null ? h('span', { class: 'badge muted' }, 'срок неизвестен') : h('span', { class: `badge ${days < 7 ? 'err' : days < 30 ? 'warn' : 'ok'}` }, days < 0 ? 'истёк' : `${days} дн.`)),
+          can('admin') ? h('td', { class: 'w-actions' }, h('button', { class: 'btn sm', title: 'Удалить сертификат и запросить новый', onclick: () => reissueCert(p, c, () => certsView(body)) }, icon('refresh', 13), 'Перевыпустить')) : null);
       }))) : h('p', { class: 'muted' }, 'Сертификатов нет.'))));
     if (!data.length) body.append(empty('Нет панелей'));
   } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }

@@ -195,6 +195,13 @@ export const EN = [
   ['Одноимённые сервисы с разными образами на разных панелях.', 'Same-named services with different images on different panels.'], ['Расхождений версий между панелями нет.', 'No version mismatches between panels.'],
   ['Не удалось получить данные: {0}', 'Could not fetch data: {0}'], ['срок неизвестен', 'expiry unknown'], ['истёк', 'expired'], ['Срок получен по TLS-соединению с доменом', 'Expiry read over a TLS connection to the domain'], ['Сертификатов нет.', 'No certificates.'], ['Нет панелей', 'No panels'],
 
+  ['Перевыпустить', 'Reissue'], ['Удалить сертификат и запросить новый', 'Delete the certificate and request a new one'], ['Перевыпустить сертификат?', 'Reissue the certificate?'],
+  ['Сертификат {0} на панели «{1}» будет удалён, и панель запросит новый (Let’s Encrypt). Пока новый не выпущен, HTTPS для этого домена может быть недоступен. У Let’s Encrypt есть лимиты на выпуск — не повторяйте без необходимости.', 'The certificate {0} on panel “{1}” will be deleted and the panel will request a new one (Let’s Encrypt). Until it is issued, HTTPS for this domain may be unavailable. Let’s Encrypt has issuance limits — do not repeat without need.'],
+  ['Перевыпуск: {0}…', 'Reissuing: {0}…'], ['Сертификат перевыпущен', 'Certificate reissued'], ['Запрос на перевыпуск отправлен', 'Reissue request sent'], ['Домен', 'Domain'], ['Было до', 'Was valid until'], ['Стало до', 'Now valid until'],
+  ['Новый сертификат уже выдан.', 'The new certificate has already been issued.'],
+  ['Старый сертификат удалён, но новый пока не виден. Панель может выпускать его до минуты — обновите страницу позже. Если срок не изменится, проверьте, что домен указывает на сервер и порты 80/443 открыты.', 'The old certificate was deleted, but the new one is not visible yet. The panel may take up to a minute to issue it — refresh the page later. If the expiry does not change, check that the domain points to the server and ports 80/443 are open.'],
+  ['Сертификат не найден на панели', 'Certificate not found on the panel'], ['Некорректный домен', 'Invalid domain'],
+
   /* --- ошибки и сообщения сервера --- */
   ['Некорректное имя: {0}', 'Invalid name: {0}'], ['Нет доступа к этой панели', 'No access to this panel'], ['Почта не подтверждена у провайдера', 'Email is not verified by the provider'],
   ['SSO не настроен', 'SSO is not configured'], ['Администратор уже создан', 'The administrator already exists'], ['Укажите логин', 'Enter a username'],
@@ -204,7 +211,7 @@ export const EN = [
   ['Сначала начните настройку 2FA', 'Start setting up 2FA first'], ['Неверный код', 'Invalid code'], ['Неверный пароль', 'Wrong password'], ['Роль: admin, operator или viewer', 'Role: admin, operator or viewer'],
   ['Такой логин уже существует', 'This username already exists'], ['Пользователь не найден', 'User not found'], ['Неверная роль', 'Invalid role'],
   ['Нельзя снять права администратора с самого себя', 'You cannot remove your own administrator rights'], ['Нельзя удалить самого себя', 'You cannot delete yourself'],
-  ['Укажите email', 'Enter an email'], ['Укажите пароль', 'Enter a password'], ['Укажите API-токен', 'Enter an API token'], ['Укажите название', 'Enter a name'],
+  ['Укажите email', 'Enter an email'], ['Укажите пароль', 'Enter a password'], ['Укажите API-токен', 'Enter an API token'], ['Укажите название', 'Enter a name'], ['Укажите домен', 'Enter a domain'],
   ['Неизвестное действие', 'Unknown action'], ['Удаление доступно только администратору', 'Deletion is available to administrators only'], ['Неизвестная операция', 'Unknown operation'],
   ['Укажите процедуру', 'Enter a procedure'], ['Выберите от 1 до 200 сервисов', 'Select 1 to 200 services'], ['Слишком большой запрос', 'Request too large'],
   ['Требуется вход', 'Sign-in required'], ['Не найдено', 'Not found'], ['Внутренняя ошибка', 'Internal error'], ['Некорректный JSON', 'Invalid JSON'],
@@ -237,6 +244,9 @@ export const EN = [
   ['Неверная строка: «{0}» (нужно KEY=value)', 'Invalid line: “{0}” (KEY=value expected)'], ['таймаут рукопожатия', 'handshake timeout'], ['неверный Sec-WebSocket-Accept', 'invalid Sec-WebSocket-Accept'],
   ['проект', 'project'], ['создание сервиса', 'service creation'], ['переменные окружения', 'environment variables'], ['источник (образ)', 'source (image)'], ['источник (GitHub)', 'source (GitHub)'],
   ['ресурсы', 'resources'], ['деплой', 'deploy'],
+
+  ['Панель не поддерживает запрос статистики monitor.getSystemStats (404). Найдено в интерфейсе панели: {0}', 'The panel does not support the monitor.getSystemStats statistics request (404). Found in the panel UI: {0}'],
+  ['ничего похожего', 'nothing similar'], ['Процедуры, найденные в интерфейсе панели', 'Procedures found in the panel UI'],
 
   /* --- уведомления (сервер) --- */
   ['Панель недоступна', 'Panel unavailable'], ['Панель снова доступна', 'Panel is back online'], ['Ошибка токена панели', 'Panel token error'], ['Заканчивается диск', 'Disk is running out'],

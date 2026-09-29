@@ -170,6 +170,7 @@ export async function diagnose(p) {
     const r = await get(`/api/panels/${p.id}/diagnose`);
     body.dataset.report = JSON.stringify(r, null, 2);
     clear(body).append(h('p', { class: 'muted small' }, 'Значения секретов скрыты. Отчёт можно отправить разработчику целиком.'),
+      r.discovered?.length ? h('details', { class: 'diag' }, h('summary', null, h('b', null, 'Процедуры, найденные в интерфейсе панели'), h('span', { class: 'muted small' }, `  ${r.discovered.length}`)), h('pre', { class: 'code' }, r.discovered.join('\n'))) : null,
       ...r.results.map((x) => h('details', { class: 'diag', open: x.proc === 'projects.listProjectsAndServices' || !x.ok },
         h('summary', null, h('span', { class: `badge ${x.ok ? 'ok' : 'err'}` }, x.ok ? 'ок' : 'ошибка'), h('b', null, ` ${x.proc}`), h('span', { class: 'muted small' }, `  ${x.ms} мс`)),
         x.ok ? h('div', { class: 'stack-sm' }, h('div', { class: 'mono small' }, x.shape), x.recognized ? h('div', { class: 'small' }, `Распознано проектов: ${x.recognized.length}${x.recognized.length ? ' — ' + x.recognized.join(', ') : ''}`) : null, h('pre', { class: 'code' }, x.sample))

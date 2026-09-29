@@ -5,7 +5,7 @@ import http from 'node:http';
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
  * seed: { projects: { name: [{name, type, enabled}] } }
  */
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null } = {}) {
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -54,6 +54,12 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
     'actions.listActions': () => [],
     'certificates.listCertificates': () => certs,
+    'certificates.removeCertificate': (i) => {
+      const d = typeof i.domain === 'string' ? i.domain : i.domain?.main ?? i.main ?? i.name;
+      const k = certs.findIndex((c) => (typeof c.domain === 'string' ? c.domain : c.domain?.main) === d);
+      if (!d || k < 0) throw Object.assign(new Error('Invalid domain'), { code: 'BAD_REQUEST' });
+      certs.splice(k, 1); onRemove?.(d); return null;
+    },
     'projects.getDockerContainers': (i) => {
       if (containersPerProject && !i.projectName) throw Object.assign(new Error('Input validation failed'), { code: 'BAD_REQUEST' });
       if (containers) return containers;
@@ -86,6 +92,8 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
+    if (newStats && req.method === 'GET' && url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<html><script type="module" src="/assets/app.js"></script></html>'); }
+    if (newStats && url.pathname === '/assets/app.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end('const a="projects.listProjects",b="system.getResourceUsage",c="monitor.getServiceStats",d="console.log",e="dashboard.getOverview",f="settings.setPanelDomain";'); }
     const proc = url.pathname.replace('/api/trpc/', '');
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
     const trpcErr = (message, code, httpStatus) => message === '' ? send(httpStatus, { error: { json: { code: -32603, data: { code, httpStatus, path: proc } } } }) : flatErrors ? send(httpStatus, { json: { defined: false, code, status: httpStatus, message } }) : send(httpStatus, { error: { json: { message, code: -32001, data: { code, httpStatus, path: proc } } } });
@@ -95,6 +103,9 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     if (req.method === 'GET') { const q = url.searchParams.get('input'); input = q ? JSON.parse(q).json : undefined; }
     else { const chunks = []; for await (const c of req) chunks.push(c); input = JSON.parse(Buffer.concat(chunks).toString() || '{}').json; }
     calls.push({ proc, input });
+    if ((newStats || noStats) && proc.startsWith('monitor.') && proc !== 'monitor.getServiceStats') { res.writeHead(404, { 'Content-Type': 'application/json' }); return res.end('{"error":"Not found"}'); }
+    if (newStats && proc === 'system.getResourceUsage') return send(200, { result: { data: { json: { json: { cpu: { percent: 12.5, cores: 4 }, memory: { used: 2048, total: 8192, usedMb: 2048, totalMb: 8192 }, disks: { root: { usedPercentage: 41, usedGb: 41, totalGb: 100 } }, uptime: 5000 } } } } });
+    if (newStats && proc === 'dashboard.getOverview') return send(200, { result: { data: { json: { hello: 'world' } } } });
     const fn = procs[proc];
     if (!fn) return trpcErr(`No procedure ${proc}`, 'NOT_FOUND', 404);
     try { send(200, { result: { data: { json: ok(fn(input ?? {})) } } }); }

@@ -26,6 +26,8 @@ export function loadConfig(env = process.env) {
     // Срок сертификата определяем по TLS-рукопожатию с самим доменом (панель его не отдаёт)
     tlsProbe: env.EASYADMIN_TLS_PROBE !== 'false',
     tlsProbePort: int(env.EASYADMIN_TLS_PROBE_PORT, 443),
+    // паузы перед проверками нового сертификата после перевыпуска, мс
+    reissueDelaysMs: [2500, 4000, 4000],
     diskAlertPct: int(env.EASYADMIN_DISK_ALERT_PCT, 90),
     metricsToken: env.EASYADMIN_METRICS_TOKEN || '',
     requestTimeoutMs: int(env.EASYADMIN_TIMEOUT_MS, 15_000),

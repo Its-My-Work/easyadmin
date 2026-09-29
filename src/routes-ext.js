@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import https from 'node:https';
 import tls from 'node:tls';
 import path from 'node:path';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.js';
-import { ACTIONS, SYSTEM_OPS, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
+import { ACTIONS, SYSTEM_OPS, discoverProcedures, firstOk, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
 import { EVENT_TYPES } from './alerts.js';
 import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http.js';
 import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
@@ -94,7 +95,8 @@ export function extraRoutes(d) {
           return { proc, ok: true, ms: now() - t0, shape: shapeOf(v), sample: sample.slice(0, 2500), ...(proc === 'projects.listProjectsAndServices' ? { recognized: normalizeTree(v).projects.map((p) => `${p.name} (${p.services.length})`) } : {}) };
         } catch (e) { return { proc, ok: false, ms: now() - t0, error: e.message, kind: e.kind, status: e.status, body: e.body ? redactJson(e.body) : undefined }; }
       }));
-      return { panel: row.name, url: row.url, results };
+      const discovered = (await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => [])).filter((n) => /stat|monitor|metric|usage|resource|system|docker|container|cpu|memory|disk|cert/i.test(n)).slice(0, 80);
+      return { panel: row.name, url: row.url, results, discovered };
     }, { admin: true }],
   ];
 
@@ -385,6 +387,39 @@ export function extraRoutes(d) {
       return { domain, sans, expiresAt, source, raw: c };
     });
   }
+  /* Перевыпуск сертификата: панель выпускает сертификаты сама (Let's Encrypt) — удаляем текущий и «будим» домен запросом. */
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const warmUp = (host) => new Promise((resolve) => {
+    const req = https.request({ host, port: config.tlsProbePort ?? 443, path: '/', method: 'GET', servername: host, rejectUnauthorized: false, timeout: 5000 }, (res) => { res.resume(); resolve(); });
+    req.on('error', resolve); req.on('timeout', () => { req.destroy(); resolve(); }); req.end();
+  });
+  const reissueRoutes = [
+    ['POST', '/api/panels/:id/certs/reissue', async (ctx) => {
+      const row = panelOr404(ctx.params.id);
+      const domain = str(ctx.body.domain, 'Укажите домен', 253);
+      need(/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(domain), 'Некорректный домен');
+      try {
+        const item = (await certsOf(row)).find((x) => x.domain === domain || x.domain.split(', ')[0] === domain);
+        need(item, 'Сертификат не найден на панели');
+        const before = item.expiresAt;
+        const c = manager.clientFor(row);
+        const raw = item.raw && typeof item.raw === 'object' ? item.raw : {};
+        await mutateAudited(ctx, row, 'cert.reissue', domain, () => firstOk(c, 'certificates.removeCertificate', [raw, { domain }, { domain: { main: domain } }, { main: domain }, { name: domain }]));
+        let after = null;
+        if (config.tlsProbe && !domain.startsWith('*.')) {
+          tlsCache.delete(domain);
+          await warmUp(domain); // первый HTTPS-запрос подталкивает выпуск нового сертификата
+          for (const wait of config.reissueDelaysMs ?? []) {
+            await sleep(wait); tlsCache.delete(domain);
+            after = await tlsExpiry(domain);
+            if (after && (!before || after > before + 3600_000)) break;
+          }
+        }
+        return { ok: true, removed: true, before, after, renewed: !!(after && before && after > before + 3600_000) };
+      } catch (e) { throw asHttp(e); }
+    }, { admin: true }],
+  ];
+
   const inventoryRoutes = [
     ['GET', '/api/images', async (ctx) => {
       const force = ctx.url.searchParams.get('force') === '1';
@@ -430,5 +465,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...channelRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

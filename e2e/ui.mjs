@@ -59,6 +59,7 @@ await step('schedule create + run', async () => {
 await step('inventory images + certs', async () => {
   await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row', { timeout: 15000 }); await p.screenshot({ path: 'v2-images.png' });
   await p.click('.seg button:has-text("Сертификаты")'); await p.waitForSelector('.badge:has-text("дн.")'); await p.screenshot({ path: 'v2-certs.png' });
+  await p.locator('button:has-text("Перевыпустить")').first().click(); await p.waitForSelector('.modal:has-text("Let’s Encrypt")'); await p.keyboard.press('Escape');
 });
 await step('settings: channel + 2FA + backup', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card');
