@@ -8,10 +8,11 @@ const config = loadConfig();
 fs.mkdirSync(config.dataDir, { recursive: true });
 const db = openDb(config.dataDir);
 const key = loadKey(config.dataDir, config.secret);
-const { server, manager } = createApp({ config, db, key });
+const app = createApp({ config, db, key });
+const { server } = app;
 
 server.listen(config.port, config.host, () => {
   console.log(`EasyAdmin запущен: http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
-  manager.startPolling();
+  app.start();
 });
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { manager.stop(); server.close(() => process.exit(0)); });
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { app.stop(); server.close(() => process.exit(0)); });

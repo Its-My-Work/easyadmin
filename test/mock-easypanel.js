@@ -4,7 +4,7 @@ import http from 'node:http';
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
  * seed: { projects: { name: [{name, type, enabled}] } }
  */
-export function createMockPanel({ token = 'tok', seed = {}, stats = {} } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null } = {}) {
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -38,6 +38,12 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {} } = {}) {
     'mounts.deleteMount': (i) => { const s = need(find(i)); s.mounts = s.mounts.filter((m) => m.id !== i.id); return null; },
     'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
     'actions.listActions': () => [],
+    'certificates.listCertificates': () => certs,
+    'projects.getDockerContainers': () => {
+      if (containers) return containers;
+      return [...projects.entries()].flatMap(([p, l]) => l.map((s) => ({ name: `${p}_${s.name}.1.abc`, state: s.crash ? 'exited' : (s.enabled ? 'running' : 'shutdown') })));
+    },
+    'monitor.getServiceStats': () => ({ cpu: 1.5, memory: 120 }),
     'settings.systemPrune': () => null,
     'settings.cleanupDockerImages': () => null,
     'settings.restartEasypanel': () => null,
@@ -45,11 +51,11 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {} } = {}) {
   };
   for (const type of ['app', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis', 'compose']) {
     const db = ['postgres', 'mysql', 'mariadb', 'mongo', 'redis'].includes(type);
-    procs[`services.${type}.inspectService`] = (i) => { const s = need(find(i)); return { name: s.name, projectName: i.projectName, type, enabled: s.enabled, env: s.env, notes: s.notes ?? '', source: { type: 'image', image: 'nginx:latest' } }; };
-    procs[`services.${type}.createService`] = (i) => { projects.get(i.projectName).push({ name: i.serviceName ?? i.name, type, enabled: true, env: '', domains: [], ports: [], mounts: [] }); return null; };
+    procs[`services.${type}.inspectService`] = (i) => { const s = need(find(i)); return { name: s.name, projectName: i.projectName, type, enabled: s.enabled, env: s.env, notes: s.notes ?? '', source: s.source ?? { type: 'image', image: s.image ?? 'nginx:latest' }, resources: s.resources ?? null }; };
+    procs[`services.${type}.createService`] = (i) => { if (!projects.has(i.projectName)) throw Object.assign(new Error('Project not found'), { code: 'NOT_FOUND' }); projects.get(i.projectName).push({ name: i.serviceName ?? i.name, type, enabled: true, env: '', domains: [], ports: [], mounts: [], image: i.source?.image }); return null; };
     procs[`services.${type}.destroyService`] = (i) => { const l = projects.get(i.projectName); l.splice(l.indexOf(need(find(i))), 1); return null; };
     procs[`services.${type}.updateEnv`] = (i) => { need(find(i)).env = i.env; return null; };
-    procs[`services.${type}.updateResources`] = (i) => { need(find(i)).resources = i; return null; };
+    procs[`services.${type}.updateResources`] = (i) => { need(find(i)).resources = { memoryLimit: i.memoryLimit, cpuLimit: i.cpuLimit }; return null; };
     if (db) {
       procs[`services.${type}.enableService`] = (i) => { need(find(i)).enabled = true; return null; };
       procs[`services.${type}.disableService`] = (i) => { need(find(i)).enabled = false; return null; };
@@ -58,7 +64,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {} } = {}) {
       procs[`services.${type}.startService`] = (i) => { need(find(i)).enabled = true; return null; };
       procs[`services.${type}.stopService`] = (i) => { need(find(i)).enabled = false; return null; };
       procs[`services.${type}.restartService`] = (i) => { need(find(i)).enabled = true; return null; };
-      procs[`services.${type}.updateSourceImage`] = (i) => { need(find(i)).image = i.image; return null; };
+      procs[`services.${type}.updateSourceImage`] = (i) => { const s = need(find(i)); s.image = i.image; s.source = { type: 'image', image: i.image }; return null; };
     }
   }
 

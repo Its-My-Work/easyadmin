@@ -135,6 +135,39 @@ export function normalizeTree(raw) {
   return { projects: list };
 }
 
+/**
+ * Best-effort: сопоставляет контейнеры Docker с сервисами по имени вида `проект_сервис[.N|-N…]`.
+ * Признак `health` ставится, только если схема имён подтвердилась хотя бы на одном сервисе —
+ * иначе (другая версия панели/формат) ничего не выдумываем.
+ */
+export function applyHealth(tree, containers) {
+  const list = Array.isArray(containers) ? containers : Array.isArray(containers?.containers) ? containers.containers : null;
+  if (!list?.length) return tree;
+  const items = list.map((c) => ({
+    name: String(c?.name ?? c?.Name ?? c?.Names?.[0] ?? c?.serviceName ?? '').replace(/^\//, ''),
+    running: /running|up\b/i.test(String(c?.state ?? c?.State ?? c?.status ?? c?.Status ?? '')),
+  })).filter((c) => c.name);
+  const all = tree.projects.flatMap((p) => p.services);
+  const found = new Map(); // service → {seen, running}
+  for (const c of items) {
+    let best = null;
+    for (const s of all) {
+      const prefix = `${s.project}_${s.name}`;
+      if (c.name === prefix || (c.name.startsWith(prefix) && /^[.\-]/.test(c.name.slice(prefix.length)))) {
+        if (!best || prefix.length > `${best.project}_${best.name}`.length) best = s;
+      }
+    }
+    if (best) { const f = found.get(best) ?? { running: false }; f.running ||= c.running; found.set(best, f); }
+  }
+  if (!found.size) return tree;
+  for (const s of all) {
+    if (!s.enabled) continue;
+    const f = found.get(s);
+    s.health = !f ? 'missing' : f.running ? 'running' : 'failing';
+  }
+  return tree;
+}
+
 export function normalizeStats(s) {
   if (!s || typeof s !== 'object') return null;
   return {

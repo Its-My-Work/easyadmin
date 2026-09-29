@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export class HttpError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; }
+}
+
+/** Ответ не в JSON (CSV, файл): возвращается обработчиком маршрута. */
+export class RawResponse {
+  constructor(body, contentType, headers = {}) { this.body = body; this.contentType = contentType; this.headers = headers; }
 }
 
 const MIME = {
@@ -26,6 +31,11 @@ export async function readJson(req, limit = 1_000_000) {
   }
   if (!size) return {};
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new HttpError(400, 'Некорректный JSON'); }
+}
+
+export function sendRaw(res, raw) {
+  res.writeHead(200, { 'Content-Type': raw.contentType, 'Cache-Control': 'no-store', ...SECURITY_HEADERS, ...raw.headers });
+  res.end(raw.body);
 }
 
 export function sendJson(res, status, data) {

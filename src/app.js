@@ -5,8 +5,13 @@ import { hashPassword, randomToken, sha256, verifyPassword } from './crypto.js';
 import {
   ACTIONS, PanelClient, SYSTEM_OPS, createService, inspectService, loginToPanel, normalizeUrl, runAction, runServiceOp,
 } from './easypanel.js';
-import { HttpError, SECURITY_HEADERS, compile, parseCookies, readJson, sendJson, serveStatic } from './http.js';
+import { HttpError, RawResponse, compile, parseCookies, readJson, sendJson, sendRaw, serveStatic } from './http.js';
+import { createAlerts } from './alerts.js';
+import { extraRoutes } from './routes-ext.js';
 import { createManager } from './manager.js';
+import { createScheduler } from './scheduler.js';
+import { decrypt, encrypt } from './crypto.js';
+import { otpauthUrl, generateSecret, verifyTotp } from './totp.js';
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const COOKIE = 'ea_session';
@@ -17,8 +22,20 @@ const need = (cond, msg) => { if (!cond) throw new HttpError(400, msg); };
 const str = (v, msg, max = 200) => { need(typeof v === 'string' && v.trim() && v.length <= max, msg); return v.trim(); };
 const nameOf = (v, label) => { need(typeof v === 'string' && NAME_RE.test(v), `Некорректное имя: ${label}`); return v; };
 
-export function createApp({ config, db, key }) {
+const SECRET_KEY = /pass|secret|token|credential|connection|env|key/i;
+/** Рекурсивно вырезает поля с секретами (для роли viewer). */
+export function redactSecrets(v) {
+  if (Array.isArray(v)) return v.map(redactSecrets);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).filter(([k]) => !SECRET_KEY.test(k)).map(([k, x]) => [k, redactSecrets(x)]));
+  return v;
+}
+
+const LEVEL = { viewer: 0, operator: 1, admin: 2 };
+export const ROLES = Object.keys(LEVEL);
+
+export function createApp({ config, db, key, fetchImpl }) {
   const manager = createManager({ db, key, config });
+  const alerts = createAlerts({ db, key, config, fetchImpl });
   const loginAttempts = new Map(); // ip → {n, until}
 
   /* ---------------- сессии ---------------- */
@@ -33,9 +50,15 @@ export function createApp({ config, db, key }) {
   function userFromReq(req) {
     const token = parseCookies(req.headers.cookie)[COOKIE];
     if (!token) return null;
-    return db.prepare(`SELECT u.id, u.username, u.role FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.id_hash = ? AND s.expires_at > ?`).get(sha256(token), now()) ?? null;
+    const u = db.prepare(`SELECT u.id, u.username, u.role, u.totp_enabled FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.id_hash = ? AND s.expires_at > ?`).get(sha256(token), now());
+    if (!u) return null;
+    const ids = db.prepare('SELECT panel_id FROM user_panels WHERE user_id = ?').all(u.id).map((r) => r.panel_id);
+    return { ...u, totpEnabled: !!u.totp_enabled, panels: ids.length ? new Set(ids) : null }; // null = все панели
   }
+  const publicUser = (u) => u && ({ id: u.id, username: u.username, role: u.role, totpEnabled: u.totpEnabled, panels: u.panels ? [...u.panels] : null });
+  const canPanel = (user, id) => !user?.panels || user.panels.has(Number(id));
+  const assertPanel = (ctx, id) => { if (!canPanel(ctx.user, id)) throw new HttpError(403, 'Нет доступа к этой панели'); };
   const userCount = () => db.prepare('SELECT COUNT(*) c FROM users').get().c;
 
   /* ---------------- аудит ---------------- */
@@ -45,6 +68,7 @@ export function createApp({ config, db, key }) {
   }
   /** Выполняет мутацию над панелью, пишет аудит, сбрасывает кэш. */
   async function mutateAudited(ctx, panelRow, action, target, fn) {
+    alerts.expect(panelRow.id, String(target).split(' ')[0]);
     try {
       const r = await fn();
       audit(ctx, { action, panel: panelRow, target });
@@ -64,10 +88,27 @@ export function createApp({ config, db, key }) {
   const svcRef = (b) => ({ type: b.type, project: nameOf(b.project, 'project'), name: nameOf(b.name, 'service') });
   const asHttp = (e) => (e instanceof HttpError ? e : new HttpError(502, e.message));
 
+  function setUserPanels(userId, panels) {
+    db.prepare('DELETE FROM user_panels WHERE user_id = ?').run(userId);
+    for (const pid of Array.isArray(panels) ? panels : []) {
+      if (manager.getRow(Number(pid))) db.prepare('INSERT OR IGNORE INTO user_panels (user_id, panel_id) VALUES (?,?)').run(userId, Number(pid));
+    }
+  }
+
+  const scheduler = createScheduler({ db, manager, alerts, audit });
+  manager.onSnapshot = (row, snap) => {
+    alerts.evaluate(row, snap);
+    if (snap.stats && (!history.get(row.id) || now() - history.get(row.id) > 55_000)) {
+      history.set(row.id, now());
+      db.prepare('INSERT INTO stats_history (panel_id, ts, cpu, mem, disk) VALUES (?,?,?,?,?)').run(row.id, now(), snap.stats.cpu, snap.stats.memPct, snap.stats.diskPct);
+    }
+  };
+  const history = new Map();
+
   /* ---------------- маршруты ---------------- */
   const routes = compile([
     ['GET', '/api/health', () => ({ ok: true }), { public: true }],
-    ['GET', '/api/session', (ctx) => ({ setupRequired: userCount() === 0, user: ctx.user }), { public: true }],
+    ['GET', '/api/session', (ctx) => ({ setupRequired: userCount() === 0, user: publicUser(ctx.user) }), { public: true }],
 
     ['POST', '/api/setup', (ctx) => {
       if (userCount() > 0) throw new HttpError(403, 'Администратор уже создан');
@@ -84,7 +125,12 @@ export function createApp({ config, db, key }) {
       const rec = loginAttempts.get(ip);
       if (rec && rec.until > now()) throw new HttpError(429, 'Слишком много попыток. Подождите минуту.');
       const u = db.prepare('SELECT * FROM users WHERE username = ?').get(String(ctx.body.username ?? ''));
-      const ok = u && verifyPassword(String(ctx.body.password ?? ''), u.password_hash);
+      let ok = u && verifyPassword(String(ctx.body.password ?? ''), u.password_hash);
+      if (ok && u.totp_enabled) {
+        if (!ctx.body.code) throw new HttpError(401, 'Введите код из приложения-аутентификатора', { needTotp: true });
+        ok = verifyTotp(decrypt(key, u.totp_secret_enc), ctx.body.code);
+        if (!ok) { loginAttempts.set(ip, { n: (rec?.n ?? 0) + 1, until: (rec?.n ?? 0) + 1 >= 5 ? now() + 60_000 : 0 }); throw new HttpError(401, 'Неверный код 2FA', { needTotp: true }); }
+      }
       if (!ok) {
         const n = (rec?.n ?? 0) + 1;
         loginAttempts.set(ip, { n, until: n >= 5 ? now() + 60_000 : 0 });
@@ -111,16 +157,61 @@ export function createApp({ config, db, key }) {
       return { ok: true };
     }, { anyRole: true }],
 
+    /* ----- 2FA ----- */
+    ['POST', '/api/me/2fa/setup', (ctx) => {
+      const secret = generateSecret();
+      db.prepare('UPDATE users SET totp_secret_enc = ?, totp_enabled = 0 WHERE id = ?').run(encrypt(key, secret), ctx.user.id);
+      return { secret, url: otpauthUrl(secret, ctx.user.username) };
+    }, { anyRole: true }],
+    ['POST', '/api/me/2fa/enable', (ctx) => {
+      const u = db.prepare('SELECT totp_secret_enc FROM users WHERE id = ?').get(ctx.user.id);
+      need(u.totp_secret_enc, 'Сначала начните настройку 2FA');
+      need(verifyTotp(decrypt(key, u.totp_secret_enc), ctx.body.code), 'Неверный код');
+      db.prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').run(ctx.user.id);
+      audit(ctx, { action: 'user.2fa_on' });
+      return { ok: true };
+    }, { anyRole: true }],
+    ['POST', '/api/me/2fa/disable', (ctx) => {
+      const u = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.user.id);
+      need(verifyPassword(String(ctx.body.password ?? ''), u.password_hash), 'Неверный пароль');
+      need(!u.totp_enabled || verifyTotp(decrypt(key, u.totp_secret_enc), ctx.body.code), 'Неверный код');
+      db.prepare('UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL WHERE id = ?').run(u.id);
+      audit(ctx, { action: 'user.2fa_off' });
+      return { ok: true };
+    }, { anyRole: true }],
+
     /* ----- пользователи ----- */
-    ['GET', '/api/users', () => db.prepare('SELECT id, username, role, created_at createdAt FROM users ORDER BY id').all(), { admin: true }],
+    ['GET', '/api/users', () => db.prepare('SELECT id, username, role, totp_enabled totp, created_at createdAt FROM users ORDER BY id').all()
+      .map((u) => ({ ...u, totp: !!u.totp, panels: db.prepare('SELECT panel_id FROM user_panels WHERE user_id = ?').all(u.id).map((r) => r.panel_id) })), { admin: true }],
     ['POST', '/api/users', (ctx) => {
       const username = str(ctx.body.username, 'Укажите логин', 64);
-      need(['admin', 'viewer'].includes(ctx.body.role), 'Роль: admin или viewer');
+      need(ROLES.includes(ctx.body.role), 'Роль: admin, operator или viewer');
       need(typeof ctx.body.password === 'string' && ctx.body.password.length >= 8, 'Пароль — минимум 8 символов');
+      let id;
       try {
-        db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)').run(username, hashPassword(ctx.body.password), ctx.body.role, now());
+        id = db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)').run(username, hashPassword(ctx.body.password), ctx.body.role, now()).lastInsertRowid;
       } catch { throw new HttpError(409, 'Такой логин уже существует'); }
+      setUserPanels(Number(id), ctx.body.panels);
       audit(ctx, { action: 'user.create', target: username });
+      return { ok: true };
+    }, { admin: true }],
+    ['PUT', '/api/users/:id', (ctx) => {
+      const id = Number(ctx.params.id);
+      const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+      need(u, 'Пользователь не найден');
+      if (ctx.body.role !== undefined) {
+        need(ROLES.includes(ctx.body.role), 'Неверная роль');
+        need(!(id === ctx.user.id && ctx.body.role !== 'admin'), 'Нельзя снять права администратора с самого себя');
+        db.prepare('UPDATE users SET role = ? WHERE id = ?').run(ctx.body.role, id);
+      }
+      if (ctx.body.panels !== undefined) setUserPanels(id, ctx.body.panels);
+      if (ctx.body.password) {
+        need(String(ctx.body.password).length >= 8, 'Пароль — минимум 8 символов');
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(ctx.body.password), id);
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+      }
+      if (ctx.body.resetTotp) db.prepare('UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL WHERE id = ?').run(id);
+      audit(ctx, { action: 'user.update', target: u.username });
       return { ok: true };
     }, { admin: true }],
     ['DELETE', '/api/users/:id', (ctx) => {
@@ -131,7 +222,7 @@ export function createApp({ config, db, key }) {
     }, { admin: true }],
 
     /* ----- панели ----- */
-    ['GET', '/api/overview', async (ctx) => manager.overview({ force: ctx.url.searchParams.get('force') === '1' })],
+    ['GET', '/api/overview', async (ctx) => (await manager.overview({ force: ctx.url.searchParams.get('force') === '1' })).filter((p) => canPanel(ctx.user, p.id))],
 
     ['POST', '/api/panels/login-probe', async (ctx) => {
       const url = normalizeUrl(ctx.body.url);
@@ -198,17 +289,21 @@ export function createApp({ config, db, key }) {
     ['GET', '/api/panels/:id/service', async (ctx) => {
       const row = panelOr404(ctx.params.id);
       const q = ctx.url.searchParams;
-      try { return await inspectService(manager.clientFor(row), svcRef({ type: q.get('type'), project: q.get('project'), name: q.get('name') })); } catch (e) { throw asHttp(e); }
+      try {
+        const r = await inspectService(manager.clientFor(row), svcRef({ type: q.get('type'), project: q.get('project'), name: q.get('name') }));
+        return ctx.user.role === 'viewer' ? redactSecrets(r) : r; // наблюдатель не видит env и пароли
+      } catch (e) { throw asHttp(e); }
     }],
 
     ['POST', '/api/panels/:id/service/action', async (ctx) => {
       const row = panelOr404(ctx.params.id); const ref = svcRef(ctx.body);
       need(ACTIONS.includes(ctx.body.action), 'Неизвестное действие');
+      if (ctx.body.action === 'destroy' && ctx.user.role !== 'admin') throw new HttpError(403, 'Удаление доступно только администратору');
       try {
         await mutateAudited(ctx, row, `service.${ctx.body.action}`, `${ref.project}/${ref.name}`, () => runAction(manager.clientFor(row), { ...ref, action: ctx.body.action }));
         return { ok: true };
       } catch (e) { throw asHttp(e); }
-    }, { admin: true }],
+    }, { min: 'operator' }],
 
     ['POST', '/api/panels/:id/service/op', async (ctx) => {
       const row = panelOr404(ctx.params.id); const ref = svcRef(ctx.body);
@@ -216,7 +311,7 @@ export function createApp({ config, db, key }) {
         const r = await mutateAudited(ctx, row, `service.${ctx.body.op}`, `${ref.project}/${ref.name}`, () => runServiceOp(manager.clientFor(row), ctx.body.op, ref, ctx.body.params ?? {}));
         return { ok: true, result: r };
       } catch (e) { throw asHttp(e); }
-    }, { admin: true }],
+    }, { min: 'operator' }],
 
     ['POST', '/api/panels/:id/services', async (ctx) => {
       const row = panelOr404(ctx.params.id); const ref = svcRef(ctx.body);
@@ -274,8 +369,9 @@ export function createApp({ config, db, key }) {
     /* ----- массовые операции ----- */
     ['POST', '/api/bulk', async (ctx) => {
       const { action, targets } = ctx.body;
-      need(ACTIONS.includes(action), 'Неизвестное действие');
+      need(ACTIONS.includes(action) && action !== 'destroy', 'Неизвестное действие');
       need(Array.isArray(targets) && targets.length > 0 && targets.length <= 200, 'Выберите от 1 до 200 сервисов');
+      for (const t of targets) assertPanel(ctx, t.panelId);
       const results = [];
       // разные панели — параллельно, внутри одной панели — последовательно (щадим сервер)
       const byPanel = new Map();
@@ -293,12 +389,22 @@ export function createApp({ config, db, key }) {
         }
       }));
       return { results, okCount: results.filter((r) => r.ok).length, failCount: results.filter((r) => !r.ok).length };
-    }, { admin: true }],
+    }, { min: 'operator' }],
 
     ['GET', '/api/audit', (ctx) => {
-      const limit = Math.min(Number(ctx.url.searchParams.get('limit')) || 100, 500);
-      return db.prepare('SELECT id, ts, username, panel_id panelId, panel_name panelName, action, target, ok, detail FROM audit ORDER BY id DESC LIMIT ?').all(limit);
+      const q = ctx.url.searchParams;
+      const limit = Math.min(Number(q.get('limit')) || 100, 5000);
+      const like = q.get('q') ? `%${q.get('q')}%` : null;
+      const rows = db.prepare(`SELECT id, ts, username, panel_id panelId, panel_name panelName, action, target, ok, detail FROM audit
+        WHERE (? IS NULL OR username LIKE ? OR panel_name LIKE ? OR action LIKE ? OR target LIKE ?) ORDER BY id DESC LIMIT ?`)
+        .all(like, like, like, like, like, limit).filter((r) => !ctx.user.panels || (r.panelId && ctx.user.panels.has(r.panelId)));
+      if (q.get('format') !== 'csv') return rows;
+      const esc = (v) => `"${String(v ?? '').replace(/"/g, '""').replace(/^([=+\-@])/, "'$1")}"`;
+      const csv = ['time,user,panel,action,target,ok,detail', ...rows.map((r) => [new Date(r.ts).toISOString(), r.username, r.panelName, r.action, r.target, r.ok ? 'ok' : 'error', r.detail].map(esc).join(','))].join('\n');
+      return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
+
+    ...extraRoutes({ db, key, config, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
   ]);
 
   const decryptOf = (row) => manager.clientFor(row).token;
@@ -307,31 +413,62 @@ export function createApp({ config, db, key }) {
   /* ---------------- HTTP-сервер ---------------- */
   async function handle(req, res) {
     const url = new URL(req.url, 'http://x');
+    if (url.pathname === '/metrics') return metrics(req, res);
     if (!url.pathname.startsWith('/api/')) return serveStatic(PUBLIC_DIR, url.pathname, res);
     try {
       const route = routes.find((r) => r.method === req.method && r.re.test(url.pathname));
       if (!route) throw new HttpError(404, 'Не найдено');
       const user = userFromReq(req);
       const mutating = req.method !== 'GET';
-      if (mutating) {
+      if (mutating && !route.opts.hook) {
         // CSRF: кастомный заголовок + проверка Origin
         if (req.headers['x-requested-with'] !== 'easyadmin') throw new HttpError(403, 'CSRF');
         const origin = req.headers.origin;
         if (origin && new URL(origin).host !== req.headers.host) throw new HttpError(403, 'Origin');
       }
-      if (!route.opts.public) {
+      const params = route.re.exec(url.pathname).groups ?? {};
+      if (!route.opts.public && !route.opts.hook) {
         if (!user) throw new HttpError(401, 'Требуется вход');
-        if ((route.opts.admin || (mutating && !route.opts.anyRole)) && user.role !== 'admin') throw new HttpError(403, 'Недостаточно прав (роль viewer)');
+        const min = route.opts.min ?? (route.opts.admin ? 'admin' : mutating && !route.opts.anyRole ? 'operator' : 'viewer');
+        if (LEVEL[user.role] < LEVEL[min]) throw new HttpError(403, `Недостаточно прав (роль ${user.role})`);
+        if (url.pathname.startsWith('/api/panels/') && /^\d+$/.test(params.id ?? '') && !canPanel(user, params.id)) throw new HttpError(403, 'Нет доступа к этой панели');
       }
-      const ctx = { req, res, url, user, params: route.re.exec(url.pathname).groups ?? {}, body: mutating ? await readJson(req) : {} };
-      sendJson(res, 200, await route.handler(ctx));
+      const ctx = { req, res, url, user, params, body: mutating ? await readJson(req) : {} };
+      const out = await route.handler(ctx);
+      if (out instanceof RawResponse) sendRaw(res, out); else sendJson(res, 200, out);
     } catch (e) {
       const status = e.status || 500;
       if (status === 500) console.error(e);
-      sendJson(res, status, { error: status === 500 ? 'Внутренняя ошибка' : e.message });
+      sendJson(res, status, { ...(e.extra ?? {}), error: status === 500 ? 'Внутренняя ошибка' : e.message });
     }
   }
 
+  function metrics(req, res) {
+    if (!config.metricsToken || req.headers.authorization !== `Bearer ${config.metricsToken}`) { res.writeHead(config.metricsToken ? 401 : 404); return res.end(); }
+    const esc = (v) => String(v).replace(/[\\"\n]/g, ' ');
+    const lines = ['# TYPE easyadmin_panel_up gauge'];
+    for (const p of db.prepare('SELECT * FROM panels').all()) {
+      const snap = manager.cache.get(p.id); const l = `panel="${esc(p.name)}"`;
+      lines.push(`easyadmin_panel_up{${l}} ${p.status === 'online' || p.status === 'degraded' ? 1 : 0}`);
+      if (snap?.stats) for (const [k, v] of [['cpu_percent', snap.stats.cpu], ['memory_percent', snap.stats.memPct], ['disk_percent', snap.stats.diskPct]]) if (v != null) lines.push(`easyadmin_panel_${k}{${l}} ${v}`);
+      const svcs = (snap?.tree?.projects ?? []).flatMap((x) => x.services);
+      lines.push(`easyadmin_services_total{${l}} ${svcs.length}`, `easyadmin_services_stopped{${l}} ${svcs.filter((x) => !x.enabled).length}`);
+      if (snap?.latencyMs != null) lines.push(`easyadmin_panel_latency_ms{${l}} ${snap.latencyMs}`);
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4' }); res.end(lines.join('\n') + '\n');
+  }
+
   const server = http.createServer((req, res) => { handle(req, res); });
-  return { server, manager };
+  let maintenance;
+  const start = () => {
+    manager.startPolling(); scheduler.start();
+    const prune = () => {
+      db.prepare('DELETE FROM audit WHERE ts < ?').run(now() - 90 * 86_400_000);
+      db.prepare('DELETE FROM stats_history WHERE ts < ?').run(now() - 7 * 86_400_000);
+      db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now());
+    };
+    prune(); maintenance = setInterval(prune, 6 * 3600_000); maintenance.unref();
+  };
+  const stop = () => { manager.stop(); scheduler.stop(); clearInterval(maintenance); };
+  return { server, manager, alerts, scheduler, start, stop };
 }

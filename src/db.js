@@ -48,6 +48,43 @@ export function openDb(dataDir) {
       detail TEXT
     );
     CREATE INDEX IF NOT EXISTS audit_ts ON audit(ts DESC);
+    CREATE TABLE IF NOT EXISTS user_panels (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_id, panel_id)
+    );
+    CREATE TABLE IF NOT EXISTS stats_history (
+      panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
+      ts INTEGER NOT NULL, cpu REAL, mem REAL, disk REAL
+    );
+    CREATE INDEX IF NOT EXISTS stats_history_pt ON stats_history(panel_id, ts);
+    CREATE TABLE IF NOT EXISTS channels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, type TEXT NOT NULL, config_enc TEXT NOT NULL,
+      events TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE TABLE IF NOT EXISTS templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, type TEXT NOT NULL, config_enc TEXT NOT NULL,
+      origin TEXT, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+      target TEXT NOT NULL, action TEXT NOT NULL,
+      mode TEXT NOT NULL, time TEXT, days TEXT NOT NULL DEFAULT '', interval_min INTEGER,
+      last_run INTEGER, last_status TEXT, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS hooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE, label TEXT NOT NULL,
+      panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
+      type TEXT NOT NULL, project TEXT NOT NULL, name TEXT NOT NULL, action TEXT NOT NULL,
+      created_at INTEGER NOT NULL, last_used INTEGER
+    );
   `);
+  const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!cols.includes('totp_secret_enc')) db.exec('ALTER TABLE users ADD COLUMN totp_secret_enc TEXT');
+  if (!cols.includes('totp_enabled')) db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0');
   return db;
 }

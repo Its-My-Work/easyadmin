@@ -13,6 +13,8 @@ export function loadConfig(env = process.env) {
     sessionDays: int(env.EASYADMIN_SESSION_DAYS, 30),
     cacheTtlMs: int(env.EASYADMIN_CACHE_TTL_MS, 10_000),
     pollIntervalMs: int(env.EASYADMIN_POLL_MS, 60_000),
+    diskAlertPct: int(env.EASYADMIN_DISK_ALERT_PCT, 90),
+    metricsToken: env.EASYADMIN_METRICS_TOKEN || '',
     requestTimeoutMs: int(env.EASYADMIN_TIMEOUT_MS, 15_000),
   };
 }

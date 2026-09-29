@@ -1,5 +1,5 @@
 import { decrypt, encrypt } from './crypto.js';
-import { PanelClient, normalizeStats, normalizeTree } from './easypanel.js';
+import { PanelClient, applyHealth, normalizeStats, normalizeTree } from './easypanel.js';
 
 /** Управляет клиентами панелей, кэшем снимков и статусами. */
 export function createManager({ db, key, config }) {
@@ -18,11 +18,12 @@ export function createManager({ db, key, config }) {
   async function fetchSnapshot(row) {
     const t0 = Date.now();
     const client = clientFor(row);
-    const [tree, stats] = await Promise.allSettled([
+    const [tree, stats, containers] = await Promise.allSettled([
       client.query('projects.listProjectsAndServices'),
       client.query('monitor.getSystemStats'),
+      client.query('projects.getDockerContainers'),
     ]);
-    const failed = [tree, stats].find((r) => r.status === 'rejected');
+    const failed = [tree, stats].find((r) => r.status === 'rejected'); // контейнеры — best-effort, их ошибка не считается
     let snap;
     if (tree.status === 'rejected') {
       const e = tree.reason;
@@ -31,7 +32,7 @@ export function createManager({ db, key, config }) {
       snap = {
         status: stats.status === 'rejected' ? 'degraded' : 'online',
         error: failed ? failed.reason.message : null,
-        tree: normalizeTree(tree.value),
+        tree: applyHealth(normalizeTree(tree.value), containers.status === 'fulfilled' ? containers.value : null),
         stats: stats.status === 'fulfilled' ? normalizeStats(stats.value) : null,
       };
     }
@@ -41,6 +42,7 @@ export function createManager({ db, key, config }) {
     const online = snap.status === 'online' || snap.status === 'degraded';
     db.prepare('UPDATE panels SET status = ?, last_error = ?, last_seen = COALESCE(?, last_seen) WHERE id = ?')
       .run(snap.status, snap.error, online ? snap.fetchedAt : null, row.id);
+    try { manager.onSnapshot?.(row, snap); } catch (e) { console.error('[onSnapshot]', e.message); }
     return snap;
   }
 
@@ -85,5 +87,6 @@ export function createManager({ db, key, config }) {
   };
   const stop = () => clearInterval(timer);
 
-  return { getRow, clientFor, snapshot, invalidate, overview, publicPanel, sealToken, startPolling, stop, cache };
+  const manager = { onSnapshot: null, getRow, clientFor, snapshot, invalidate, overview, publicPanel, sealToken, startPolling, stop, cache };
+  return manager;
 }
