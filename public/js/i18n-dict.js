@@ -135,6 +135,8 @@ export const EN = [
   ['Неизвестный способ сборки', 'Unknown build method'],
   ['источник (Dockerfile)', 'source (Dockerfile)'],
   ['способ сборки', 'build method'],
+  ['Готовый образ из Docker Hub или своего реестра', 'A ready-made image from Docker Hub or your own registry'], ['логин реестра (необязательно)', 'registry login (optional)'],
+  ['панель удалена', 'panel deleted'],
   ['Активен', 'Active'], ['Откройте сервис → «Домены» → изменить → сохранить, либо нажмите «Деплой».', 'Open the service → Domains → edit → save, or run a deploy.'], ['не используется', 'not in use'], ['Укажите адрес репозитория', 'Enter the repository URL'], ['Смена источника (Git)', 'Source change (Git)'],
   ['У сервиса один источник: активный раскрыт, остальные свёрнуты. Применение другого источника заменит текущий. После смены источника выполните деплой.', 'A service has a single source: the active one is expanded, the others are collapsed. Applying another source replaces the current one. Run a deploy after changing it.'], ['После смены источника выполните деплой, чтобы изменения вступили в силу.', 'Run a deploy after changing the source for the change to take effect.'],
   ['на паузе, накоплено {0}', 'paused, {0} buffered'], ['Поток завершён', 'Stream ended'], ['Соединение потеряно — переподключение…', 'Connection lost — reconnecting…'],

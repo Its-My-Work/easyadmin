@@ -524,12 +524,14 @@ export function createApp({ config, db, key, fetchImpl }) {
       const q = ctx.url.searchParams;
       const limit = Math.min(Number(q.get('limit')) || 100, 5000);
       const like = q.get('q') ? `%${q.get('q')}%` : null;
-      const rows = db.prepare(`SELECT id, ts, username, panel_id panelId, panel_name panelName, action, target, ok, detail FROM audit
-        WHERE (? IS NULL OR username LIKE ? OR panel_name LIKE ? OR action LIKE ? OR target LIKE ?) ORDER BY id DESC LIMIT ?`)
-        .all(like, like, like, like, like, limit).filter((r) => !ctx.user.panels || (r.panelId && ctx.user.panels.has(r.panelId)));
+      const pid = Number(q.get('panel')) || null;
+      const rows = db.prepare(`SELECT a.id, a.ts, a.username, a.panel_id panelId, COALESCE(p.name, a.panel_name) panelName, p.url panelUrl, p.color panelColor, (a.panel_id IS NOT NULL AND p.id IS NULL) panelDeleted,
+        a.action, a.target, a.ok, a.detail FROM audit a LEFT JOIN panels p ON p.id = a.panel_id
+        WHERE (? IS NULL OR a.username LIKE ? OR a.panel_name LIKE ? OR p.name LIKE ? OR p.url LIKE ? OR a.action LIKE ? OR a.target LIKE ?) AND (? IS NULL OR a.panel_id = ?) ORDER BY a.id DESC LIMIT ?`)
+        .all(like, like, like, like, like, like, like, pid, pid, limit).filter((r) => !ctx.user.panels || (r.panelId && ctx.user.panels.has(r.panelId)));
       if (q.get('format') !== 'csv') return rows;
       const esc = (v) => `"${String(v ?? '').replace(/"/g, '""').replace(/^([=+\-@])/, "'$1")}"`;
-      const csv = ['time,user,panel,action,target,ok,detail', ...rows.map((r) => [new Date(r.ts).toISOString(), r.username, r.panelName, r.action, r.target, r.ok ? 'ok' : 'error', r.detail].map(esc).join(','))].join('\n');
+      const csv = ['time,user,panel,action,target,ok,detail,panel_url', ...rows.map((r) => [new Date(r.ts).toISOString(), r.username, r.panelName, r.action, r.target, r.ok ? 'ok' : 'error', r.detail, r.panelUrl].map(esc).join(','))].join('\n');
       return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
 

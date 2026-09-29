@@ -285,17 +285,26 @@ export function actionLabel(action) {
 export function auditPage() {
   const box = h('div', { class: 'card flush' }, h('div', { class: 'skeleton', style: { height: '160px' } }));
   const q = h('input', { class: 'input search', placeholder: 'Поиск: пользователь, панель, действие, сервис…' });
+  const panelSel = h('select', { class: 'input audit-panel', onchange: () => load() }, h('option', { value: '' }, 'Все панели'), store.panels.map((p) => h('option', { value: p.id }, p.name)));
   let timer;
-  const load = () => get(`/api/audit?limit=300${q.value ? `&q=${encodeURIComponent(q.value)}` : ''}`).then((rows) => {
+  const hostOf = (u) => { try { return new URL(u).host; } catch { return u ?? ''; } };
+  const panelCell = (r) => {
+    if (!r.panelId) return h('span', { class: 'muted' }, '—');
+    const inner = [h('span', { class: 'panel-chip' }, h('i', { class: 'swatch', style: { background: r.panelColor ?? 'var(--muted)' } }), r.panelName ?? `#${r.panelId}`),
+      h('div', { class: 'muted small' }, r.panelDeleted ? 'панель удалена' : hostOf(r.panelUrl))];
+    return r.panelDeleted ? h('div', null, ...inner) : h('a', { class: 'audit-panel-link', href: `#/panel/${r.panelId}`, title: r.panelUrl }, ...inner);
+  };
+  const load = () => get(`/api/audit?limit=300${q.value ? `&q=${encodeURIComponent(q.value)}` : ''}${panelSel.value ? `&panel=${panelSel.value}` : ''}`).then((rows) => {
     clear(box).append(rows.length ? h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Время', 'Пользователь', 'Действие', 'Панель', 'Объект', ''].map((x) => h('th', null, x)))),
       h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'muted nowrap' }, fmtTime(r.ts)), h('td', null, r.username ?? '—'),
         h('td', null, actionLabel(r.action)),
-        h('td', null, r.panelName ?? '—'), h('td', { class: 'mono small' }, r.target ?? ''),
+        h('td', null, panelCell(r)), h('td', { class: 'mono small' }, r.target ?? ''),
         h('td', null, r.ok ? h('span', { class: 'badge ok' }, 'ок') : h('span', { class: 'badge err', title: r.detail }, 'ошибка')))))) : empty('Ничего не найдено'));
   });
   q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 250); });
   load();
-  return h('div', { class: 'page' }, pageHead('Журнал действий', h('a', { class: 'btn', href: '/api/audit?format=csv&limit=5000', download: '' }, icon('download', 14), 'CSV')), h('div', { class: 'input-icon' }, icon('search', 15), q), box);
+  return h('div', { class: 'page' }, pageHead('Журнал действий', h('a', { class: 'btn', href: '/api/audit?format=csv&limit=5000', download: '' }, icon('download', 14), 'CSV')),
+    h('div', { class: 'filters' }, h('div', { class: 'input-icon' }, icon('search', 15), q), store.panels.length > 1 ? panelSel : null), box);
 }
 
 /* ======================= Настройки ======================= */
