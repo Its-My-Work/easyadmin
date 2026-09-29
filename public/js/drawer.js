@@ -241,6 +241,7 @@ export function openService(s) {
     });
   }
   function storage(svc, d) {
+    if (s.type === 'compose') return h('div', { class: 'muted' }, 'У Compose-сервиса порты и тома задаются в самом compose-файле (вкладка «Данные» / панель Easypanel), отдельного управления ими нет.');
     const ports = asList(d.ports), mounts = asList(d.mounts);
     return h('div', { class: 'stack' },
       sectionHead('Открытые порты', () => portForm(), 'Открыть порт'),

@@ -347,8 +347,9 @@ export async function inspectService(client, { type, project, name }) {
   const [service, domains, ports, mounts] = await Promise.all([
     settle(client.query(svcProc(type, 'inspectService'), ref)),
     settle(client.query('domains.listDomains', ref)),
-    settle(client.query('ports.listPorts', { ...ref, type })),
-    settle(client.query('mounts.listMounts', { ...ref, type })),
+    // у Compose порты и тома описаны в compose-файле, отдельных процедур панель для них не принимает («Invalid service type»)
+    type === 'compose' ? Promise.resolve({ value: [] }) : settle(client.query('ports.listPorts', { ...ref, type })),
+    type === 'compose' ? Promise.resolve({ value: [] }) : settle(client.query('mounts.listMounts', { ...ref, type })),
   ]);
   if (service.error) throw new PanelError(service.error);
   return {
