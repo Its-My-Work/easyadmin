@@ -1,5 +1,5 @@
 export class ApiError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
+  constructor(message, status, data) { super(message); this.status = status; this.data = data; }
 }
 
 export async function api(method, path, body) {
@@ -15,7 +15,7 @@ export async function api(method, path, body) {
   let data = null;
   try { data = await res.json(); } catch { /* пусто */ }
   if (res.status === 401 && !path.startsWith('/api/login') && !path.startsWith('/api/session')) window.dispatchEvent(new Event('ea:unauth'));
-  if (!res.ok) throw new ApiError(data?.error || `Ошибка ${res.status}`, res.status);
+  if (!res.ok) throw new ApiError(data?.error || `Ошибка ${res.status}`, res.status, data);
   return data;
 }
 export const get = (p) => api('GET', p);

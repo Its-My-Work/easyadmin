@@ -2,7 +2,8 @@ import { api, get, post } from './api.js';
 import { renderBulkBar } from './components.js';
 import { closeDrawer, openService } from './drawer.js';
 import { clear, h, icon, toast, relTime } from './dom.js';
-import { store, notify, refresh, subscribe, allServices } from './store.js';
+import { store, notify, refresh, subscribe, allServices, can, favorites, recents, svcKey } from './store.js';
+import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './views2.js';
 import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead } from './views.js';
 
 const root = document.getElementById('root');
@@ -13,16 +14,17 @@ function authScreen(setup) {
   const user = h('input', { class: 'input', autocomplete: 'username', placeholder: 'Логин', autofocus: true });
   const pass = h('input', { class: 'input', type: 'password', autocomplete: setup ? 'new-password' : 'current-password', placeholder: setup ? 'Пароль (мин. 8 символов)' : 'Пароль' });
   const err = h('div', { class: 'form-error', role: 'alert' });
+  const code = h('input', { class: 'input', inputmode: 'numeric', maxlength: 7, autocomplete: 'one-time-code', placeholder: 'Код 2FA (6 цифр)', hidden: true });
   const btn = h('button', { class: 'btn primary lg block', type: 'submit' }, setup ? 'Создать и войти' : 'Войти');
   const form = h('form', { class: 'auth-card', onsubmit: async (e) => {
     e.preventDefault(); err.textContent = ''; btn.disabled = true;
-    try { await post(setup ? '/api/setup' : '/api/login', { username: user.value, password: pass.value }); await boot(); }
-    catch (ex) { err.textContent = ex.message; btn.disabled = false; }
+    try { await post(setup ? '/api/setup' : '/api/login', { username: user.value, password: pass.value, code: code.value || undefined }); await boot(); }
+    catch (ex) { err.textContent = ex.message; btn.disabled = false; if (ex.data?.needTotp) { code.hidden = false; code.focus(); } }
   } },
     h('div', { class: 'logo lg' }, logoMark(), h('span', null, 'EasyAdmin')),
     h('h2', null, setup ? 'Первый запуск' : 'Вход'),
     h('p', { class: 'muted' }, setup ? 'Создайте учётную запись администратора. Через неё вы будете управлять всеми панелями Easypanel.' : 'Одна авторизация — все ваши панели Easypanel.'),
-    user, pass, err, btn);
+    user, pass, code, err, btn);
   clear(root).append(h('div', { class: 'auth' }, form));
 }
 const logoMark = () => h('span', { class: 'logo-mark' }, icon('layers', 16));
@@ -37,10 +39,10 @@ function buildShell() {
   const sidebar = h('aside', { class: 'sidebar' },
     h('a', { class: 'logo', href: '#/' }, logoMark(), h('span', null, 'EasyAdmin')),
     nav,
-    h('div', { class: 'nav-title' }, h('span', null, 'Панели'), h('button', { class: 'btn icon ghost sm', title: 'Добавить панель', onclick: () => panelForm() }, icon('plus', 14))),
+    h('div', { class: 'nav-title' }, h('span', null, 'Панели'), can('admin') ? h('button', { class: 'btn icon ghost sm', title: 'Добавить панель', onclick: () => panelForm() }, icon('plus', 14)) : null),
     panelsList,
     h('div', { class: 'side-foot' },
-      h('div', { class: 'user' }, h('div', { class: 'avatar' }, store.user.username[0].toUpperCase()), h('div', null, h('b', null, store.user.username), h('div', { class: 'muted small' }, store.user.role === 'admin' ? 'администратор' : 'только чтение'))),
+      h('div', { class: 'user' }, h('div', { class: 'avatar' }, store.user.username[0].toUpperCase()), h('div', null, h('b', null, store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
       h('button', { class: 'btn icon ghost', title: 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16))));
   const back = h('div', { class: 'side-back', onclick: () => document.body.classList.remove('nav-open') });
   const top = h('header', { class: 'topbar' },
@@ -51,7 +53,7 @@ function buildShell() {
   shell = { nav, panelsList, view, updated, refreshBtn };
 }
 
-const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/audit', 'activity', 'Журнал'], ['#/settings', 'settings', 'Настройки']];
+const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/settings', 'settings', 'Настройки']];
 const dotClass = (s) => (s === 'online' ? 'ok' : s === 'degraded' ? 'warn' : s === 'unknown' ? 'muted' : 'err');
 
 function route() {
@@ -80,6 +82,9 @@ function renderView() {
   if (!store.loadedAt) node = h('div', { class: 'page' }, h('div', { class: 'panel-grid' }, [1, 2, 3].map(() => h('div', { class: 'skeleton card', style: { height: '190px' } }))));
   else if (r.a === 'panel') node = panelPage(r.b, r.c);
   else if (r.a === 'services') node = servicesPage();
+  else if (r.a === 'inventory') node = inventoryPage();
+  else if (r.a === 'templates') node = templatesPage();
+  else if (r.a === 'schedules') node = schedulesPage();
   else if (r.a === 'audit') node = auditPage();
   else if (r.a === 'settings') node = settingsPage();
   else node = dashboard();
@@ -111,14 +116,20 @@ function openPalette() {
     { title: 'Все сервисы', hint: 'Страница', ic: 'layers', run: () => (location.hash = '#/services') },
     { title: 'Журнал действий', hint: 'Страница', ic: 'activity', run: () => (location.hash = '#/audit') },
     { title: 'Настройки', hint: 'Страница', ic: 'settings', run: () => (location.hash = '#/settings') },
-    { title: 'Добавить панель', hint: 'Команда', ic: 'plus', run: () => panelForm() },
+    ...(can('admin') ? [{ title: 'Добавить панель', hint: 'Команда', ic: 'plus', run: () => panelForm() }] : []),
+    { title: 'Инвентарь: образы и сертификаты', hint: 'Страница', ic: 'box', run: () => (location.hash = '#/inventory') },
+    { title: 'Шаблоны', hint: 'Страница', ic: 'copy', run: () => (location.hash = '#/templates') },
+    { title: 'Расписания', hint: 'Страница', ic: 'clock', run: () => (location.hash = '#/schedules') },
     { title: 'Обновить данные', hint: 'Команда', ic: 'refresh', run: () => refresh(true) },
     ...store.panels.map((p) => ({ title: p.name, hint: 'Панель', ic: 'server', extra: p.url, color: p.color, run: () => (location.hash = `#/panel/${p.id}`) })),
-    ...allServices().map((s) => ({ title: s.name, hint: `${s.panel.name} · ${s.project}`, ic: 'box', extra: s.domain || '', color: s.panel.color, run: () => openService(s) })),
+    ...allServices().map((s) => ({ title: s.name, hint: `${s.panel.name} · ${s.project}`, ic: favorites().has(svcKey(s)) ? 'star' : 'box', extra: s.domain || '', color: favorites().has(svcKey(s)) ? null : s.panel.color, rank: favorites().has(svcKey(s)) ? 2 : recents().includes(svcKey(s)) ? 1 : 0, run: () => openService(s) })),
   ];
   const draw = () => {
     const q = input.value.trim().toLowerCase();
-    items = commands.filter((c) => !q || `${c.title} ${c.hint} ${c.extra || ''}`.toLowerCase().includes(q)).slice(0, 30);
+    items = commands.filter((c) => !q || `${c.title} ${c.hint} ${c.extra || ''}`.toLowerCase().includes(q));
+    if (!q) items = [...items.filter((c) => c.rank), ...items.filter((c) => !c.rank)];
+    else items.sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
+    items = items.slice(0, 30);
     idx = Math.min(idx, Math.max(0, items.length - 1));
     clear(list).append(...(items.length ? items.map((c, i) => h('div', { class: `pal-item ${i === idx ? 'on' : ''}`, role: 'option', onmousemove: () => { idx = i; mark(); }, onclick: () => pick(i) },
       c.color ? h('i', { class: 'swatch', style: { background: c.color } }) : icon(c.ic, 15), h('span', { class: 'pal-title' }, c.title), h('span', { class: 'muted small' }, c.hint))) : [h('div', { class: 'muted pad' }, 'Ничего не найдено')]));
@@ -161,6 +172,8 @@ async function boot() {
 const renderChromeTime = () => { if (shell) shell.updated.textContent = store.loadedAt ? `Обновлено ${relTime(store.loadedAt)}` : ''; };
 
 subscribe(onStoreChange);
+window.addEventListener('ea:rerender', () => renderView());
+window.addEventListener('ea:bulk-op', (e) => bulkOpModal(e.detail));
 window.addEventListener('hashchange', () => { closeDrawer(); onStoreChange(); });
 window.addEventListener('ea:unauth', () => { if (store.user) { store.user = null; toast('Сессия истекла — войдите снова', 'error'); boot(); } });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && store.user) refresh(false, { silent: true }); });

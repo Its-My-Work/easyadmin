@@ -1,13 +1,17 @@
 import { get, post } from './api.js';
 import { clear, confirmDialog, h, host, icon, modal, toast } from './dom.js';
-import { STATUS, TYPE_LABEL, allServices, isDb, notify, refresh, store, svcKey } from './store.js';
+import { STATUS, TYPE_LABEL, allServices, can, favorites, isDb, notify, refresh, store, svcKey } from './store.js';
 
 export const statusBadge = (status) => {
   const [label, kind] = STATUS[status] || STATUS.unknown;
   return h('span', { class: `badge ${kind}` }, h('i', { class: 'dot' }), label);
 };
 
-export const svcBadge = (enabled) => h('span', { class: `badge ${enabled ? 'ok' : 'muted'}` }, h('i', { class: 'dot' }), enabled ? 'Работает' : 'Остановлен');
+export const svcBadge = (enabled, health) => {
+  if (enabled && health === 'failing') return h('span', { class: 'badge err', title: 'Сервис включён, но контейнер не запущен' }, h('i', { class: 'dot' }), 'Сбой');
+  if (enabled && health === 'missing') return h('span', { class: 'badge warn', title: 'Сервис включён, но контейнер не найден' }, h('i', { class: 'dot' }), 'Нет контейнера');
+  return h('span', { class: `badge ${enabled ? 'ok' : 'muted'}` }, h('i', { class: 'dot' }), enabled ? 'Работает' : 'Остановлен');
+};
 
 export const typeChip = (type) => h('span', { class: `chip type-${type}` }, icon(isDb(type) ? 'database' : type === 'compose' ? 'layers' : 'box', 12), TYPE_LABEL[type] || type);
 
@@ -51,6 +55,7 @@ export async function runServiceAction(s, action) {
 
 /** Компактные кнопки быстрых действий. */
 export function quickActions(s) {
+  if (!can('operator')) return h('span');
   const btn = (action, ic, title, cls = '') => h('button', {
     class: `btn icon ghost sm ${cls}`, title, 'aria-label': title,
     onclick: (e) => { e.stopPropagation(); runServiceAction(s, action); },
@@ -62,6 +67,11 @@ export function quickActions(s) {
 }
 
 /* ---------------- выбор и массовые действия ---------------- */
+/** Итоги массовой операции: список по каждой цели. */
+export function showResults(title, results, label = (x) => `${x.project}/${x.name}`) {
+  modal({ title, body: h('ul', { class: 'result-list' }, results.map((x) => h('li', { class: x.ok ? 'ok' : 'err' }, icon(x.ok ? 'check' : 'alert', 14), h('b', null, label(x)), x.ok ? ' — ок' : ` — ${x.error}`))), actions: [{ label: 'Закрыть', kind: 'primary' }] });
+}
+
 export function toggleSelect(s, on) {
   if (on) store.selection.set(svcKey(s), { panelId: s.panelId, type: s.type, project: s.project, name: s.name, label: `${s.panel.name} · ${s.project}/${s.name}` });
   else store.selection.delete(svcKey(s));
@@ -109,6 +119,9 @@ export function renderBulkBar() {
     h('button', { class: 'btn sm', onclick: () => runBulk('restart') }, icon('rotate', 14), 'Перезапуск'),
     h('button', { class: 'btn sm', onclick: () => runBulk('start') }, icon('play', 14), 'Запуск'),
     h('button', { class: 'btn sm', onclick: () => runBulk('stop') }, icon('stop', 14), 'Стоп'),
+    h('span', { class: 'bulk-sep' }),
+    h('button', { class: 'btn sm', title: 'Изменить переменные окружения у выбранных', onclick: () => window.dispatchEvent(new CustomEvent('ea:bulk-op', { detail: 'env' })) }, 'Env…'),
+    h('button', { class: 'btn sm', title: 'Сменить образ у выбранных App', onclick: () => window.dispatchEvent(new CustomEvent('ea:bulk-op', { detail: 'image' })) }, 'Образ…'),
     h('button', { class: 'btn sm ghost', onclick: clearSelection }, 'Снять выбор'));
 }
 
@@ -137,12 +150,13 @@ export const matches = (s, f) => {
 
 export function serviceRow(s, { showPanel, openService }) {
   const cb = h('input', { type: 'checkbox', checked: store.selection.has(svcKey(s)), onclick: (e) => e.stopPropagation(), onchange: () => toggleSelect(s, cb.checked) });
+  const fav = favorites().has(svcKey(s));
   return h('tr', { class: 'row', tabindex: 0, onclick: () => openService(s), onkeydown: (e) => { if (e.key === 'Enter') openService(s); } },
-    h('td', { class: 'w-check' }, cb),
-    h('td', null, h('div', { class: 'svc-name' }, h('b', null, s.name), s.domain ? h('a', { class: 'muted small', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, s.domain) : null)),
+    h('td', { class: 'w-check' }, can('operator') ? cb : null),
+    h('td', null, h('div', { class: 'svc-name' }, h('b', null, fav ? h('span', { class: 'fav' }, icon('star', 11)) : null, s.name), s.domain ? h('a', { class: 'muted small', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, s.domain) : null)),
     h('td', { class: 'hide-sm' }, showPanel ? h('div', { class: 'stack-sm' }, panelChip(s.panel), h('span', { class: 'muted small' }, s.project)) : typeChip(s.type)),
     showPanel ? h('td', { class: 'hide-sm' }, typeChip(s.type)) : null,
-    h('td', null, svcBadge(s.enabled)),
+    h('td', null, svcBadge(s.enabled, s.health)),
     h('td', { class: 'w-actions' }, quickActions(s)));
 }
 

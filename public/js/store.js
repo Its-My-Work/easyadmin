@@ -43,3 +43,14 @@ export const STATUS = {
 };
 export const TYPE_LABEL = { app: 'App', postgres: 'PostgreSQL', mysql: 'MySQL', mariadb: 'MariaDB', mongo: 'MongoDB', redis: 'Redis', compose: 'Compose' };
 export const isDb = (t) => ['postgres', 'mysql', 'mariadb', 'mongo', 'redis'].includes(t);
+
+const LEVEL = { viewer: 0, operator: 1, admin: 2 };
+/** Достаточно ли прав у текущего пользователя (сервер всё равно проверяет сам). */
+export const can = (level) => LEVEL[store.user?.role] >= LEVEL[level];
+
+const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* приватный режим */ } };
+export const favorites = () => new Set(lsGet('ea-fav', []));
+export function toggleFavorite(s) { const f = favorites(); const k = svcKey(s); f.has(k) ? f.delete(k) : f.add(k); lsSet('ea-fav', [...f]); return f.has(k); }
+export const recents = () => lsGet('ea-recent', []);
+export function pushRecent(s) { lsSet('ea-recent', [svcKey(s), ...recents().filter((x) => x !== svcKey(s))].slice(0, 8)); }

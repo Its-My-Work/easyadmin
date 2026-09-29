@@ -2,27 +2,33 @@ import { del, get, post, put } from './api.js';
 import { empty, matches, meter, panelChip, serviceFilters, serviceRow, statusBadge, svcBadge, typeChip } from './components.js';
 import { openService } from './drawer.js';
 import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, relTime, toast, uptime } from './dom.js';
-import { allServices, panelById, refresh, store } from './store.js';
+import { allServices, can, panelById, refresh, store } from './store.js';
+import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard, twoFaCard, usersCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
 
 /* ======================= Обзор ======================= */
+let tagFilter = null;
 export function dashboard() {
-  const panels = store.panels;
+  const allTags = [...new Set(store.panels.flatMap((p) => p.tags ?? []))].sort();
+  if (tagFilter && !allTags.includes(tagFilter)) tagFilter = null;
+  const panels = tagFilter ? store.panels.filter((p) => p.tags?.includes(tagFilter)) : store.panels;
   if (!panels.length && store.loadedAt) {
     return h('div', { class: 'page' }, pageHead('Обзор'), welcome());
   }
-  const svcs = allServices();
+  const svcs = allServices().filter((s) => panels.includes(s.panel));
   const online = panels.filter((p) => p.status === 'online' || p.status === 'degraded').length;
   const running = svcs.filter((s) => s.enabled).length;
   const cpus = panels.map((p) => p.stats?.cpu).filter((x) => x != null);
   const avg = cpus.length ? cpus.reduce((a, b) => a + b, 0) / cpus.length : null;
   const attention = [
     ...panels.filter((p) => !['online', 'degraded'].includes(p.status) && p.status !== 'unknown').map((p) => ({ kind: 'panel', p })),
-    ...svcs.filter((s) => !s.enabled).map((s) => ({ kind: 'svc', s })),
+    ...svcs.filter((s) => !s.enabled || s.health === 'failing').map((s) => ({ kind: 'svc', s })),
   ];
   return h('div', { class: 'page' },
-    pageHead('Обзор', h('button', { class: 'btn primary', onclick: () => panelForm() }, icon('plus', 15), 'Добавить панель')),
+    pageHead('Обзор', can('admin') ? h('button', { class: 'btn', onclick: cleanAllModal, title: 'Очистка Docker на нескольких панелях' }, icon('trash', 14), 'Очистка Docker') : null, can('admin') ? h('button', { class: 'btn primary', onclick: () => panelForm() }, icon('plus', 15), 'Добавить панель') : null),
+    allTags.length ? h('div', { class: 'chips' }, h('button', { class: `chip-btn ${tagFilter ? '' : 'on'}`, onclick: () => { tagFilter = null; window.dispatchEvent(new Event('ea:rerender')); } }, 'Все'),
+      allTags.map((t) => h('button', { class: `chip-btn ${tagFilter === t ? 'on' : ''}`, onclick: () => { tagFilter = t; window.dispatchEvent(new Event('ea:rerender')); } }, t))) : null,
     h('div', { class: 'kpis' },
       kpi('Панели', `${online}/${panels.length}`, online === panels.length ? 'Все на связи' : `${panels.length - online} недоступно`, online === panels.length ? 'ok' : 'err', 'server'),
       kpi('Проекты', panels.reduce((n, p) => n + (p.tree?.projects.length ?? 0), 0), 'на всех панелях', '', 'folder'),
@@ -32,13 +38,13 @@ export function dashboard() {
     attention.length ? h('section', { class: 'card' }, h('h3', null, 'Требуют внимания'),
       h('div', { class: 'list' }, attention.slice(0, 12).map((a) => a.kind === 'panel'
         ? h('a', { class: 'list-item link', href: `#/panel/${a.p.id}` }, h('div', null, panelChip(a.p), h('div', { class: 'muted small' }, a.p.error || 'Нет связи')), statusBadge(a.p.status))
-        : h('div', { class: 'list-item link', onclick: () => openService(a.s) }, h('div', null, h('b', null, `${a.s.project}/${a.s.name}`), h('div', { class: 'muted small' }, a.s.panel.name)), svcBadge(false))))) : null);
+        : h('div', { class: 'list-item link', onclick: () => openService(a.s) }, h('div', null, h('b', null, `${a.s.project}/${a.s.name}`), h('div', { class: 'muted small' }, a.s.panel.name)), svcBadge(a.s.enabled, a.s.health))))) : null);
 }
 
 function welcome() {
   return h('div', { class: 'card hero' }, h('div', { class: 'hero-ic' }, icon('server', 28)), h('h2', null, 'Добавьте первую панель Easypanel'),
     h('p', { class: 'muted' }, 'Понадобится адрес панели и API-токен (Easypanel → Settings → Users → Generate API Token). Токен хранится в зашифрованном виде.'),
-    h('button', { class: 'btn primary lg', onclick: () => panelForm() }, icon('plus', 16), 'Подключить панель'));
+    can('admin') ? h('button', { class: 'btn primary lg', onclick: () => panelForm() }, icon('plus', 16), 'Подключить панель') : h('p', { class: 'muted' }, 'Администратор ещё не подключил панели или у вас нет доступа к ним.'));
 }
 
 const kpi = (label, value, sub, tone, ic) => h('div', { class: `kpi ${tone}` }, h('div', { class: 'kpi-ic' }, icon(ic, 18)), h('div', null, h('div', { class: 'kpi-label' }, label), h('div', { class: 'kpi-value' }, value), h('div', { class: 'kpi-sub' }, sub)));
@@ -65,20 +71,21 @@ export function panelPage(id, sub) {
   const tab = sub || 'services';
   const st = p.stats;
   const down = !['online', 'degraded'].includes(p.status);
-  const tabs = [['services', 'Сервисы'], ['activity', 'Активность'], ['console', 'Консоль API']];
+  const tabs = [['services', 'Сервисы'], ['activity', 'Активность'], ...(can('admin') ? [['console', 'Консоль API']] : [])];
   const content = h('div');
   const page = h('div', { class: 'page', style: { '--pc': p.color } },
     h('div', { class: 'page-head' },
       h('div', { class: 'ph-title' }, h('i', { class: 'swatch lg', style: { background: p.color } }), h('div', null, h('h1', null, p.name), h('a', { class: 'muted small', href: p.url, target: '_blank', rel: 'noopener' }, host(p.url), ' ', icon('external', 11)))),
       h('div', { class: 'inline' }, statusBadge(p.status),
-        h('button', { class: 'btn', onclick: () => newProject(p) }, icon('plus', 14), 'Проект'),
-        h('button', { class: 'btn primary', onclick: () => newService(p) }, icon('plus', 14), 'Сервис'),
-        h('button', { class: 'btn icon', title: 'Система', onclick: () => systemMenu(p) }, icon('settings', 16)),
-        h('button', { class: 'btn icon', title: 'Настройки панели', onclick: () => panelForm(p) }, icon('edit', 15)))),
+        can('admin') ? h('button', { class: 'btn', onclick: () => newProject(p) }, icon('plus', 14), 'Проект') : null,
+        can('admin') ? h('button', { class: 'btn primary', onclick: () => newService(p) }, icon('plus', 14), 'Сервис') : null,
+        can('admin') ? h('button', { class: 'btn icon', title: 'Система', onclick: () => systemMenu(p) }, icon('settings', 16)) : null,
+        can('admin') ? h('button', { class: 'btn icon', title: 'Настройки панели', onclick: () => panelForm(p) }, icon('edit', 15)) : null)),
     down ? h('div', { class: 'callout err' }, icon('alert'), h('div', null, h('b', null, p.status === 'auth_error' ? 'Токен отклонён' : 'Панель недоступна'), h('p', null, p.error || ''), p.tree ? h('p', { class: 'muted' }, 'Показаны последние известные данные.') : null)) : null,
     st ? h('div', { class: 'statstrip' },
       meter('CPU', st.cpu, `${st.cpus ?? '?'} ядер · load ${st.load?.[0] ?? '—'}`), meter('RAM', st.memPct, `${Math.round((st.memUsedMb ?? 0) / 102.4) / 10} / ${Math.round((st.memTotalMb ?? 0) / 102.4) / 10} ГБ`),
       meter('Диск', st.diskPct, `${gb(st.diskUsedGb)} / ${gb(st.diskTotalGb)}`), h('div', { class: 'meter' }, h('div', { class: 'meter-top' }, h('span', null, 'Аптайм'), h('b', null, uptime(st.uptime))), h('div', { class: 'meter-extra' }, `Сеть ↓${Math.round(st.netIn ?? 0)} ↑${Math.round(st.netOut ?? 0)} МБ`))) : null,
+    tab === 'services' && !down ? historyCard(p) : null,
     h('div', { class: 'tabs page-tabs' }, tabs.map(([t, l]) => h('a', { class: `tab ${tab === t ? 'active' : ''}`, href: `#/panel/${p.id}${t === 'services' ? '' : '/' + t}` }, l))),
     content);
   if (tab === 'services') content.append(servicesTab(p));
@@ -103,8 +110,8 @@ function servicesTab(p) {
       shown += rows.length;
       list.append(h('section', { class: 'card project' },
         h('div', { class: 'project-head' }, icon('folder', 16), h('h3', null, pr.name), h('span', { class: 'muted' }, `${pr.services.length}`), h('span', { class: 'spacer' }),
-          h('button', { class: 'btn sm ghost', onclick: () => newService(p, pr.name) }, icon('plus', 13), 'Сервис'),
-          h('button', { class: 'btn sm ghost danger-text', onclick: () => destroyProject(p, pr) }, icon('trash', 13))),
+          can('admin') ? h('button', { class: 'btn sm ghost', onclick: () => newService(p, pr.name) }, icon('plus', 13), 'Сервис') : null,
+          can('admin') ? h('button', { class: 'btn sm ghost danger-text', onclick: () => destroyProject(p, pr) }, icon('trash', 13)) : null),
         rows.length ? h('table', { class: 'tbl' }, h('tbody', null, rows.map((s) => serviceRow(s, { showPanel: false, openService })))) : h('div', { class: 'muted pad' }, 'В проекте нет сервисов.')));
     }
     if (!shown && (f.q || f.type !== 'all' || f.status !== 'all')) list.append(empty('Ничего не найдено', 'Измените фильтры.'));
@@ -116,9 +123,20 @@ function servicesTab(p) {
 
 function activityTab(p) {
   const box = h('div', { class: 'card' }, h('div', { class: 'skeleton', style: { height: '80px' } }));
+  const detail = async (a) => {
+    const id = a.id ?? a._id;
+    let text;
+    try { text = JSON.stringify(id ? await get(`/api/panels/${p.id}/actions/${encodeURIComponent(id)}`) : a, null, 2); } catch (e) { text = `Не удалось получить детали: ${e.message}\n\n${JSON.stringify(a, null, 2)}`; }
+    modal({ title: `${a.type ?? a.name ?? 'Действие'} · ${p.name}`, wide: true, body: h('pre', { class: 'code' }, text), actions: [{ label: 'Закрыть', kind: 'primary' }] });
+  };
   get(`/api/panels/${p.id}/actions`).then((r) => {
     const items = Array.isArray(r) ? r : (r?.actions ?? []);
-    clear(box).append(items.length ? h('div', { class: 'list' }, items.slice(0, 50).map((a) => h('div', { class: 'list-item' }, h('div', null, h('b', null, a.type ?? a.name ?? 'action'), h('div', { class: 'muted small' }, [a.projectName, a.serviceName].filter(Boolean).join('/') || '')), h('span', { class: 'muted small' }, a.createdAt ? relTime(new Date(a.createdAt).getTime()) : '')))) : empty('История пуста', 'Здесь появятся деплои и другие операции панели.'));
+    clear(box).append(items.length ? h('div', { class: 'list' }, items.slice(0, 50).map((a) => {
+      const st = String(a.status ?? a.state ?? '');
+      const kind = /fail|error/i.test(st) ? 'err' : /success|done|complete|ok/i.test(st) ? 'ok' : /run|pending|progress/i.test(st) ? 'warn' : 'muted';
+      return h('div', { class: 'list-item link', onclick: () => detail(a) }, h('div', null, h('b', null, a.type ?? a.name ?? 'action'), h('div', { class: 'muted small' }, [a.projectName, a.serviceName].filter(Boolean).join('/') || '')),
+        h('div', { class: 'inline' }, st ? h('span', { class: `badge ${kind}` }, st) : null, h('span', { class: 'muted small' }, a.createdAt ? relTime(new Date(a.createdAt).getTime()) : '')));
+    })) : empty('История пуста', 'Здесь появятся деплои и другие операции панели. Нажмите на запись, чтобы увидеть лог.'));
   }).catch((e) => clear(box).append(h('div', { class: 'callout err' }, icon('alert'), e.message)));
   return box;
 }
@@ -202,52 +220,41 @@ function selectAll(rows) {
 }
 
 /* ======================= Журнал ======================= */
-const ACTION_NAMES = { 'service.deploy': 'Деплой', 'service.restart': 'Перезапуск', 'service.start': 'Запуск', 'service.stop': 'Остановка', 'service.destroy': 'Удаление сервиса', 'service.create': 'Создание сервиса', 'service.env': 'Правка env', 'project.create': 'Создание проекта', 'project.destroy': 'Удаление проекта', 'panel.add': 'Панель добавлена', 'panel.update': 'Панель изменена', 'panel.remove': 'Панель удалена', login: 'Вход' };
+const ACTION_NAMES = { 'service.deploy': 'Деплой', 'service.restart': 'Перезапуск', 'service.start': 'Запуск', 'service.stop': 'Остановка', 'service.destroy': 'Удаление сервиса', 'service.create': 'Создание сервиса', 'service.env': 'Правка env', 'project.create': 'Создание проекта', 'project.destroy': 'Удаление проекта', 'panel.add': 'Панель добавлена', 'panel.update': 'Панель изменена', 'panel.remove': 'Панель удалена', 'service.clone': 'Клонирование', 'service.sourceImage': 'Смена образа', 'system.prune': 'Docker prune', 'system.cleanupImages': 'Очистка образов', 'bulk.env': 'Массово: env', 'bulk.image': 'Массово: образ', 'template.save': 'Шаблон сохранён', 'hook.create': 'Вебхук создан', 'hook.deploy': 'Деплой по вебхуку', 'backup.download': 'Скачан бэкап', 'user.2fa_on': '2FA включена', 'user.2fa_off': '2FA отключена', 'channel.add': 'Канал уведомлений', login: 'Вход' };
 export function auditPage() {
   const box = h('div', { class: 'card flush' }, h('div', { class: 'skeleton', style: { height: '160px' } }));
-  get('/api/audit?limit=200').then((rows) => {
+  const q = h('input', { class: 'input search', placeholder: 'Поиск: пользователь, панель, действие, сервис…' });
+  let timer;
+  const load = () => get(`/api/audit?limit=300${q.value ? `&q=${encodeURIComponent(q.value)}` : ''}`).then((rows) => {
     clear(box).append(rows.length ? h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Время', 'Пользователь', 'Действие', 'Панель', 'Объект', ''].map((x) => h('th', null, x)))),
       h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'muted nowrap' }, fmtTime(r.ts)), h('td', null, r.username ?? '—'),
         h('td', null, ACTION_NAMES[r.action] ?? (r.action.startsWith('bulk.') ? `Массово: ${ACTION_NAMES['service.' + r.action.slice(5)] ?? r.action.slice(5)}` : r.action)),
         h('td', null, r.panelName ?? '—'), h('td', { class: 'mono small' }, r.target ?? ''),
-        h('td', null, r.ok ? h('span', { class: 'badge ok' }, 'ок') : h('span', { class: 'badge err', title: r.detail }, 'ошибка')))))) : empty('Журнал пуст'));
+        h('td', null, r.ok ? h('span', { class: 'badge ok' }, 'ок') : h('span', { class: 'badge err', title: r.detail }, 'ошибка')))))) : empty('Ничего не найдено'));
   });
-  return h('div', { class: 'page' }, pageHead('Журнал действий'), box);
+  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 250); });
+  load();
+  return h('div', { class: 'page' }, pageHead('Журнал действий', h('a', { class: 'btn', href: '/api/audit?format=csv&limit=5000', download: '' }, icon('download', 14), 'CSV')), h('div', { class: 'input-icon' }, icon('search', 15), q), box);
 }
 
 /* ======================= Настройки ======================= */
 export function settingsPage() {
   const page = h('div', { class: 'page' }, pageHead('Настройки'));
   page.append(
-    h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Панели'), h('button', { class: 'btn primary sm', onclick: () => panelForm() }, icon('plus', 14), 'Добавить')),
+    h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Панели'), can('admin') ? h('button', { class: 'btn primary sm', onclick: () => panelForm() }, icon('plus', 14), 'Добавить') : null),
       store.panels.length ? h('div', { class: 'list' }, store.panels.map((p, i) => h('div', { class: 'list-item' },
         h('div', { class: 'inline' }, h('i', { class: 'swatch lg', style: { background: p.color } }), h('div', null, h('b', null, p.name), h('div', { class: 'muted small' }, p.url))),
         h('div', { class: 'inline' }, statusBadge(p.status),
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    usersCard(), passwordCard(), themeCard());
+    ...(can('admin') ? [channelsCard(), usersCard()] : []), twoFaCard(), ...(can('admin') ? [hooksCard(), backupCard()] : []), passwordCard(), themeCard());
   return page;
 }
 async function move(i, d) {
   const a = store.panels[i], b = store.panels[i + d];
   await Promise.all([put(`/api/panels/${a.id}`, { position: i + d + 1 }), put(`/api/panels/${b.id}`, { position: i + 1 })]);
   refresh(true);
-}
-
-function usersCard() {
-  const box = h('div', { class: 'list' });
-  const load = () => get('/api/users').then((users) => {
-    clear(box).append(...users.map((u) => h('div', { class: 'list-item' }, h('div', null, h('b', null, u.username), h('span', { class: `badge ${u.role === 'admin' ? 'ok' : 'muted'} ml` }, u.role === 'admin' ? 'администратор' : 'только чтение')),
-      u.id === store.user.id ? h('span', { class: 'muted small' }, 'это вы') : h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить пользователя?', message: u.username, danger: true, confirmText: 'Удалить' })) { await del(`/api/users/${u.id}`); load(); } } }, icon('trash', 14)))));
-  }).catch(() => clear(box).append(h('p', { class: 'muted' }, 'Доступно только администратору.')));
-  load();
-  const add = () => {
-    const u = h('input', { class: 'input', autocomplete: 'off' }), pw = h('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
-    const role = h('select', { class: 'input' }, h('option', { value: 'viewer' }, 'Только чтение'), h('option', { value: 'admin' }, 'Администратор'));
-    modal({ title: 'Новый пользователь', body: h('div', { class: 'stack' }, field('Логин', u), field('Пароль', pw, 'Минимум 8 символов'), field('Роль', role)), actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Создать', kind: 'primary', onClick: async () => { await post('/api/users', { username: u.value, password: pw.value, role: role.value }); load(); } }] });
-  };
-  return h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Пользователи'), store.user.role === 'admin' ? h('button', { class: 'btn sm', onclick: add }, icon('plus', 14), 'Добавить') : null), box);
 }
 
 function passwordCard() {
