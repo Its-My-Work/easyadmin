@@ -249,14 +249,14 @@ export function channelsCard() {
     types = eventTypes;
     clear(box).append(...(channels.length ? channels.map((c) => h('div', { class: 'list-item' },
       h('div', { class: 'inline' }, h('button', { class: `toggle ${c.enabled ? 'on' : ''}`, 'aria-label': 'Вкл/выкл', onclick: async () => { await put(`/api/channels/${c.id}`, { enabled: !c.enabled, name: c.name }); load(); } }),
-        h('div', null, h('b', null, c.name), h('div', { class: 'muted small' }, `${c.type === 'telegram' ? 'Telegram' : 'Webhook'} · ${c.summary} · событий: ${c.events.length}`))),
+        h('div', null, h('b', null, c.name), h('div', { class: 'muted small' }, `${({ telegram: 'Telegram', webhook: 'Webhook', email: 'Email' })[c.type]} · ${c.summary} · событий: ${c.events.length}`))),
       h('div', { class: 'inline' }, h('button', { class: 'btn sm', onclick: async (e) => { e.currentTarget.disabled = true; try { await post(`/api/channels/${c.id}/test`); toast('Тестовое уведомление отправлено', 'success'); } catch (x) { toast(x.message, 'error'); } e.currentTarget.disabled = false; } }, 'Тест'),
         h('button', { class: 'btn icon ghost sm', onclick: () => form(c) }, icon('edit', 14)),
         h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить канал?', message: c.name, danger: true, confirmText: 'Удалить' })) { await del(`/api/channels/${c.id}`); load(); } } }, icon('trash', 14))))) : [h('p', { class: 'muted' }, 'Каналов пока нет. Добавьте Telegram или webhook, чтобы узнавать о сбоях сразу.')]));
   }).catch(() => clear(box).append(h('p', { class: 'muted' }, 'Доступно только администратору.')));
   const form = (c) => {
     const edit = !!c;
-    const type = h('select', { class: 'input', disabled: edit, onchange: sync }, h('option', { value: 'telegram' }, 'Telegram'), h('option', { value: 'webhook' }, 'Webhook (JSON POST)'));
+    const type = h('select', { class: 'input', disabled: edit, onchange: sync }, h('option', { value: 'telegram' }, 'Telegram'), h('option', { value: 'webhook' }, 'Webhook (JSON POST)'), h('option', { value: 'email' }, 'Email (SMTP)'));
     if (edit) type.value = c.type;
     const name = h('input', { class: 'input', value: c?.name ?? '', placeholder: 'Команда DevOps' });
     const bot = h('input', { class: 'input mono', type: 'password', autocomplete: 'off', placeholder: edit ? 'без изменений' : '123456:ABC…' });
@@ -265,12 +265,21 @@ export function channelsCard() {
     const secret = h('input', { class: 'input mono', type: 'password', autocomplete: 'off', placeholder: 'необязательно (заголовок X-EasyAdmin-Secret)' });
     const tg = h('div', { class: 'stack' }, field('Токен бота', bot, 'Создайте бота у @BotFather'), field('Chat ID', chat, 'Личный чат, группа или канал (бот должен быть добавлен)'));
     const wh = h('div', { class: 'stack' }, field('URL', url), field('Секрет', secret));
+    const smtpHost = h('input', { class: 'input', placeholder: edit ? 'без изменений' : 'smtp.example.com' });
+    const smtpPort = h('input', { class: 'input', type: 'number', placeholder: '587' });
+    const smtpSec = h('select', { class: 'input' }, [['starttls', 'STARTTLS (порт 587)'], ['tls', 'SSL/TLS (порт 465)'], ['none', 'Без шифрования']].map(([v, l]) => h('option', { value: v }, l)));
+    const smtpUser = h('input', { class: 'input', autocomplete: 'off', placeholder: 'логин (необязательно)' });
+    const smtpPass = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: edit ? 'без изменений' : 'пароль' });
+    const smtpFrom = h('input', { class: 'input', placeholder: edit ? 'без изменений' : 'EasyAdmin <alerts@example.com>' });
+    const smtpTo = h('input', { class: 'input', placeholder: edit ? 'без изменений' : 'ops@example.com, cto@example.com' });
+    const mail = h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('SMTP-сервер', smtpHost), field('Порт', smtpPort)), field('Шифрование', smtpSec),
+      h('div', { class: 'grid-2' }, field('Логин', smtpUser), field('Пароль', smtpPass)), field('От кого', smtpFrom), field('Кому (через запятую)', smtpTo));
     const evs = Object.entries(types).map(([k, l]) => ({ k, l, cb: h('input', { type: 'checkbox', checked: edit ? c.events.includes(k) : true }) }));
-    function sync() { tg.hidden = type.value !== 'telegram'; wh.hidden = type.value !== 'webhook'; }
+    function sync() { tg.hidden = type.value !== 'telegram'; wh.hidden = type.value !== 'webhook'; mail.hidden = type.value !== 'email'; }
     sync();
-    modal({ title: edit ? `Канал · ${c.name}` : 'Новый канал уведомлений', body: h('div', { class: 'stack' }, field('Тип', type), field('Название', name), tg, wh, h('div', null, h('div', { class: 'field-label' }, 'События'), h('div', { class: 'checklist' }, evs.map(({ l, cb }) => h('label', null, cb, l))))),
+    modal({ title: edit ? `Канал · ${c.name}` : 'Новый канал уведомлений', body: h('div', { class: 'stack' }, field('Тип', type), field('Название', name), tg, wh, mail, h('div', null, h('div', { class: 'field-label' }, 'События'), h('div', { class: 'checklist' }, evs.map(({ l, cb }) => h('label', null, cb, l))))),
       actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Сохранить', kind: 'primary', onClick: async () => {
-        const payload = { type: type.value, name: name.value, botToken: bot.value || undefined, chatId: chat.value || undefined, url: url.value || undefined, secret: secret.value || undefined, events: evs.filter((x) => x.cb.checked).map((x) => x.k) };
+        const payload = { type: type.value, name: name.value, botToken: bot.value || undefined, chatId: chat.value || undefined, url: url.value || undefined, secret: secret.value || undefined, host: smtpHost.value || undefined, port: smtpPort.value || undefined, security: type.value === 'email' ? smtpSec.value : undefined, user: smtpUser.value || undefined, pass: smtpPass.value || undefined, from: smtpFrom.value || undefined, to: smtpTo.value || undefined, events: evs.filter((x) => x.cb.checked).map((x) => x.k) };
         if (edit) await put(`/api/channels/${c.id}`, payload); else await post('/api/channels', payload);
         load();
       } }] });

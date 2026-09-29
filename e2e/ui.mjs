@@ -8,7 +8,8 @@ const p = await ctx.newPage();
 const errors = [];
 p.on('pageerror', (e) => errors.push('PAGEERR ' + e.message));
 p.on('console', (m) => { if (m.type() === 'error') errors.push('CONSOLE ' + m.text()); });
-const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); } catch (e) { console.log('FAIL', name, e.message.split('\n')[0]); await p.screenshot({ path: 'e2e-fail.png' }); } };
+let failed = 0;
+const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); } catch (e) { failed++; console.log('FAIL', name, e.message.split('\n')[0]); await p.screenshot({ path: 'e2e-fail.png' }); } };
 const U = 'http://127.0.0.1:3100/';
 await p.goto(U);
 await p.fill('input[placeholder="Логин"]', 'admin'); await p.fill('input[type=password]', 'demo12345'); await p.click('button[type=submit]');
@@ -75,6 +76,22 @@ await step('settings: channel + 2FA + backup', async () => {
   await p.waitForSelector('input[placeholder^="Код 2FA"]:visible');
   await p.fill('input[placeholder^="Код 2FA"]', totp(secret)); await p.click('button[type=submit]'); await p.waitForSelector('.panel-card');
 });
+await step('live logs tab', async () => {
+  await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
+  await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
+  await p.click('.drawer .tab:has-text("Логи")');
+  await p.waitForSelector('.logview .ll:has-text("line one")', { timeout: 8000 });
+  await p.waitForSelector('.logview .ll:has-text("tick")');
+  await p.fill('.drawer input[placeholder="Фильтр…"]', 'json'); await p.waitForTimeout(200);
+  const n = await p.locator('.logview .ll').count(); if (n !== 1) throw new Error('filter shows ' + n);
+  await p.fill('.drawer input[placeholder="Фильтр…"]', ''); await p.click('.drawer button:has-text("Пауза")'); await p.waitForTimeout(150);
+  await p.screenshot({ path: 'v3-logs.png' }); await p.keyboard.press('Escape');
+});
+await step('email channel form', async () => {
+  await p.goto(U + '#/settings'); await p.waitForSelector('.card');
+  await p.click('button:has-text("Добавить канал")'); await p.selectOption('.modal select', 'email');
+  await p.waitForSelector('.modal input[placeholder="smtp.example.com"]:visible'); await p.screenshot({ path: 'v3-email.png' }); await p.keyboard.press('Escape');
+});
 await step('audit search', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); await p.fill('.input.search', 'clone'); await p.waitForTimeout(600); await p.screenshot({ path: 'v2-audit.png' }); });
 await step('palette favorites', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
@@ -83,3 +100,4 @@ await step('palette favorites', async () => {
 });
 console.log(errors.join('\n') || 'no console errors');
 await b.close();
+if (failed) { console.error(`${failed} шаг(ов) не прошли`); process.exit(1); }

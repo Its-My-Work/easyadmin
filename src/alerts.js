@@ -1,4 +1,5 @@
 import { decrypt, encrypt } from './crypto.js';
+import { sendMail } from './smtp.js';
 
 export const EVENT_TYPES = {
   panel_down: 'Панель недоступна',
@@ -37,6 +38,8 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
         signal: AbortSignal.timeout(10_000),
       });
       if (!r.ok) throw new Error(`Webhook: HTTP ${r.status}`);
+    } else if (channel.type === 'email') {
+      await sendMail({ ...c, subject: `EasyAdmin: ${EVENT_TYPES[event.type] ?? 'уведомление'}`, text: `${event.text}\n\n— EasyAdmin` });
     } else throw new Error('Неизвестный тип канала');
   }
 
@@ -87,7 +90,7 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
     list, emit, evaluate, expect, sendTo,
     seal: (cfg) => encrypt(key, JSON.stringify(cfg)),
     publicChannel: (c) => ({ id: c.id, name: c.name, type: c.type, enabled: !!c.enabled, events: c.events,
-      summary: c.type === 'telegram' ? `чат ${c.config.chatId}` : (() => { try { return new URL(c.config.url).host; } catch { return ''; } })() }),
+      summary: c.type === 'telegram' ? `чат ${c.config.chatId}` : c.type === 'email' ? `${c.config.to}` : (() => { try { return new URL(c.config.url).host; } catch { return ''; } })() }),
     defaultEvents: DEFAULT_EVENTS,
   };
 }

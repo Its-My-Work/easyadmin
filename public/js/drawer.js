@@ -8,6 +8,7 @@ let current = null;
 
 export function closeDrawer() {
   current?.unsub?.();
+  current?.leave?.();
   current?.el.remove(); current?.back.remove(); current = null;
   document.removeEventListener('keydown', onKey);
 }
@@ -42,7 +43,7 @@ export function openService(s) {
   const back = h('div', { class: 'drawer-back', onclick: closeDrawer });
   document.body.append(back, el);
   document.addEventListener('keydown', onKey);
-  current = { el, back };
+  current = { el, back, leave: () => { state.onLeave?.(); state.onLeave = null; } };
   requestAnimationFrame(() => { el.classList.add('in'); back.classList.add('in'); });
 
   const renderHead = () => {
@@ -59,7 +60,7 @@ export function openService(s) {
   current.unsub = subscribe(renderHead);
 
   const tabs = [
-    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение']]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
+    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение']]), ...(ro ? [] : [['logs', 'Логи']]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
     ['resources', 'Ресурсы'], ...(s.type === 'app' && !ro ? [['source', 'Источник']] : []),
     ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
   ];
@@ -89,10 +90,11 @@ export function openService(s) {
   function renderBody() {
     const d = state.data;
     if (!d) return;
+    state.onLeave?.(); state.onLeave = null; // закрываем потоки логов при смене вкладки
     const svc = d.service || {};
     clear(body);
     if (d.warnings?.length) body.append(h('div', { class: 'callout warn' }, icon('alert'), h('div', null, d.warnings.join('; '))));
-    const views = { overview, env, domains, storage, resources, source, raw, danger, automation };
+    const views = { overview, env, logs, domains, storage, resources, source, raw, danger, automation };
     body.append(views[state.tab](svc, d));
   }
 
@@ -200,6 +202,48 @@ export function openService(s) {
       h('div', { class: 'card flat stack' }, h('h4', null, 'GitHub'), h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo), field('Ветка', branch), field('Путь сборки', path)),
         h('div', null, h('button', { class: 'btn', onclick: () => { if (!owner.value || !repo.value) return toast('Укажите владельца и репозиторий', 'error'); op('sourceGithub', { owner: owner.value, repo: repo.value, branch: branch.value, path: path.value }, 'Источник обновлён'); } }, 'Применить репозиторий'))),
       h('p', { class: 'muted small' }, 'После смены источника выполните деплой, чтобы изменения вступили в силу.'));
+  }
+
+  /* ---- Логи (SSE ← WebSocket панели) ---- */
+  function logs() {
+    const MAX = 3000;
+    const view = h('div', { class: 'logview', tabindex: 0 });
+    const status = h('span', { class: 'muted small' }, 'Подключение…');
+    const count = h('span', { class: 'muted small' });
+    let es = null, paused = false, follow = true, filter = '', buffer = [], all = [];
+    const cls = (l) => (/\b(error|fatal|panic|exception|fail(ed)?)\b/i.test(l) ? 'err' : /\bwarn(ing)?\b/i.test(l) ? 'warn' : '');
+    const row = (l) => h('div', { class: `ll ${cls(l)}` }, l);
+    const shown = (l) => !filter || l.toLowerCase().includes(filter);
+    const stick = () => { if (follow) view.scrollTop = view.scrollHeight; };
+    const push = (l) => {
+      all.push(l); if (all.length > MAX) { all.shift(); if (view.firstChild) view.firstChild.remove(); }
+      if (paused) { buffer.push(l); count.textContent = `на паузе, накоплено ${buffer.length}`; return; }
+      if (shown(l)) view.append(row(l));
+      count.textContent = `${all.length} строк`; stick();
+    };
+    const redraw = () => { clear(view).append(...all.filter(shown).map(row)); stick(); };
+    view.addEventListener('scroll', () => { follow = view.scrollTop + view.clientHeight >= view.scrollHeight - 24; followBtn.classList.toggle('on', follow); });
+    const connect = () => {
+      es?.close();
+      status.textContent = 'Подключение…'; status.className = 'muted small';
+      es = new EventSource(`${base}/logs?${new URLSearchParams(ref)}`);
+      es.addEventListener('line', (e) => push(JSON.parse(e.data)));
+      es.addEventListener('status', (e) => {
+        const st = JSON.parse(e.data);
+        if (st.state === 'connected') { status.textContent = '● Онлайн'; status.className = 'small ok-text'; }
+        else { status.textContent = st.state === 'closed' ? 'Поток завершён' : st.message; status.className = `small ${st.state === 'closed' ? 'muted' : 'danger-text'}`; es.close(); }
+      });
+      es.onerror = () => { status.textContent = 'Соединение потеряно — переподключение…'; status.className = 'small warn-text'; };
+    };
+    const pauseBtn = h('button', { class: 'btn sm', onclick: () => { paused = !paused; pauseBtn.replaceChildren(icon(paused ? 'play' : 'stop', 13), paused ? 'Продолжить' : 'Пауза'); if (!paused) { const b = buffer; buffer = []; b.forEach((l) => shown(l) && view.append(row(l))); count.textContent = `${all.length} строк`; stick(); } } }, icon('stop', 13), 'Пауза');
+    const followBtn = h('button', { class: 'btn sm on', title: 'Прокручивать к новым строкам', onclick: () => { follow = !follow; followBtn.classList.toggle('on', follow); stick(); } }, icon('down', 13), 'Следить');
+    const q = h('input', { class: 'input', placeholder: 'Фильтр…', oninput: () => { filter = q.value.toLowerCase(); redraw(); } });
+    const dl = h('button', { class: 'btn sm ghost', title: 'Скачать', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([all.join('\n')], { type: 'text/plain' })), download: `${s.name}.log` }); document.body.append(a); a.click(); a.remove(); } }, icon('download', 13));
+    const clr = h('button', { class: 'btn sm ghost', onclick: () => { all = []; buffer = []; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
+    const re = h('button', { class: 'btn sm ghost', onclick: connect }, icon('refresh', 13), 'Переподключить');
+    state.onLeave = () => es?.close();
+    connect();
+    return h('div', { class: 'stack' }, h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr, re), h('div', { class: 'inline' }, status, h('span', { class: 'spacer' }), count), view);
   }
 
   function automation() {

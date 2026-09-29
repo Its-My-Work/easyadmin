@@ -10,7 +10,9 @@ const root = document.getElementById('root');
 let shell = null;
 
 /* ======================= вход / первичная настройка ======================= */
-function authScreen(setup) {
+function authScreen(setup, sso) {
+  const ssoError = new URLSearchParams(location.search).get('sso_error');
+  if (ssoError) history.replaceState(null, '', location.pathname + location.hash);
   const user = h('input', { class: 'input', autocomplete: 'username', placeholder: 'Логин', autofocus: true });
   const pass = h('input', { class: 'input', type: 'password', autocomplete: setup ? 'new-password' : 'current-password', placeholder: setup ? 'Пароль (мин. 8 символов)' : 'Пароль' });
   const err = h('div', { class: 'form-error', role: 'alert' });
@@ -24,7 +26,9 @@ function authScreen(setup) {
     h('div', { class: 'logo lg' }, logoMark(), h('span', null, 'EasyAdmin')),
     h('h2', null, setup ? 'Первый запуск' : 'Вход'),
     h('p', { class: 'muted' }, setup ? 'Создайте учётную запись администратора. Через неё вы будете управлять всеми панелями Easypanel.' : 'Одна авторизация — все ваши панели Easypanel.'),
-    user, pass, code, err, btn);
+    user, pass, code, err, btn,
+    !setup && sso ? h('div', { class: 'sso' }, h('div', { class: 'or' }, h('span', null, 'или')), h('a', { class: 'btn lg block', href: '/api/oidc/login' }, icon('shield', 16), `Войти через ${sso.name}`)) : null);
+  if (ssoError) err.textContent = ssoError;
   clear(root).append(h('div', { class: 'auth' }, form));
 }
 const logoMark = () => h('span', { class: 'logo-mark' }, icon('layers', 16));
@@ -162,7 +166,7 @@ async function boot() {
   let s;
   try { s = await get('/api/session'); } catch (e) { clear(root).append(h('div', { class: 'auth' }, h('div', { class: 'auth-card' }, h('h2', null, 'Сервер недоступен'), h('p', { class: 'muted' }, e.message), h('button', { class: 'btn', onclick: boot }, 'Повторить')))); return; }
   store.user = s.user;
-  if (!s.user) { authScreen(s.setupRequired); return; }
+  if (!s.user) { authScreen(s.setupRequired, s.sso); return; }
   store.panels = []; store.loadedAt = 0; store.selection.clear(); renderBulkBar();
   buildShell(); renderChrome(); renderView();
   await refresh(false);

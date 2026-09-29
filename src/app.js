@@ -5,7 +5,8 @@ import { hashPassword, randomToken, sha256, verifyPassword } from './crypto.js';
 import {
   ACTIONS, PanelClient, SYSTEM_OPS, createService, inspectService, loginToPanel, normalizeUrl, runAction, runServiceOp,
 } from './easypanel.js';
-import { HttpError, RawResponse, compile, parseCookies, readJson, sendJson, sendRaw, serveStatic } from './http.js';
+import { HttpError, RawResponse, StreamResponse, compile, parseCookies, readJson, redirect, sendJson, sendRaw, serveStatic } from './http.js';
+import { createOidc } from './oidc.js';
 import { createAlerts } from './alerts.js';
 import { extraRoutes } from './routes-ext.js';
 import { createManager } from './manager.js';
@@ -36,6 +37,7 @@ export const ROLES = Object.keys(LEVEL);
 export function createApp({ config, db, key, fetchImpl }) {
   const manager = createManager({ db, key, config });
   const alerts = createAlerts({ db, key, config, fetchImpl });
+  const oidc = createOidc({ config, fetchImpl });
   const loginAttempts = new Map(); // ip → {n, until}
 
   /* ---------------- сессии ---------------- */
@@ -88,6 +90,25 @@ export function createApp({ config, db, key, fetchImpl }) {
   const svcRef = (b) => ({ type: b.type, project: nameOf(b.project, 'project'), name: nameOf(b.name, 'service') });
   const asHttp = (e) => (e instanceof HttpError ? e : new HttpError(502, e.message));
 
+  function provisionOidcUser(p) {
+    let u = db.prepare('SELECT * FROM users WHERE oidc_sub = ?').get(p.sub);
+    if (!u && p.email && p.emailVerified) { // привязка к существующему локальному пользователю только по подтверждённой почте
+      u = db.prepare('SELECT * FROM users WHERE lower(email) = ? OR lower(username) = ?').get(p.email, p.email);
+      if (u) db.prepare('UPDATE users SET oidc_sub = ?, email = ? WHERE id = ?').run(p.sub, p.email, u.id);
+    }
+    if (!u) {
+      need(p.emailVerified || !p.email, 'Почта не подтверждена у провайдера');
+      const base = (p.email ?? p.name ?? p.sub).slice(0, 60);
+      let username = base;
+      for (let i = 2; db.prepare('SELECT 1 FROM users WHERE username = ?').get(username); i++) username = `${base}-${i}`;
+      const role = userCount() === 0 || (p.email && config.oidc.adminEmails.includes(p.email)) ? 'admin' : config.oidc.defaultRole;
+      const id = db.prepare('INSERT INTO users (username, password_hash, role, created_at, oidc_sub, email) VALUES (?,?,?,?,?,?)')
+        .run(username, `!sso$${randomToken()}`, role, now(), p.sub, p.email).lastInsertRowid; // пароль недействителен: вход только через SSO
+      u = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(id));
+    }
+    return u;
+  }
+
   function setUserPanels(userId, panels) {
     db.prepare('DELETE FROM user_panels WHERE user_id = ?').run(userId);
     for (const pid of Array.isArray(panels) ? panels : []) {
@@ -108,7 +129,26 @@ export function createApp({ config, db, key, fetchImpl }) {
   /* ---------------- маршруты ---------------- */
   const routes = compile([
     ['GET', '/api/health', () => ({ ok: true }), { public: true }],
-    ['GET', '/api/session', (ctx) => ({ setupRequired: userCount() === 0, user: publicUser(ctx.user) }), { public: true }],
+    ['GET', '/api/session', (ctx) => ({ setupRequired: userCount() === 0, user: publicUser(ctx.user), sso: oidc.enabled ? { name: config.oidc.name } : null }), { public: true }],
+
+    /* ----- SSO (OpenID Connect) ----- */
+    ['GET', '/api/oidc/login', async () => {
+      need(oidc.enabled, 'SSO не настроен');
+      try { return redirect(await oidc.begin()); } catch (e) { return redirect(`/?sso_error=${encodeURIComponent(e.message)}`); }
+    }, { public: true }],
+    ['GET', '/api/oidc/callback', async (ctx) => {
+      const q = ctx.url.searchParams;
+      const fail = (m) => redirect(`/?sso_error=${encodeURIComponent(m)}`);
+      if (!oidc.enabled) return fail('SSO не настроен');
+      if (q.get('error')) return fail(q.get('error_description') || q.get('error'));
+      try {
+        const profile = await oidc.complete(q.get('code') ?? '', q.get('state') ?? '');
+        const u = provisionOidcUser(profile);
+        createSession(ctx.res, u.id);
+        audit({ user: u }, { action: 'login.sso', target: profile.email ?? profile.sub });
+        return redirect('/');
+      } catch (e) { return fail(e.message); }
+    }, { public: true }],
 
     ['POST', '/api/setup', (ctx) => {
       if (userCount() > 0) throw new HttpError(403, 'Администратор уже создан');
@@ -435,10 +475,12 @@ export function createApp({ config, db, key, fetchImpl }) {
       }
       const ctx = { req, res, url, user, params, body: mutating ? await readJson(req) : {} };
       const out = await route.handler(ctx);
+      if (out instanceof StreamResponse) return await out.run(req, res);
       if (out instanceof RawResponse) sendRaw(res, out); else sendJson(res, 200, out);
     } catch (e) {
       const status = e.status || 500;
       if (status === 500) console.error(e);
+      if (res.headersSent) return res.end();
       sendJson(res, status, { ...(e.extra ?? {}), error: status === 500 ? 'Внутренняя ошибка' : e.message });
     }
   }

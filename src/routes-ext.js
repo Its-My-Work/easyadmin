@@ -4,10 +4,11 @@ import path from 'node:path';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.js';
 import { ACTIONS, SYSTEM_OPS, SERVICE_TYPES, inspectService, runAction, runServiceOp } from './easypanel.js';
 import { EVENT_TYPES } from './alerts.js';
-import { HttpError, RawResponse } from './http.js';
+import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http.js';
+import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
 import { applyConfig, extractConfig, mergeEnv, parseEnvLines } from './templates.js';
 
-const CHANNEL_TYPES = ['telegram', 'webhook'];
+const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
 
 /** Дополнительные маршруты: уведомления, шаблоны, клонирование, расписания, вебхуки, инвентарь, история, бэкап. */
 export function extraRoutes(d) {
@@ -19,11 +20,21 @@ export function extraRoutes(d) {
 
   /* ---------------- уведомления ---------------- */
   const cleanChannel = (b, old) => {
-    need(CHANNEL_TYPES.includes(b.type), 'Тип канала: telegram или webhook');
+    need(CHANNEL_TYPES.includes(b.type), 'Тип канала: telegram, webhook или email');
     const cfg = { ...(old?.config ?? {}) };
     if (b.type === 'telegram') {
       if (b.botToken) cfg.botToken = String(b.botToken); if (b.chatId) cfg.chatId = String(b.chatId);
       need(cfg.botToken && cfg.chatId, 'Укажите токен бота и chat id');
+    } else if (b.type === 'email') {
+      for (const k of ['host', 'user', 'from', 'to']) if (b[k] !== undefined && b[k] !== '') cfg[k] = String(b[k]).trim();
+      if (b.pass) cfg.pass = String(b.pass);
+      if (b.port) cfg.port = Number(b.port);
+      cfg.port ??= 587;
+      if (b.security) { need(['starttls', 'tls', 'none'].includes(b.security), 'Шифрование: starttls, tls или none'); cfg.security = b.security; }
+      cfg.security ??= 'starttls';
+      if (b.insecureTls !== undefined) cfg.insecureTls = !!b.insecureTls;
+      need(cfg.host && cfg.from && cfg.to, 'Укажите SMTP-сервер, отправителя и получателей');
+      need(Number.isInteger(cfg.port) && cfg.port > 0 && cfg.port < 65536, 'Некорректный порт');
     } else {
       if (b.url) { try { const u = new URL(b.url); need(['http:', 'https:'].includes(u.protocol), 'URL должен быть http(s)'); } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(400, 'Некорректный URL'); } cfg.url = String(b.url); }
       if (b.secret !== undefined) cfg.secret = String(b.secret);
@@ -54,6 +65,35 @@ export function extraRoutes(d) {
       need(c, 'Канал не найден');
       try { await alerts.sendTo(c, { type: 'test', icon: '✅', text: 'EasyAdmin: тестовое уведомление' }); return { ok: true }; } catch (e) { throw new HttpError(502, e.message); }
     }, { admin: true }],
+  ];
+
+  /* ---------------- живые логи сервиса (WebSocket панели → SSE) ---------------- */
+  const logRoutes = [
+    ['GET', '/api/panels/:id/logs', (ctx) => {
+      const row = panelOr404(ctx.params.id); const q = ctx.url.searchParams;
+      const r = ref({ type: q.get('type'), project: q.get('project'), name: q.get('name') });
+      return new StreamResponse(async (req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...SECURITY_HEADERS });
+        const send = (event, data) => { if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
+        let ws = null, closed = false;
+        const hb = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15_000);
+        const cleanup = () => { closed = true; clearInterval(hb); ws?.close(); };
+        req.on('close', cleanup);
+        const c = manager.clientFor(row);
+        const errors = [];
+        for (const url of logSocketCandidates(c.base, { project: r.project, name: r.name, token: c.token, paths: config.logsPaths })) {
+          if (closed) return;
+          try { ws = await openWebSocket(url, { headers: { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin }, insecure: !!row.insecure_tls }); break; }
+          catch (e) { errors.push(`${new URL(url).pathname}: ${e.message}`); }
+        }
+        if (closed) { ws?.close(); return; }
+        if (!ws) { send('status', { state: 'error', message: `Не удалось подключиться к логам (${errors.join('; ')}). Путь WebSocket зависит от версии Easypanel — его можно задать переменной EASYPANEL_LOGS_PATHS.` }); clearInterval(hb); return res.end(); }
+        send('status', { state: 'connected' });
+        ws.on('message', (m) => { for (const line of extractLines(m)) send('line', line); });
+        ws.on('error', (e) => send('status', { state: 'error', message: e.message }));
+        ws.on('close', () => { send('status', { state: 'closed' }); clearInterval(hb); res.end(); });
+      });
+    }, { min: 'operator' }],
   ];
 
   /* ---------------- история нагрузки ---------------- */
@@ -304,5 +344,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...channelRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...channelRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

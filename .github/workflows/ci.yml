@@ -11,3 +11,17 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm i --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Запуск демо и браузерных проверок
+        run: |
+          PORT=3100 node --disable-warning=ExperimentalWarning scripts/demo.js &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3100/api/health && break; sleep 1; done
+          node e2e/ui.mjs

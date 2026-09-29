@@ -85,6 +85,9 @@ export function openDb(dataDir) {
   `);
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!cols.includes('totp_secret_enc')) db.exec('ALTER TABLE users ADD COLUMN totp_secret_enc TEXT');
+  if (!cols.includes('oidc_sub')) db.exec('ALTER TABLE users ADD COLUMN oidc_sub TEXT');
+  if (!cols.includes('email')) db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_oidc_sub ON users(oidc_sub) WHERE oidc_sub IS NOT NULL');
   if (!cols.includes('totp_enabled')) db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0');
   return db;
 }

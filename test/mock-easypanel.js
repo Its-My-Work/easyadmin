@@ -1,10 +1,11 @@
+import crypto from 'node:crypto';
 import http from 'node:http';
 
 /**
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
  * seed: { projects: { name: [{name, type, enabled}] } }
  */
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs' } = {}) {
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -85,9 +86,30 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     catch (e) { trpcErr(e.message, e.code ?? 'INTERNAL_SERVER_ERROR', e.code === 'NOT_FOUND' ? 404 : 500); }
   });
 
+  // WebSocket логов: текст, JSON, фрагментированное сообщение, ping, затем «тики» до закрытия клиентом
+  const frame = (opcode, payload, fin = true) => { const b = Buffer.from(payload); return Buffer.concat([Buffer.from([(fin ? 0x80 : 0) | opcode, b.length]), b]); };
+  const sockets = new Set();
+  server.on('upgrade', (req, socket) => {
+    sockets.add(socket); socket.on('close', () => sockets.delete(socket));
+    const url = new URL(req.url, 'http://x');
+    const bad = (code) => { socket.end(`HTTP/1.1 ${code} No\r\nContent-Length: 0\r\n\r\n`); };
+    if (url.pathname !== logsPath) return bad(404);
+    if (url.searchParams.get('token') !== token) return bad(401);
+    const key = req.headers['sec-websocket-key'];
+    const accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    calls.push({ proc: 'ws', input: { service: url.searchParams.get('service'), auth: req.headers.authorization } });
+    socket.write(frame(1, `line one\n\x1b[31mline two\x1b[0m`));
+    socket.write(frame(1, JSON.stringify({ line: 'json line' })));
+    socket.write(frame(1, 'frag-', false)); socket.write(frame(9, 'hi')); socket.write(frame(0, 'mented'));
+    let n = 0; const t = setInterval(() => { if (!socket.destroyed) socket.write(frame(1, `tick ${++n}`)); }, 40);
+    socket.on('data', (d) => { if ((d[0] & 15) === 10) calls.push({ proc: 'ws-pong' }); if ((d[0] & 15) === 8) socket.end(); });
+    socket.on('close', () => clearInterval(t)); socket.on('error', () => clearInterval(t));
+  });
+
   return {
     server, calls, projects, token,
     listen: () => new Promise((r) => server.listen(0, '127.0.0.1', () => r(`http://127.0.0.1:${server.address().port}`))),
-    close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }),
+    close: () => new Promise((r) => { for (const s of sockets) s.destroy(); server.closeAllConnections?.(); server.close(r); }),
   };
 }

@@ -7,7 +7,13 @@ export class HttpError extends Error {
 
 /** Ответ не в JSON (CSV, файл): возвращается обработчиком маршрута. */
 export class RawResponse {
-  constructor(body, contentType, headers = {}) { this.body = body; this.contentType = contentType; this.headers = headers; }
+  constructor(body, contentType, headers = {}, status = 200) { this.body = body; this.contentType = contentType; this.headers = headers; this.status = status; }
+}
+export const redirect = (location, headers = {}) => new RawResponse('', 'text/plain', { Location: location, ...headers }, 302);
+
+/** Потоковый ответ (SSE): обработчик сам управляет res. */
+export class StreamResponse {
+  constructor(run) { this.run = run; }
 }
 
 const MIME = {
@@ -34,7 +40,7 @@ export async function readJson(req, limit = 1_000_000) {
 }
 
 export function sendRaw(res, raw) {
-  res.writeHead(200, { 'Content-Type': raw.contentType, 'Cache-Control': 'no-store', ...SECURITY_HEADERS, ...raw.headers });
+  res.writeHead(raw.status ?? 200, { 'Content-Type': raw.contentType, 'Cache-Control': 'no-store', ...SECURITY_HEADERS, ...raw.headers });
   res.end(raw.body);
 }
 
