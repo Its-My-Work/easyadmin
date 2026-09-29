@@ -1,0 +1,16 @@
+services:
+  easyadmin:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      # Ключ шифрования токенов панелей. Задайте длинную случайную строку и НЕ теряйте её:
+      # без неё сохранённые токены не расшифровать. Если не задан — ключ создаётся в /data/secret.key.
+      EASYADMIN_SECRET: ${EASYADMIN_SECRET:-}
+      # true, если EasyAdmin стоит за HTTPS-прокси (Easypanel, Caddy, nginx)
+      EASYADMIN_SECURE_COOKIES: ${EASYADMIN_SECURE_COOKIES:-false}
+    volumes:
+      - easyadmin-data:/data
+volumes:
+  easyadmin-data:

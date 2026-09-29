@@ -1,0 +1,146 @@
+/** Мини-хелперы DOM. Весь текст вставляется через textContent → XSS невозможен. */
+export function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === 'value') el.value = v;
+    else if (k === 'checked' || k === 'disabled' || k === 'selected' || k === 'open') el[k] = !!v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  append(el, children);
+  return el;
+}
+function append(el, children) {
+  for (const c of children.flat(Infinity)) {
+    if (c == null || c === false) continue;
+    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+}
+// Element.append(null) вставляет текст «null» — приводим к безопасному поведению для условных детей.
+const nativeAppend = Element.prototype.append;
+Element.prototype.append = function append(...nodes) { return nativeAppend.apply(this, nodes.flat(Infinity).filter((n) => n != null && n !== false)); };
+
+export const clear = (el) => { el.replaceChildren(); return el; };
+
+const ICONS = {
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+  stop: '<rect width="14" height="14" x="5" y="5" rx="2"/>',
+  rotate: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  rocket: '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  external: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+  server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/>',
+  layers: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+  grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+  activity: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+  settings: '<line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+  terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+  box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  more: '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  folder: '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  edit: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  up: '<path d="m18 15-6-6-6 6"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+  copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+};
+
+export function icon(name, size = 16) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('width', size); s.setAttribute('height', size);
+  s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2');
+  s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round'); s.setAttribute('aria-hidden', 'true');
+  s.classList.add('icon');
+  s.innerHTML = ICONS[name] || ''; // статичные константы выше, не пользовательский ввод
+  return s;
+}
+
+/* ---------- форматирование ---------- */
+export const pct = (v) => (v == null ? '—' : `${Math.round(v)}%`);
+export function relTime(ts) {
+  if (!ts) return 'никогда';
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 5) return 'только что';
+  if (s < 60) return `${s} с назад`;
+  if (s < 3600) return `${Math.floor(s / 60)} мин назад`;
+  if (s < 86400) return `${Math.floor(s / 3600)} ч назад`;
+  return `${Math.floor(s / 86400)} дн назад`;
+}
+export function uptime(sec) {
+  if (sec == null) return '—';
+  const d = Math.floor(sec / 86400), hh = Math.floor((sec % 86400) / 3600);
+  return d ? `${d} д ${hh} ч` : `${hh} ч ${Math.floor((sec % 3600) / 60)} м`;
+}
+export const gb = (v) => (v == null ? '—' : `${Math.round(v * 10) / 10} ГБ`);
+export const host = (u) => { try { return new URL(u).host; } catch { return u; } };
+export const fmtTime = (ts) => new Date(ts).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/* ---------- toast ---------- */
+export function toast(message, kind = 'info', ms = 4000) {
+  const el = h('div', { class: `toast ${kind}` }, icon(kind === 'error' ? 'alert' : kind === 'success' ? 'check' : 'activity'), h('span', null, message));
+  document.getElementById('toasts').append(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 250); }, ms);
+}
+
+/* ---------- модальные окна ---------- */
+export function modal({ title, body, actions = [], wide = false, onClose }) {
+  const root = document.getElementById('overlay-root');
+  const close = () => { back.remove(); document.removeEventListener('keydown', onKey); onClose?.(); };
+  const onKey = (e) => { if (e.key === 'Escape' && root.lastElementChild === back) close(); };
+  const back = h('div', { class: 'backdrop', onmousedown: (e) => { if (e.target === back) close(); } },
+    h('div', { class: `modal ${wide ? 'wide' : ''}`, role: 'dialog', 'aria-modal': 'true' },
+      h('div', { class: 'modal-head' }, h('h3', null, title), h('button', { class: 'btn icon ghost', onclick: close, 'aria-label': 'Закрыть' }, icon('x'))),
+      h('div', { class: 'modal-body' }, body),
+      actions.length ? h('div', { class: 'modal-foot' }, actions.map((a) => h('button', {
+        class: `btn ${a.kind || ''}`, disabled: a.disabled,
+        onclick: async (e) => {
+          const btn = e.currentTarget; btn.disabled = true;
+          try { const r = await a.onClick?.(close); if (r !== false && a.close !== false) close(); } catch (err) { toast(err.message, 'error'); }
+          finally { btn.disabled = false; }
+        },
+      }, a.label))) : null));
+  root.append(back);
+  document.addEventListener('keydown', onKey);
+  setTimeout(() => back.querySelector('input:not([type=checkbox]),textarea,select')?.focus(), 30);
+  return { close, el: back };
+}
+
+export function confirmDialog({ title, message, confirmText = 'Подтвердить', danger = false, typeToConfirm }) {
+  return new Promise((resolve) => {
+    let ok = !typeToConfirm;
+    const input = typeToConfirm ? h('input', { class: 'input', placeholder: typeToConfirm, oninput: () => { ok = input.value === typeToConfirm; confirmBtn.disabled = !ok; } }) : null;
+    const m = modal({
+      title,
+      body: h('div', { class: 'stack' }, h('p', null, message), typeToConfirm ? h('p', { class: 'muted' }, 'Для подтверждения введите ', h('code', null, typeToConfirm)) : null, input),
+      actions: [
+        { label: 'Отмена', kind: 'ghost', onClick: () => resolve(false) },
+        { label: confirmText, kind: danger ? 'danger' : 'primary', disabled: !ok, onClick: () => resolve(true) },
+      ],
+      onClose: () => resolve(false),
+    });
+    const confirmBtn = m.el.querySelector('.modal-foot .btn:last-child');
+    input?.addEventListener('keydown', (e) => { if (e.key === 'Enter' && ok) confirmBtn.click(); });
+  });
+}
+
+/** Поле формы с подписью. */
+export function field(label, control, hint) {
+  return h('label', { class: 'field' }, h('span', { class: 'field-label' }, label), control, hint ? h('span', { class: 'hint' }, hint) : null);
+}

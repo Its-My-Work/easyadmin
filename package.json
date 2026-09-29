@@ -1,0 +1,15 @@
+{
+  "name": "easyadmin",
+  "version": "1.0.0",
+  "description": "Единая админка для управления несколькими панелями Easypanel",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "demo": "node --disable-warning=ExperimentalWarning scripts/demo.js",
+    "probe": "node scripts/probe.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}
