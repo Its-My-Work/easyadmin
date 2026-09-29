@@ -146,8 +146,9 @@ describe('роли и доступ по панелям', () => {
     assert.doesNotMatch(JSON.stringify(items), /TOPSECRET/);
     await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'sourceImage', params: { image: 'nginx:1.25' } });
     const r = await api('admin', 'GET', `/api/panels/${idA}/ssh-key`);
-    assert.equal(r.status, 404);
-    assert.match(r.data.error, /SSH/);
+    assert.equal(r.status, 200); assert.equal(r.data.key, null); assert.ok(Array.isArray(r.data.candidates));
+    assert.equal((await api('admin', 'GET', `/api/panels/${idA}/ssh-key?proc=bad%20name`)).status, 400);
+    assert.equal((await api('admin', 'GET', `/api/panels/${idA}/ssh-key?proc=settings.nothing`)).data.key, null);
     assert.equal((await api('ro', 'GET', `/api/panels/${idA}/ssh-key`)).status, 403);
   });
   test('журнал: фильтры по пользователю, результату, периоду, категории и панели; facets', async () => {

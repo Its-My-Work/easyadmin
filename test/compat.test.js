@@ -63,6 +63,20 @@ describe('новая версия панели без monitor.getSystemStats', (
     const get = async (p) => (await fetch(b2 + p, { headers: { Cookie: ck } })).json();
     return { m, a2, get, id, done: async () => { a2.stop(); a2.server.closeAllConnections(); a2.server.close(); await m.close(); } };
   };
+  test('SSH-ключ панели: находится по названию из интерфейса панели, запоминается; без ключа — список кандидатов', async () => {
+    const t = await boot({ newStats: true, weirdKey: 'ssh-ed25519 AAAAC3Nz test@panel' });
+    const r = await t.get(`/api/panels/${t.id}/ssh-key`);
+    assert.equal(r.key, 'ssh-ed25519 AAAAC3Nz test@panel'); assert.equal(r.proc, 'settings.getInstanceGitIdentity');
+    const again = await t.get(`/api/panels/${t.id}/ssh-key`);
+    assert.equal(again.proc, 'settings.getInstanceGitIdentity', 'запомненная процедура');
+    await t.done();
+    const n = await boot({ newStats: true });
+    const none = await n.get(`/api/panels/${n.id}/ssh-key`);
+    assert.equal(none.key, null); assert.ok(Array.isArray(none.candidates));
+    const manual = await n.get(`/api/panels/${n.id}/ssh-key?proc=settings.getNothing`);
+    assert.equal(manual.key, null);
+    await n.done();
+  });
   test('нужная процедура находится в интерфейсе панели, статистика разбирается из произвольной формы и запоминается', async () => {
     const t = await boot({ newStats: true });
     const ov = await t.get('/api/overview?force=1');

@@ -5,7 +5,7 @@ import http from 'node:http';
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
  * seed: { projects: { name: [{name, type, enabled}] } }
  */
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null } = {}) {
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -54,6 +54,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
     'actions.listActions': () => [],
     'certificates.listCertificates': () => certs,
+    ...(weirdKey ? { 'settings.getInstanceGitIdentity': () => ({ pub: weirdKey }) } : {}),
     ...(sshKey ? { 'settings.getSshPublicKey': () => ({ publicKey: sshKey }) } : {}),
     'certificates.removeCertificate': (i) => {
       const d = typeof i.domain === 'string' ? i.domain : i.domain?.main ?? i.main ?? i.name;
@@ -98,7 +99,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (newStats && req.method === 'GET' && url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<html><script type="module" src="/assets/app.js"></script></html>'); }
-    if (newStats && url.pathname === '/assets/app.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end('const a="projects.listProjects",b="system.getResourceUsage",c="monitor.getServiceStats",d="console.log",e="dashboard.getOverview",f="settings.setPanelDomain";'); }
+    if (newStats && url.pathname === '/assets/app.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end('const a="projects.listProjects",b="system.getResourceUsage",c="monitor.getServiceStats",d="console.log",e="dashboard.getOverview",f="settings.setPanelDomain";' + (weirdKey ? 'g="settings.getInstanceGitIdentity";' : '')); }
     const proc = url.pathname.replace('/api/trpc/', '');
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
     const trpcErr = (message, code, httpStatus) => message === '' ? send(httpStatus, { error: { json: { code: -32603, data: { code, httpStatus, path: proc } } } }) : flatErrors ? send(httpStatus, { json: { defined: false, code, status: httpStatus, message } }) : send(httpStatus, { error: { json: { message, code: -32001, data: { code, httpStatus, path: proc } } } });

@@ -76,17 +76,27 @@ export function extraRoutes(d) {
     if (v && typeof v === 'object' && d < 3) for (const x of Object.values(v)) { const r = findKey(x, d + 1); if (r) return r; }
     return null;
   };
+  const sshSaved = (id) => db.prepare('SELECT v FROM settings WHERE k = ?').get(`ssh_proc_${id}`)?.v;
   const sshRoutes = [
+    // Публичный ключ панели: пробуем сохранённую/выбранную процедуру, известные названия, затем безопасно (только get/list/inspect) все похожие из интерфейса панели
     ['GET', '/api/panels/:id/ssh-key', async (ctx) => {
       const row = panelOr404(ctx.params.id);
       const c = manager.clientFor(row);
+      const wanted = ctx.url.searchParams.get('proc');
+      if (wanted) need(/^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/.test(wanted), 'Некорректное название процедуры');
+      const tryProc = async (proc) => { try { return findKey(await c.query(proc)); } catch { return null; } };
+      const remember = (proc) => { db.prepare("INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(`ssh_proc_${row.id}`, proc); };
+      if (wanted) { const key = await tryProc(wanted); if (key) { remember(wanted); return { key, proc: wanted }; } return { key: null, tried: [wanted], candidates: [] }; }
+      for (const proc of [sshSaved(row.id), ...SSH_CANDIDATES].filter(Boolean)) { const key = await tryProc(proc); if (key) { remember(proc); return { key, proc }; } }
       const found = await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => []);
-      const extra = found.filter((n) => /ssh|public.?key|deploy.?key|git.?key/i.test(n) && !SSH_CANDIDATES.includes(n));
-      const tried = [];
-      for (const proc of [...SSH_CANDIDATES, ...extra]) {
-        try { const key = findKey(await c.query(proc)); if (key) return { key, proc }; tried.push(proc); } catch { /* нет такой процедуры */ }
+      const READ = /\.(get|list|inspect|read)[A-Z]/;
+      const related = found.filter((n) => !SSH_CANDIDATES.includes(n) && /ssh|public.?key|deploy.?key|git|github|secret|token|key/i.test(n));
+      const probe = related.filter((n) => READ.test(n)).slice(0, 30);
+      for (let i = 0; i < probe.length; i += 6) {
+        const res = await Promise.all(probe.slice(i, i + 6).map(async (proc) => ({ proc, key: await tryProc(proc) })));
+        const hit = res.find((r) => r.key); if (hit) { remember(hit.proc); return { key: hit.key, proc: hit.proc }; }
       }
-      throw new HttpError(404, `Не удалось получить SSH-ключ через API панели.${extra.length ? ` В интерфейсе панели найдено: ${extra.join(', ')}.` : ''} Возьмите ключ в самой панели (Settings → Git / SSH key) и добавьте его в GitHub → Settings → Deploy keys.`);
+      return { key: null, tried: [...SSH_CANDIDATES, ...probe], candidates: related.slice(0, 40), discovered: found.length };
     }, { admin: true }],
   ];
 

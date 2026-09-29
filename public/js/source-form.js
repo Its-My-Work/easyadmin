@@ -77,15 +77,25 @@ export function sourceFields(kind, src = {}, build = {}, { panelId } = {}) {
     // deploy-ключ панели: для ssh-адресов (git@…) — показываем публичный ключ, который нужно добавить в репозиторий
     const keyBox = h('div', { class: 'stack-sm', hidden: true });
     const isSsh = () => !gh && /^(git@|ssh:\/\/)/i.test(repo.value.trim());
-    const showKey = async () => {
+    const showKey = async (proc) => {
       keyBox.replaceChildren(h('span', { class: 'muted small' }, 'Запрашиваем ключ у панели…'));
       try {
         const id = typeof panelId === 'function' ? panelId() : panelId;
-        const r = await get(`/api/panels/${id}/ssh-key`);
+        const r = await get(`/api/panels/${id}/ssh-key${proc ? `?proc=${encodeURIComponent(proc)}` : ''}`);
+        if (!r.key) return keyBox.replaceChildren(keyNotFound(r, proc));
         keyBox.replaceChildren(h('div', { class: 'muted small' }, 'Публичный SSH-ключ панели — добавьте его в GitHub → репозиторий → Settings → Deploy keys:'),
           h('textarea', { class: 'input mono', rows: 3, readonly: true, onclick: (e) => e.target.select() }, r.key),
           h('button', { type: 'button', class: 'btn sm', onclick: async () => { try { await navigator.clipboard.writeText(r.key); toast('Ключ скопирован', 'success'); } catch { toast('Выделите ключ и скопируйте вручную', 'error'); } } }, icon('copy', 13), 'Копировать'));
       } catch (e) { keyBox.replaceChildren(h('div', { class: 'callout warn compact' }, icon('alert', 14), e.message)); }
+    };
+    // ключ через API не нашёлся — даём выбрать процедуру самому (или вписать название) и запоминаем удачную
+    const keyNotFound = (r, tried) => {
+      const custom = h('input', { class: 'input mono', placeholder: 'settings.getPublicKey', autocomplete: 'off' });
+      return h('div', { class: 'stack-sm' },
+        h('div', { class: 'callout warn compact' }, icon('alert', 14), tried ? `Процедура ${tried} не вернула SSH-ключ.` : 'Панель не отдаёт SSH-ключ через API под известными названиями. Ключ можно скопировать в самой панели (Settings → Git / SSH key) и добавить в GitHub → Deploy keys.'),
+        r.candidates?.length ? h('div', { class: 'muted small' }, 'Похожие процедуры из интерфейса панели — нажмите, чтобы проверить:') : null,
+        r.candidates?.length ? h('div', { class: 'chips' }, r.candidates.map((n) => h('button', { type: 'button', class: 'chip clickable', onclick: () => showKey(n) }, n))) : null,
+        h('div', { class: 'grid-2' }, custom, h('button', { type: 'button', class: 'btn', onclick: () => custom.value.trim() && showKey(custom.value.trim()) }, 'Проверить название')));
     };
     const syncKey = () => {
       const ssh = isSsh(); tokenRow.hidden = ssh; keyBtn.hidden = !ssh || !panelId; if (ssh) priv.open = true;

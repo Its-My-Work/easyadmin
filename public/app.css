@@ -281,3 +281,4 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .svc-tbl .c-name { width: 28%; } .svc-tbl .c-domain { width: auto; } .svc-tbl .c-panel { width: 170px; } .svc-tbl .c-type { width: 116px; } .svc-tbl .c-status { width: 130px; } .svc-tbl .w-actions { width: 132px; }
 .svc-tbl .svc-domain { display: block; margin: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .svc-tbl .svc-domain:hover { color: var(--text); text-decoration: underline; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip.clickable { cursor: pointer; border: 1px solid var(--border2); background: var(--panel); font-family: var(--mono, monospace); font-size: 12px; } .chip.clickable:hover { border-color: var(--accent); }
