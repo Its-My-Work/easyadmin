@@ -130,8 +130,8 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); c
 .callout.warn { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.3); } .callout.warn > .icon { color: var(--warn); }
 .callout.compact { padding: 8px 10px; font-size: 12.5px; align-items: center; gap: 8px; } .callout.banner { margin-bottom: 14px; }
 .code { margin: 0; padding: 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; overflow: auto; max-height: 520px; font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; } .page-tabs { margin-top: 2px; }
-.tab { padding: 9px 14px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font: inherit; font-weight: 550; cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+.tabs { display: flex; gap: 2px; box-shadow: inset 0 -1px 0 var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; } .tabs::-webkit-scrollbar { display: none; } .page-tabs { margin-top: 2px; }
+.tab { padding: 9px 14px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); font: inherit; font-weight: 550; cursor: pointer; white-space: nowrap; }
 .tab:hover { color: var(--text); } .tab.active { color: var(--text); border-bottom-color: var(--accent); } .tab.danger.active { border-bottom-color: var(--err); }
 
 /* drawer */
@@ -248,3 +248,8 @@ tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
 .seg-btn:hover { color: var(--text); } .seg-btn.active { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--border2); }
 .audit-panel-link { display: block; color: inherit; text-decoration: none; } .audit-panel-link:hover .panel-chip { text-decoration: underline; }
 .sparks .spark-empty { grid-column: 1 / -1; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* таблицы сервисов: одинаковые колонки в каждом проекте и на странице «Все сервисы» */
+.svc-tbl { table-layout: fixed; }
+.svc-tbl .w-check { width: 44px; } .svc-tbl .c-type { width: 130px; } .svc-tbl .c-panel { width: 210px; } .svc-tbl .c-status { width: 150px; } .svc-tbl .w-actions { width: 132px; }
+.svc-tbl .c-name { overflow: hidden; } .svc-tbl .svc-name { min-width: 0; } .svc-tbl .svc-name > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.svc-tbl .c-panel .panel-chip, .svc-tbl .c-panel .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

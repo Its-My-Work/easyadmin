@@ -154,10 +154,10 @@ export function serviceRow(s, { showPanel, openService }) {
   const fav = favorites().has(svcKey(s));
   return h('tr', { class: 'row', tabindex: 0, onclick: () => openService(s), onkeydown: (e) => { if (e.key === 'Enter') openService(s); } },
     h('td', { class: 'w-check' }, can('operator') ? cb : null),
-    h('td', null, h('div', { class: 'svc-name' }, h('b', null, fav ? h('span', { class: 'fav' }, icon('star', 11)) : null, s.name), s.domain ? h('a', { class: 'muted small', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, s.domain) : null)),
-    h('td', { class: 'hide-sm' }, showPanel ? h('div', { class: 'stack-sm' }, panelChip(s.panel), h('span', { class: 'muted small' }, s.project)) : typeChip(s.type)),
-    showPanel ? h('td', { class: 'hide-sm' }, typeChip(s.type)) : null,
-    h('td', null, svcBadge(s.enabled, s.health)),
+    h('td', { class: 'c-name' }, h('div', { class: 'svc-name' }, h('b', null, fav ? h('span', { class: 'fav' }, icon('star', 11)) : null, s.name), s.domain ? h('a', { class: 'muted small', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, s.domain) : null)),
+    h('td', { class: showPanel ? 'hide-sm c-panel' : 'hide-sm c-type' }, showPanel ? h('div', { class: 'stack-sm' }, panelChip(s.panel), h('span', { class: 'muted small' }, s.project)) : typeChip(s.type)),
+    showPanel ? h('td', { class: 'hide-sm c-type' }, typeChip(s.type)) : null,
+    h('td', { class: 'c-status' }, svcBadge(s.enabled, s.health)),
     h('td', { class: 'w-actions' }, quickActions(s)));
 }
 
