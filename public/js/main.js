@@ -6,6 +6,7 @@ import { closeDrawer, openService } from './drawer.js';
 import { clear, h, icon, toast, relTime } from './dom.js';
 import { store, notify, refresh, subscribe, allServices, can, favorites, recents, svcKey } from './store.js';
 import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './views2.js';
+import { avatar, profilePage, usersPage } from './pages-users.js';
 import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead } from './views.js';
 
 const root = document.getElementById('root');
@@ -50,7 +51,7 @@ function buildShell() {
     h('div', { class: 'nav-title' }, h('span', null, 'Панели'), can('admin') ? h('button', { class: 'btn icon ghost sm', title: 'Добавить панель', onclick: () => panelForm() }, icon('plus', 14)) : null),
     panelsList,
     h('div', { class: 'side-foot' },
-      h('div', { class: 'user' }, h('div', { class: 'avatar' }, store.user.username[0].toUpperCase()), h('div', null, h('b', null, store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
+      h('a', { class: 'user', href: '#/profile', title: 'Профиль', onclick: () => document.body.classList.remove('nav-open') }, avatar(store.user, 32), h('div', null, h('b', null, store.user.displayName || store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
       langToggle(),
       h('button', { class: 'btn icon ghost', title: 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16))));
   const back = h('div', { class: 'side-back', onclick: () => document.body.classList.remove('nav-open') });
@@ -62,7 +63,7 @@ function buildShell() {
   shell = { nav, panelsList, view, updated, refreshBtn };
 }
 
-const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/settings', 'settings', 'Настройки']];
+const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/users', 'users', 'Пользователи', 'admin'], ['#/settings', 'settings', 'Настройки', 'admin']];
 const dotClass = (s) => (s === 'online' ? 'ok' : s === 'degraded' ? 'warn' : s === 'unknown' ? 'muted' : 'err');
 
 function route() {
@@ -74,7 +75,7 @@ function route() {
 function renderChrome() {
   if (!shell) return;
   const r = route();
-  clear(shell.nav).append(...NAV.map(([href, ic, label]) => h('a', { class: `nav-item ${(href === '#/' ? r.hash === '#/' : r.hash.startsWith(href)) ? 'active' : ''}`, href, onclick: () => document.body.classList.remove('nav-open') }, icon(ic, 17), label)));
+  clear(shell.nav).append(...NAV.filter(([, , , need]) => !need || can(need)).map(([href, ic, label]) => h('a', { class: `nav-item ${(href === '#/' ? r.hash === '#/' : r.hash.startsWith(href)) ? 'active' : ''}`, href, onclick: () => document.body.classList.remove('nav-open') }, icon(ic, 17), label)));
   clear(shell.panelsList).append(...(store.panels.length ? store.panels.map((p) => {
     const stopped = (p.tree?.projects ?? []).flatMap((x) => x.services).filter((s) => !s.enabled).length;
     return h('a', { class: `nav-panel ${r.a === 'panel' && Number(r.b) === p.id ? 'active' : ''}`, href: `#/panel/${p.id}`, onclick: () => document.body.classList.remove('nav-open') },
@@ -95,7 +96,9 @@ function renderView() {
   else if (r.a === 'templates') node = templatesPage();
   else if (r.a === 'schedules') node = schedulesPage();
   else if (r.a === 'audit') node = auditPage();
-  else if (r.a === 'settings') node = settingsPage();
+  else if (r.a === 'settings') node = can('admin') ? settingsPage() : profilePage();
+  else if (r.a === 'profile') node = profilePage();
+  else if (r.a === 'users') node = usersPage();
   else node = dashboard();
   const scroll = shell.view.scrollTop;
   clear(shell.view);
@@ -123,7 +126,7 @@ function openPalette() {
   const go = (hash) => () => { location.hash = hash; };
   const fav = favorites(), rec = recents();
   // порядок страниц — как в боковом меню
-  const pages = [['Обзор', 'grid', '#/'], ['Все сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ['Настройки', 'settings', '#/settings']];
+  const pages = [['Обзор', 'grid', '#/'], ['Все сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ['Профиль', 'users', '#/profile'], ...(can('admin') ? [['Пользователи', 'users', '#/users'], ['Настройки', 'settings', '#/settings']] : [])];
   const items = [
     ...pages.map(([title, ic, hash], order) => ({ title, shown: t(title), hint: 'Страница', ic, group: 'page', order, run: go(hash) })),
     ...(can('admin') ? [{ title: 'Добавить панель', shown: t('Добавить панель'), hint: 'Команда', ic: 'plus', group: 'cmd', order: 0, run: () => panelForm() }] : []),
@@ -190,6 +193,7 @@ const renderChromeTime = () => { if (shell) shell.updated.textContent = store.lo
 
 subscribe(onStoreChange);
 window.addEventListener('ea:rerender', () => renderView());
+window.addEventListener('ea:profile', () => { buildShell(); renderChrome(); renderView(); }); // имя в боковой панели обновляется сразу
 window.addEventListener('ea:bulk-op', (e) => bulkOpModal(e.detail));
 window.addEventListener('hashchange', () => { closeDrawer(); onStoreChange(); });
 window.addEventListener('ea:unauth', () => { if (store.user) { store.user = null; toast('Сессия истекла — войдите снова', 'error'); boot(); } });

@@ -223,3 +223,15 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); c
   .dnav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px; }
   .dtab { width: auto; padding: 7px 10px; } .dsep { display: none; }
 }
+
+.link-callout { text-decoration: none; color: inherit; cursor: pointer; } .link-callout:hover { border-color: var(--accent); } .link-callout p { margin: 2px 0 0; color: var(--muted); }
+
+/* профиль и пользователи */
+.user { text-decoration: none; color: inherit; border-radius: 10px; padding: 4px 6px; margin: -4px -6px; } .user:hover { background: var(--panel2); }
+.avatar { display: grid; place-items: center; border-radius: 50%; font-weight: 700; flex: none; }
+.profile-hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; } .profile-hero h2 { font-size: 20px; } .profile-hero .grow { flex: 1; min-width: 220px; } .profile-meta { display: grid; gap: 2px; text-align: right; }
+.grid-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
+@media (max-width: 1100px) { .grid-cols { grid-template-columns: 1fr; } .profile-meta { text-align: left; } }
+
+.w-actions .inline { flex-wrap: nowrap; } .user > div { min-width: 0; } .user b { display: block; max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

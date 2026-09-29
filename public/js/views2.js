@@ -360,33 +360,4 @@ export function hooksCard() {
   return h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Вебхуки для CI/CD')), box);
 }
 
-export function usersCard() {
-  const box = h('div', { class: 'list' });
-  const ROLE = { admin: ['администратор', 'ok'], operator: ['оператор', 'warn'], viewer: ['только чтение', 'muted'] };
-  const load = () => get('/api/users').then((users) => {
-    clear(box).append(...users.map((u) => h('div', { class: 'list-item' }, h('div', null, h('b', null, u.username), h('span', { class: `badge ${ROLE[u.role][1]} ml` }, ROLE[u.role][0]), u.totp ? h('span', { class: 'badge ok ml' }, '2FA') : null,
-      u.panels.length ? h('div', { class: 'muted small' }, `Панели: ${u.panels.map((id) => panelById(id)?.name ?? id).join(', ')}`) : h('div', { class: 'muted small' }, 'Все панели')),
-      h('div', { class: 'inline' }, u.id === store.user.id ? h('span', { class: 'muted small' }, 'это вы') : [h('button', { class: 'btn icon ghost sm', onclick: () => form(u) }, icon('edit', 14)),
-        h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить пользователя?', message: u.username, danger: true, confirmText: 'Удалить' })) { await del(`/api/users/${u.id}`); load(); } } }, icon('trash', 14))]))));
-  }).catch(() => clear(box).append(h('p', { class: 'muted' }, 'Доступно только администратору.')));
-  load();
-  const form = (u) => {
-    const edit = !!u;
-    const un = h('input', { class: 'input', value: u?.username ?? '', disabled: edit, autocomplete: 'off' }), pw = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: edit ? 'оставьте пустым, чтобы не менять' : '' });
-    const role = h('select', { class: 'input' }, [['viewer', 'Только чтение — видит статусы, без env и секретов'], ['operator', 'Оператор — деплой, перезапуск, env, домены; без удаления и системных операций'], ['admin', 'Администратор — всё']].map(([v, l]) => h('option', { value: v, selected: u?.role === v }, l)));
-    const boxes = store.panels.map((p) => ({ p, cb: h('input', { type: 'checkbox', checked: u?.panels.includes(p.id) }) }));
-    const reset = h('input', { type: 'checkbox' });
-    modal({ title: edit ? `Пользователь · ${u.username}` : 'Новый пользователь', body: h('div', { class: 'stack' }, field('Логин', un), field(edit ? 'Новый пароль' : 'Пароль', pw, 'Минимум 8 символов'), field('Роль', role),
-      h('div', null, h('div', { class: 'field-label' }, 'Доступные панели (ничего не отмечено = все)'), h('div', { class: 'checklist' }, boxes.map(({ p, cb }) => h('label', null, cb, panelChip(p))))),
-      edit && u.totp ? h('label', { class: 'check' }, reset, 'Сбросить 2FA (пользователь потеряет телефон)') : null),
-      actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Сохранить', kind: 'primary', onClick: async () => {
-        const panels = boxes.filter((b) => b.cb.checked).map((b) => b.p.id);
-        if (edit) await put(`/api/users/${u.id}`, { role: role.value, panels, password: pw.value || undefined, resetTotp: reset.checked || undefined });
-        else await post('/api/users', { username: un.value, password: pw.value, role: role.value, panels });
-        load();
-      } }] });
-  };
-  return h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Пользователи'), store.user.role === 'admin' ? h('button', { class: 'btn sm', onclick: () => form() }, icon('plus', 14), 'Добавить') : null), box);
-}
-
 export { statusBadge };

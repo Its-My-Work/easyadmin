@@ -44,6 +44,8 @@ Demo without real panels (several Easypanel mocks): `npm run demo` → http://lo
 **Notifications** (Telegram, email over SMTP and webhook): panel unreachable (after two failed checks) and recovered, token error, disk full (configurable threshold), certificate expiring (< 7 days), service stopped/crashed outside EasyAdmin, schedule error. The notification language (RU/EN) is set in *Settings → Notifications*.
 
 **Users and access**
+- **Profile** (click your name in the sidebar): name and email, password change (other devices are signed out), 2FA, **active sessions** (device, IP, last activity; end any or all others), language, theme, your recent actions.
+- **Users** (administrator): a table with role, sign-in method (password / SSO / 2FA), panel access, last sign-in and status; create, edit (username, name, email, role, panels, password, 2FA reset), **disable an account** (sign-in blocked, sessions ended), end all sessions, delete. The last administrator cannot be demoted, disabled or deleted, and you cannot disable or delete yourself.
 - Roles: `admin`; `operator` (deploy, restart, env, domains — no deletion or system operations); `viewer` (read-only, **no env or secrets**).
 - Restrict a user to a set of panels (e.g. a contractor sees only "Client Acme").
 - **SSO (OpenID Connect)**: sign in via Keycloak, Authentik, Google, Azure AD, Okta, etc. (see below).

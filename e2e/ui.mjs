@@ -61,22 +61,14 @@ await step('inventory images + certs', async () => {
   await p.click('.seg button:has-text("Сертификаты")'); await p.waitForSelector('.badge:has-text("дн.")'); await p.screenshot({ path: 'v2-certs.png' });
   await p.locator('button:has-text("Перевыпустить")').first().click(); await p.waitForSelector('.modal:has-text("Let’s Encrypt")'); await p.keyboard.press('Escape');
 });
-await step('settings: channel + 2FA + backup', async () => {
+await step('settings: канал уведомлений + бэкап', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card');
   await p.click('button:has-text("Добавить канал")'); await p.selectOption('.modal select', 'webhook');
   await p.fill('.modal input[placeholder="Команда DevOps"]', 'CI'); await p.fill('.modal input[placeholder="https://example.com/hook"]', 'http://127.0.0.1:9/x');
   await p.click('.modal-foot button:has-text("Сохранить")'); await p.waitForSelector('.list-item:has-text("CI")');
-  await p.click('button:has-text("Включить 2FA")'); await p.waitForSelector('.modal .secret');
-  const secret = (await p.textContent('.modal .secret')).trim();
-  await p.fill('.modal input[placeholder="123456"]', totp(secret)); await p.click('.modal-foot button:has-text("Включить")');
-  await p.waitForSelector('.badge:has-text("Включена")'); await p.screenshot({ path: 'v2-settings.png', fullPage: true });
-  const [dl] = await Promise.all([p.waitForEvent('download').catch(() => null), p.click('button:has-text("Скачать бэкап")')]);
+  await p.screenshot({ path: 'v2-settings.png', fullPage: true });
+  await Promise.all([p.waitForEvent('download').catch(() => null), p.click('button:has-text("Скачать бэкап")')]);
   await p.waitForTimeout(500);
-  // выход и вход с 2FA
-  await p.click('.side-foot button[title="Выйти"]'); await p.waitForSelector('input[placeholder="Логин"]');
-  await p.fill('input[placeholder="Логин"]', 'admin'); await p.fill('input[type=password]', 'demo12345'); await p.click('button[type=submit]');
-  await p.waitForSelector('input[placeholder^="Код 2FA"]:visible');
-  await p.fill('input[placeholder^="Код 2FA"]', totp(secret)); await p.click('button[type=submit]'); await p.waitForSelector('.panel-card');
 });
 await step('drawer nav: вертикальное меню без горизонтальной прокрутки, цифры переключают разделы', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
@@ -121,6 +113,30 @@ await step('email channel form', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card');
   await p.click('button:has-text("Добавить канал")'); await p.selectOption('.modal select', 'email');
   await p.waitForSelector('.modal input[placeholder="smtp.example.com"]:visible'); await p.screenshot({ path: 'v3-email.png' }); await p.keyboard.press('Escape');
+});
+await step('профиль: данные, сессии, имя, 2FA и вход с кодом', async () => {
+  await p.click('.side-foot a.user'); await p.waitForSelector('.profile-hero'); await p.waitForSelector('.list-item:has-text("Это устройство")');
+  await p.fill('input[placeholder="admin"]', 'Главный админ'); await p.click('button:has-text("Сохранить")'); await p.waitForSelector('.toast.success:has-text("Профиль сохранён")');
+  await p.waitForSelector('.profile-hero h2:has-text("Главный админ")'); await p.waitForSelector('.side-foot .user b:has-text("Главный админ")');
+  await p.click('button:has-text("Включить 2FA")'); await p.waitForSelector('.modal .secret');
+  const secret = (await p.textContent('.modal .secret')).trim();
+  await p.fill('.modal input[placeholder="123456"]', totp(secret)); await p.click('.modal-foot button:has-text("Включить")');
+  await p.waitForSelector('.badge:has-text("Включена")'); await p.screenshot({ path: 'v5-profile.png', fullPage: true });
+  // выход и вход с 2FA
+  await p.click('.side-foot button[title="Выйти"]'); await p.waitForSelector('input[placeholder="Логин"]');
+  await p.fill('input[placeholder="Логин"]', 'admin'); await p.fill('input[type=password]', 'demo12345'); await p.click('button[type=submit]');
+  await p.waitForSelector('input[placeholder^="Код 2FA"]:visible');
+  await p.fill('input[placeholder^="Код 2FA"]', totp(secret)); await p.click('button[type=submit]'); await p.waitForSelector('.panel-card');
+});
+await step('пользователи: создать, отключить, удалить', async () => {
+  await p.click('.nav-item:has-text("Пользователи")'); await p.waitForSelector('.tbl');
+  await p.click('button:has-text("Добавить пользователя")'); await p.waitForSelector('.modal');
+  await p.fill('.modal .field:has(.field-label:text-is("Логин")) input', 'e2e-user'); await p.fill('.modal .field:has(.field-label:text-is("Пароль")) input', 'password1'); await p.click('.modal-foot button:has-text("Сохранить")');
+  await p.waitForSelector('tr.row:has-text("e2e-user")');
+  await p.locator('tr.row', { hasText: 'e2e-user' }).locator('button[title="Отключить учётную запись"]').click(); await p.waitForSelector('tr.row:has-text("e2e-user") .badge:has-text("Отключён")');
+  await p.screenshot({ path: 'v5-users.png' });
+  await p.locator('tr.row', { hasText: 'e2e-user' }).locator('button[title="Удалить"]').click(); await p.waitForSelector('.modal');
+  await p.fill('.modal input', 'e2e-user'); await p.click('.modal-foot .btn.danger'); await p.waitForFunction(() => !document.body.textContent.includes('e2e-user'));
 });
 await step('audit search', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); await p.fill('.input.search', 'clone'); await p.waitForTimeout(600); await p.screenshot({ path: 'v2-audit.png' }); });
 await step('palette favorites', async () => {

@@ -86,6 +86,13 @@ export function openDb(dataDir) {
   `);
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!cols.includes('totp_secret_enc')) db.exec('ALTER TABLE users ADD COLUMN totp_secret_enc TEXT');
+  if (!cols.includes('display_name')) db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
+  if (!cols.includes('disabled')) db.exec('ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
+  if (!cols.includes('last_login')) db.exec('ALTER TABLE users ADD COLUMN last_login INTEGER');
+  const scols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+  if (!scols.includes('ip')) db.exec('ALTER TABLE sessions ADD COLUMN ip TEXT');
+  if (!scols.includes('ua')) db.exec('ALTER TABLE sessions ADD COLUMN ua TEXT');
+  if (!scols.includes('last_used')) db.exec('ALTER TABLE sessions ADD COLUMN last_used INTEGER');
   if (!cols.includes('oidc_sub')) db.exec('ALTER TABLE users ADD COLUMN oidc_sub TEXT');
   if (!cols.includes('email')) db.exec('ALTER TABLE users ADD COLUMN email TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_oidc_sub ON users(oidc_sub) WHERE oidc_sub IS NOT NULL');

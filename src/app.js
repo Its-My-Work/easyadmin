@@ -43,25 +43,32 @@ export function createApp({ config, db, key, fetchImpl }) {
 
   /* ---------------- сессии ---------------- */
   const now = () => Date.now();
-  function createSession(res, userId) {
+  function createSession(res, userId, req) {
     const token = randomToken();
     const ttl = config.sessionDays * 86_400_000;
-    db.prepare('INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(sha256(token), userId, now(), now() + ttl);
+    db.prepare('INSERT INTO sessions (id_hash, user_id, created_at, expires_at, ip, ua, last_used) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(sha256(token), userId, now(), now() + ttl, req?.socket?.remoteAddress ?? null, String(req?.headers?.['user-agent'] ?? '').slice(0, 300), now());
+    db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(now(), userId);
     const flags = `HttpOnly; SameSite=Strict; Path=/; Max-Age=${config.sessionDays * 86_400}${config.secureCookies ? '; Secure' : ''}`;
     res.setHeader('Set-Cookie', `${COOKIE}=${token}; ${flags}`);
   }
   function userFromReq(req) {
     const token = parseCookies(req.headers.cookie)[COOKIE];
     if (!token) return null;
-    const u = db.prepare(`SELECT u.id, u.username, u.role, u.totp_enabled FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.id_hash = ? AND s.expires_at > ?`).get(sha256(token), now());
+    const hash = sha256(token);
+    const u = db.prepare(`SELECT u.id, u.username, u.role, u.totp_enabled, u.display_name displayName, u.email FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.id_hash = ? AND s.expires_at > ? AND u.disabled = 0`).get(hash, now());
     if (!u) return null;
+    db.prepare('UPDATE sessions SET last_used = ? WHERE id_hash = ? AND (last_used IS NULL OR last_used < ?)').run(now(), hash, now() - 60_000);
     const ids = db.prepare('SELECT panel_id FROM user_panels WHERE user_id = ?').all(u.id).map((r) => r.panel_id);
-    return { ...u, totpEnabled: !!u.totp_enabled, panels: ids.length ? new Set(ids) : null }; // null = все панели
+    return { ...u, sessionHash: hash, totpEnabled: !!u.totp_enabled, panels: ids.length ? new Set(ids) : null }; // null = все панели
   }
-  const publicUser = (u) => u && ({ id: u.id, username: u.username, role: u.role, totpEnabled: u.totpEnabled, panels: u.panels ? [...u.panels] : null });
+  const publicUser = (u) => u && ({ id: u.id, username: u.username, displayName: u.displayName ?? null, role: u.role, totpEnabled: u.totpEnabled, panels: u.panels ? [...u.panels] : null });
   const canPanel = (user, id) => !user?.panels || user.panels.has(Number(id));
   const assertPanel = (ctx, id) => { if (!canPanel(ctx.user, id)) throw new HttpError(403, 'Нет доступа к этой панели'); };
+  const activeAdmins = () => db.prepare("SELECT COUNT(*) c FROM users WHERE role = 'admin' AND disabled = 0").get().c;
+  const cleanName = (v) => { const t = String(v ?? '').trim(); need(t.length <= 80, 'Имя слишком длинное'); return t || null; };
+  const cleanEmail = (v) => { if (v == null || String(v).trim() === '') return null; const t = String(v).trim().toLowerCase(); need(t.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t), 'Некорректный email'); return t; };
   const userCount = () => db.prepare('SELECT COUNT(*) c FROM users').get().c;
 
   /* ---------------- аудит ---------------- */
@@ -145,7 +152,8 @@ export function createApp({ config, db, key, fetchImpl }) {
       try {
         const profile = await oidc.complete(q.get('code') ?? '', q.get('state') ?? '');
         const u = provisionOidcUser(profile);
-        createSession(ctx.res, u.id);
+        need(!u.disabled, 'Учётная запись отключена');
+        createSession(ctx.res, u.id, ctx.req);
         audit({ user: u }, { action: 'login.sso', target: profile.email ?? profile.sub });
         return redirect('/');
       } catch (e) { return fail(e.message); }
@@ -157,7 +165,7 @@ export function createApp({ config, db, key, fetchImpl }) {
       need(typeof ctx.body.password === 'string' && ctx.body.password.length >= 8, 'Пароль — минимум 8 символов');
       const id = db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)')
         .run(username, hashPassword(ctx.body.password), 'admin', now()).lastInsertRowid;
-      createSession(ctx.res, Number(id));
+      createSession(ctx.res, Number(id), ctx.req);
       return { ok: true };
     }, { public: true }],
 
@@ -178,7 +186,8 @@ export function createApp({ config, db, key, fetchImpl }) {
         throw new HttpError(401, 'Неверный логин или пароль');
       }
       loginAttempts.delete(ip);
-      createSession(ctx.res, u.id);
+      if (u.disabled) throw new HttpError(403, 'Учётная запись отключена');
+      createSession(ctx.res, u.id, ctx.req);
       audit({ user: u }, { action: 'login' });
       return { ok: true };
     }, { public: true }],
@@ -195,7 +204,9 @@ export function createApp({ config, db, key, fetchImpl }) {
       need(verifyPassword(String(ctx.body.current ?? ''), u.password_hash), 'Текущий пароль неверен');
       need(typeof ctx.body.next === 'string' && ctx.body.next.length >= 8, 'Новый пароль — минимум 8 символов');
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(ctx.body.next), u.id);
-      return { ok: true };
+      const ended = db.prepare('DELETE FROM sessions WHERE user_id = ? AND id_hash != ?').run(u.id, ctx.user.sessionHash).changes; // остальные устройства выходят
+      audit(ctx, { action: 'user.password_changed', detail: `${ended}` });
+      return { ok: true, sessionsEnded: Number(ended) };
     }, { anyRole: true }],
 
     /* ----- 2FA ----- */
@@ -221,44 +232,108 @@ export function createApp({ config, db, key, fetchImpl }) {
       return { ok: true };
     }, { anyRole: true }],
 
-    /* ----- пользователи ----- */
-    ['GET', '/api/users', () => db.prepare('SELECT id, username, role, totp_enabled totp, created_at createdAt FROM users ORDER BY id').all()
-      .map((u) => ({ ...u, totp: !!u.totp, panels: db.prepare('SELECT panel_id FROM user_panels WHERE user_id = ?').all(u.id).map((r) => r.panel_id) })), { admin: true }],
+    /* ----- профиль ----- */
+    ['GET', '/api/me', (ctx) => {
+      const u = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.user.id);
+      return {
+        id: u.id, username: u.username, displayName: u.display_name, email: u.email, role: u.role, totpEnabled: !!u.totp_enabled,
+        sso: !!u.oidc_sub, hasPassword: !u.password_hash.startsWith('!'), createdAt: u.created_at, lastLogin: u.last_login,
+        panels: ctx.user.panels ? [...ctx.user.panels] : null,
+        sessions: db.prepare('SELECT id_hash, ip, ua, created_at createdAt, last_used lastUsed FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY COALESCE(last_used, created_at) DESC').all(u.id, now())
+          .map((r) => ({ sid: r.id_hash.slice(0, 16), current: r.id_hash === ctx.user.sessionHash, ip: r.ip, ua: r.ua, createdAt: r.createdAt, lastUsed: r.lastUsed })),
+        activity: db.prepare('SELECT ts, action, panel_name panelName, target, ok FROM audit WHERE username = ? ORDER BY id DESC LIMIT 15').all(u.username),
+      };
+    }],
+    ['PUT', '/api/me', (ctx) => {
+      const sets = []; const vals = [];
+      if (ctx.body.displayName !== undefined) { sets.push('display_name = ?'); vals.push(cleanName(ctx.body.displayName)); }
+      if (ctx.body.email !== undefined) { sets.push('email = ?'); vals.push(cleanEmail(ctx.body.email)); }
+      if (sets.length) db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...vals, ctx.user.id);
+      audit(ctx, { action: 'profile.update' });
+      return { ok: true };
+    }, { anyRole: true }],
+    ['DELETE', '/api/me/sessions/:sid', (ctx) => {
+      const row = db.prepare('SELECT id_hash FROM sessions WHERE user_id = ? AND substr(id_hash, 1, 16) = ?').get(ctx.user.id, ctx.params.sid);
+      need(row, 'Сессия не найдена');
+      need(row.id_hash !== ctx.user.sessionHash, 'Это текущая сессия — используйте «Выйти»');
+      db.prepare('DELETE FROM sessions WHERE id_hash = ?').run(row.id_hash);
+      audit(ctx, { action: 'session.revoke' });
+      return { ok: true };
+    }, { anyRole: true }],
+    ['POST', '/api/me/sessions/revoke-others', (ctx) => {
+      const n = db.prepare('DELETE FROM sessions WHERE user_id = ? AND id_hash != ?').run(ctx.user.id, ctx.user.sessionHash).changes;
+      audit(ctx, { action: 'session.revoke_others', detail: `${n}` });
+      return { ok: true, revoked: Number(n) };
+    }, { anyRole: true }],
+
+    /* ----- пользователи (администратор) ----- */
+    ['GET', '/api/users', () => db.prepare(`SELECT u.id, u.username, u.display_name displayName, u.email, u.role, u.disabled, u.totp_enabled totp, u.oidc_sub, u.password_hash,
+        u.created_at createdAt, u.last_login lastLogin, (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > ?) sessions FROM users u ORDER BY u.id`).all(now())
+      .map(({ oidc_sub: sub, password_hash: ph, disabled, totp, ...u }) => ({ ...u, disabled: !!disabled, totp: !!totp, sso: !!sub, hasPassword: !ph.startsWith('!'),
+        panels: db.prepare('SELECT panel_id FROM user_panels WHERE user_id = ?').all(u.id).map((r) => r.panel_id) })), { admin: true }],
     ['POST', '/api/users', (ctx) => {
       const username = str(ctx.body.username, 'Укажите логин', 64);
       need(ROLES.includes(ctx.body.role), 'Роль: admin, operator или viewer');
       need(typeof ctx.body.password === 'string' && ctx.body.password.length >= 8, 'Пароль — минимум 8 символов');
+      const dname = cleanName(ctx.body.displayName), email = cleanEmail(ctx.body.email); // проверка до вставки: иначе ошибка формата приняла бы вид «логин занят»
       let id;
       try {
-        id = db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)').run(username, hashPassword(ctx.body.password), ctx.body.role, now()).lastInsertRowid;
+        id = db.prepare('INSERT INTO users (username, password_hash, role, created_at, display_name, email) VALUES (?,?,?,?,?,?)')
+          .run(username, hashPassword(ctx.body.password), ctx.body.role, now(), dname, email).lastInsertRowid;
       } catch { throw new HttpError(409, 'Такой логин уже существует'); }
       setUserPanels(Number(id), ctx.body.panels);
-      audit(ctx, { action: 'user.create', target: username });
+      audit(ctx, { action: 'user.create', target: username, detail: ctx.body.role });
       return { ok: true };
     }, { admin: true }],
     ['PUT', '/api/users/:id', (ctx) => {
+      const id = Number(ctx.params.id); const b = ctx.body;
+      const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+      need(u, 'Пользователь не найден');
+      const wasActiveAdmin = u.role === 'admin' && !u.disabled;
+      const nextRole = b.role ?? u.role, nextDisabled = b.disabled === undefined ? !!u.disabled : !!b.disabled;
+      if (b.role !== undefined) need(ROLES.includes(b.role), 'Неверная роль');
+      need(!(id === ctx.user.id && b.role !== undefined && b.role !== 'admin'), 'Нельзя снять права администратора с самого себя');
+      need(!(id === ctx.user.id && nextDisabled), 'Нельзя отключить самого себя');
+      need(!(wasActiveAdmin && !(nextRole === 'admin' && !nextDisabled) && activeAdmins() <= 1), 'Нельзя лишить прав или отключить последнего администратора');
+      const changed = [];
+      if (b.username !== undefined && b.username !== u.username) {
+        const name = str(b.username, 'Укажите логин', 64);
+        need(!db.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').get(name, id), 'Такой логин уже существует');
+        db.prepare('UPDATE users SET username = ? WHERE id = ?').run(name, id); changed.push('username');
+      }
+      if (b.role !== undefined && b.role !== u.role) { db.prepare('UPDATE users SET role = ? WHERE id = ?').run(b.role, id); changed.push('role'); }
+      if (b.displayName !== undefined) { db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(cleanName(b.displayName), id); changed.push('name'); }
+      if (b.email !== undefined) { db.prepare('UPDATE users SET email = ? WHERE id = ?').run(cleanEmail(b.email), id); changed.push('email'); }
+      if (b.panels !== undefined) { setUserPanels(id, b.panels); changed.push('panels'); }
+      if (b.password) {
+        need(String(b.password).length >= 8, 'Пароль — минимум 8 символов');
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(b.password), id);
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id); changed.push('password');
+      }
+      if (b.resetTotp) { db.prepare('UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL WHERE id = ?').run(id); changed.push('2fa'); }
+      if (b.disabled !== undefined && !!b.disabled !== !!u.disabled) {
+        db.prepare('UPDATE users SET disabled = ? WHERE id = ?').run(b.disabled ? 1 : 0, id);
+        if (b.disabled) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+        changed.push(b.disabled ? 'disabled' : 'enabled');
+      }
+      audit(ctx, { action: 'user.update', target: b.username ?? u.username, detail: changed.join(', ') || undefined });
+      return { ok: true };
+    }, { admin: true }],
+    ['POST', '/api/users/:id/revoke-sessions', (ctx) => {
+      const u = db.prepare('SELECT username FROM users WHERE id = ?').get(Number(ctx.params.id));
+      need(u, 'Пользователь не найден');
+      const n = db.prepare('DELETE FROM sessions WHERE user_id = ?').run(Number(ctx.params.id)).changes;
+      audit(ctx, { action: 'user.sessions_revoked', target: u.username, detail: `${n}` });
+      return { ok: true, revoked: Number(n) };
+    }, { admin: true }],
+    ['DELETE', '/api/users/:id', (ctx) => {
       const id = Number(ctx.params.id);
       const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
       need(u, 'Пользователь не найден');
-      if (ctx.body.role !== undefined) {
-        need(ROLES.includes(ctx.body.role), 'Неверная роль');
-        need(!(id === ctx.user.id && ctx.body.role !== 'admin'), 'Нельзя снять права администратора с самого себя');
-        db.prepare('UPDATE users SET role = ? WHERE id = ?').run(ctx.body.role, id);
-      }
-      if (ctx.body.panels !== undefined) setUserPanels(id, ctx.body.panels);
-      if (ctx.body.password) {
-        need(String(ctx.body.password).length >= 8, 'Пароль — минимум 8 символов');
-        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(ctx.body.password), id);
-        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-      }
-      if (ctx.body.resetTotp) db.prepare('UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL WHERE id = ?').run(id);
-      audit(ctx, { action: 'user.update', target: u.username });
-      return { ok: true };
-    }, { admin: true }],
-    ['DELETE', '/api/users/:id', (ctx) => {
-      need(Number(ctx.params.id) !== ctx.user.id, 'Нельзя удалить самого себя');
-      db.prepare('DELETE FROM users WHERE id = ?').run(Number(ctx.params.id));
-      audit(ctx, { action: 'user.delete', target: ctx.params.id });
+      need(id !== ctx.user.id, 'Нельзя удалить самого себя');
+      need(!(u.role === 'admin' && !u.disabled && activeAdmins() <= 1), 'Нельзя удалить последнего администратора');
+      db.prepare('DELETE FROM users WHERE id = ?').run(id);
+      audit(ctx, { action: 'user.delete', target: u.username });
       return { ok: true };
     }, { admin: true }],
 

@@ -4,7 +4,7 @@ import { openService } from './drawer.js';
 import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, relTime, toast, uptime } from './dom.js';
 import { allServices, can, panelById, refresh, store } from './store.js';
 import { lang, setLang, t } from './i18n.js';
-import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard, twoFaCard, usersCard } from './views2.js';
+import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
 
@@ -266,7 +266,18 @@ function selectAll(rows) {
 }
 
 /* ======================= Журнал ======================= */
-const ACTION_NAMES = { 'service.deploy': 'Деплой', 'service.restart': 'Перезапуск', 'service.start': 'Запуск', 'service.stop': 'Остановка', 'service.destroy': 'Удаление сервиса', 'service.create': 'Создание сервиса', 'service.env': 'Правка env', 'project.create': 'Создание проекта', 'project.destroy': 'Удаление проекта', 'panel.add': 'Панель добавлена', 'panel.update': 'Панель изменена', 'panel.remove': 'Панель удалена', 'service.clone': 'Клонирование', 'service.sourceImage': 'Смена образа', 'system.prune': 'Docker prune', 'system.cleanupImages': 'Очистка образов', 'bulk.env': 'Массово: env', 'bulk.image': 'Массово: образ', 'template.save': 'Шаблон сохранён', 'hook.create': 'Вебхук создан', 'hook.deploy': 'Деплой по вебхуку', 'backup.download': 'Скачан бэкап', 'user.2fa_on': '2FA включена', 'user.2fa_off': '2FA отключена', 'channel.add': 'Канал уведомлений', login: 'Вход' };
+export const ACTION_NAMES = { 'service.deploy': 'Деплой', 'service.restart': 'Перезапуск', 'service.start': 'Запуск', 'service.stop': 'Остановка', 'service.destroy': 'Удаление сервиса', 'service.create': 'Создание сервиса', 'service.env': 'Правка env', 'project.create': 'Создание проекта', 'project.destroy': 'Удаление проекта', 'panel.add': 'Панель добавлена', 'panel.update': 'Панель изменена', 'panel.remove': 'Панель удалена', 'service.clone': 'Клонирование', 'service.sourceImage': 'Смена образа', 'system.prune': 'Docker prune', 'system.cleanupImages': 'Очистка образов', 'bulk.env': 'Массово: env', 'bulk.image': 'Массово: образ', 'template.save': 'Шаблон сохранён', 'hook.create': 'Вебхук создан', 'hook.deploy': 'Деплой по вебхуку', 'backup.download': 'Скачан бэкап', 'user.2fa_on': '2FA включена', 'user.2fa_off': '2FA отключена', 'channel.add': 'Канал уведомлений', 'cert.reissue': 'Перевыпуск сертификата', 'profile.update': 'Профиль изменён', 'session.revoke': 'Сессия завершена', 'session.revoke_others': 'Остальные сессии завершены', 'user.create': 'Пользователь создан', 'user.update': 'Пользователь изменён', 'user.delete': 'Пользователь удалён', 'user.sessions_revoked': 'Сессии пользователя завершены', 'user.password_changed': 'Пароль изменён', login: 'Вход', 'login.sso': 'Вход через SSO' };
+const OP_NAMES = { env: 'Правка env', resources: 'Изменение ресурсов', sourceImage: 'Смена образа', sourceGithub: 'Смена источника (GitHub)', domainAdd: 'Домен добавлен', domainUpdate: 'Домен изменён', domainDelete: 'Домен удалён',
+  portAdd: 'Порт открыт', portUpdate: 'Порт изменён', portDelete: 'Порт удалён', mountAdd: 'Монтирование добавлено', mountUpdate: 'Монтирование изменено', mountDelete: 'Монтирование удалено', notes: 'Заметки изменены' };
+/** Человекочитаемое название действия из журнала (service.*, bulk.*, schedule.* и т. д.). */
+export function actionLabel(action) {
+  if (ACTION_NAMES[action]) return ACTION_NAMES[action];
+  const [ns, rest] = String(action).split('.');
+  if (ns === 'service' && OP_NAMES[rest]) return OP_NAMES[rest];
+  if (ns === 'bulk') return `Массово: ${actionLabel(`service.${rest}`)}`;
+  if (ns === 'schedule') return rest === 'add' ? 'Расписание создано' : `Расписание: ${actionLabel(`service.${rest}`)}`;
+  return action;
+}
 export function auditPage() {
   const box = h('div', { class: 'card flush' }, h('div', { class: 'skeleton', style: { height: '160px' } }));
   const q = h('input', { class: 'input search', placeholder: 'Поиск: пользователь, панель, действие, сервис…' });
@@ -274,7 +285,7 @@ export function auditPage() {
   const load = () => get(`/api/audit?limit=300${q.value ? `&q=${encodeURIComponent(q.value)}` : ''}`).then((rows) => {
     clear(box).append(rows.length ? h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Время', 'Пользователь', 'Действие', 'Панель', 'Объект', ''].map((x) => h('th', null, x)))),
       h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'muted nowrap' }, fmtTime(r.ts)), h('td', null, r.username ?? '—'),
-        h('td', null, ACTION_NAMES[r.action] ?? (r.action.startsWith('bulk.') ? `Массово: ${ACTION_NAMES['service.' + r.action.slice(5)] ?? r.action.slice(5)}` : r.action)),
+        h('td', null, actionLabel(r.action)),
         h('td', null, r.panelName ?? '—'), h('td', { class: 'mono small' }, r.target ?? ''),
         h('td', null, r.ok ? h('span', { class: 'badge ok' }, 'ок') : h('span', { class: 'badge err', title: r.detail }, 'ошибка')))))) : empty('Ничего не найдено'));
   });
@@ -294,7 +305,8 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [channelsCard(), usersCard()] : []), twoFaCard(), ...(can('admin') ? [hooksCard(), backupCard()] : []), passwordCard(), languageCard(), themeCard());
+    ...(can('admin') ? [channelsCard(), hooksCard(), backupCard()] : []),
+    h('a', { class: 'callout link-callout', href: '#/profile' }, icon('users', 16), h('div', null, h('b', null, 'Личные настройки'), h('p', null, 'Пароль, двухфакторная аутентификация, сессии, язык и тема — в профиле.'))));
   return page;
 }
 async function move(i, d) {
@@ -303,18 +315,12 @@ async function move(i, d) {
   refresh(true);
 }
 
-function passwordCard() {
-  const cur = h('input', { class: 'input', type: 'password', autocomplete: 'current-password' }), next = h('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
-  return h('section', { class: 'card stack' }, h('h3', null, 'Смена пароля'), h('div', { class: 'grid-2' }, field('Текущий', cur), field('Новый', next, 'Минимум 8 символов')),
-    h('div', null, h('button', { class: 'btn', onclick: async () => { try { await post('/api/me/password', { current: cur.value, next: next.value }); toast('Пароль изменён', 'success'); cur.value = next.value = ''; } catch (e) { toast(e.message, 'error'); } } }, 'Сменить пароль')));
-}
-
-function languageCard() {
+export function languageCard() {
   const btn = (code, label) => h('button', { class: `btn ${lang === code ? 'on' : ''}`, onclick: () => setLang(code) }, label);
   return h('section', { class: 'card stack' }, h('h3', null, 'Язык интерфейса'), h('div', { class: 'inline' }, btn('ru', 'Русский'), btn('en', 'English')));
 }
 
-function themeCard() {
+export function themeCard() {
   const set = (t) => { try { t ? localStorage.setItem('ea-theme', t) : localStorage.removeItem('ea-theme'); } catch {} if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; };
   return h('section', { class: 'card' }, h('h3', null, 'Оформление'), h('div', { class: 'inline' }, [['', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([v, l]) => h('button', { class: 'btn', onclick: () => set(v) }, l))));
 }
