@@ -247,3 +247,4 @@ tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
 .seg-btn { flex: 1 1 auto; padding: 6px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-weight: 550; cursor: pointer; }
 .seg-btn:hover { color: var(--text); } .seg-btn.active { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--border2); }
 .audit-panel-link { display: block; color: inherit; text-decoration: none; } .audit-panel-link:hover .panel-chip { text-decoration: underline; }
+.sparks .spark-empty { grid-column: 1 / -1; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

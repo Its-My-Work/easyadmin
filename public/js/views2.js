@@ -1,7 +1,7 @@
 import { del, get, post, put } from './api.js';
 import { empty, panelChip, showResults, statusBadge, clearSelection } from './components.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, relTime, toast } from './dom.js';
-import { locale } from './i18n.js';
+import { locale, t } from './i18n.js';
 import { TYPE_LABEL, allServices, can, isDb, panelById, refresh, store } from './store.js';
 
 const pageHead = (title, ...actions) => h('div', { class: 'page-head' }, h('h1', null, title), h('div', { class: 'inline' }, actions));
@@ -35,7 +35,7 @@ export function historyCard(panel) {
       const pts = await get(`/api/panels/${panel.id}/history?hours=${hours}`);
       clear(body).append(...(pts.length > 1
         ? [sparkline(pts, 'cpu', { label: 'CPU', color: 'var(--accent)' }), sparkline(pts, 'mem', { label: 'RAM', color: 'var(--ok)' }), sparkline(pts, 'disk', { label: 'Диск', color: 'var(--warn)' })]
-        : [h('p', { class: 'muted' }, 'История копится — данные появятся через несколько минут работы.')]));
+        : [h('p', { class: 'muted spark-empty' }, 'История копится — данные появятся через несколько минут работы.')]));
     } catch (e) { clear(body).append(h('p', { class: 'muted' }, e.message)); }
   };
   const seg = h('div', { class: 'seg' }, [[6, '6 ч'], [24, '24 ч'], [168, '7 дн']].map(([v, l]) => h('button', { class: v === hours ? 'on' : '', onclick: (e) => { hours = v; seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.currentTarget)); draw(); } }, l)));
@@ -122,7 +122,12 @@ export function bulkOpModal(op) {
 export function cleanAllModal() {
   const op = h('select', { class: 'input' }, h('option', { value: 'cleanupImages' }, 'Очистить неиспользуемые образы'), h('option', { value: 'prune' }, 'Docker system prune (всё неиспользуемое)'));
   const boxes = store.panels.map((p) => ({ p, cb: h('input', { type: 'checkbox', checked: ['online', 'degraded'].includes(p.status) }) }));
-  modal({ title: 'Очистка Docker на нескольких панелях', body: h('div', { class: 'stack' }, field('Операция', op), h('div', { class: 'checklist' }, boxes.map(({ p, cb }) => h('label', null, cb, panelChip(p))))),
+  const HINTS = { cleanupImages: 'Безопасно для работающих сервисов: удаляются только образы, которые не использует ни один контейнер. Образы остановленных сервисов и для отката придётся скачать или собрать заново — следующий деплой будет дольше.',
+    prune: 'Агрессивнее: удаляет остановленные контейнеры, неиспользуемые сети и образы. Работающие сервисы не затрагиваются, но всё, что сейчас остановлено вручную или вне панели, исчезнет. Точный набор (в том числе тома) определяет панель — перед запуском убедитесь, что нужные данные лежат в томах работающих сервисов.' };
+  const hint = h('div', { class: 'callout warn compact' }, icon('alert', 14), '');
+  const syncHint = () => { hint.lastChild.textContent = t(HINTS[op.value]); hint.className = `callout compact ${op.value === 'prune' ? 'err' : 'warn'}`; };
+  op.addEventListener('change', syncHint); syncHint();
+  modal({ title: 'Очистка Docker на нескольких панелях', body: h('div', { class: 'stack' }, field('Операция', op), hint, h('div', { class: 'checklist' }, boxes.map(({ p, cb }) => h('label', null, cb, panelChip(p))))),
     actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Выполнить', kind: 'primary', onClick: async () => {
       const ids = boxes.filter((b) => b.cb.checked).map((b) => b.p.id);
       if (!ids.length) throw new Error('Выберите панели');
