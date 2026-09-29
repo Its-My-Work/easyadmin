@@ -1,3 +1,4 @@
+import { lang, setLang } from './i18n.js';
 import { api, get, post } from './api.js';
 import { renderBulkBar } from './components.js';
 import { closeDrawer, openService } from './drawer.js';
@@ -29,8 +30,10 @@ function authScreen(setup, sso) {
     user, pass, code, err, btn,
     !setup && sso ? h('div', { class: 'sso' }, h('div', { class: 'or' }, h('span', null, 'или')), h('a', { class: 'btn lg block', href: '/api/oidc/login' }, icon('shield', 16), `Войти через ${sso.name}`)) : null);
   if (ssoError) err.textContent = ssoError;
-  clear(root).append(h('div', { class: 'auth' }, form));
+  clear(root).append(h('div', { class: 'auth' }, langToggle('lang-corner'), form));
 }
+/** Переключатель языка интерфейса: показывает текущий, по клику переключает на другой. */
+const langToggle = (cls = '') => h('button', { class: `btn ghost sm lang-btn ${cls}`, type: 'button', title: 'Language / Язык', onclick: () => setLang(lang === 'ru' ? 'en' : 'ru') }, icon('globe', 14), lang.toUpperCase());
 const logoMark = () => h('span', { class: 'logo-mark' }, icon('layers', 16));
 
 /* ======================= каркас ======================= */
@@ -47,6 +50,7 @@ function buildShell() {
     panelsList,
     h('div', { class: 'side-foot' },
       h('div', { class: 'user' }, h('div', { class: 'avatar' }, store.user.username[0].toUpperCase()), h('div', null, h('b', null, store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
+      langToggle(),
       h('button', { class: 'btn icon ghost', title: 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16))));
   const back = h('div', { class: 'side-back', onclick: () => document.body.classList.remove('nav-open') });
   const top = h('header', { class: 'topbar' },

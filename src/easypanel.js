@@ -187,7 +187,7 @@ export function shapeOf(v, d = 0) {
 const SECRET = /pass|secret|token|key|env|credential|auth|cookie|connection|url|uri/i;
 /** Копия значения без секретов — безопасно показывать администратору и отправлять в отчёт. */
 export function redact(v, d = 0) {
-  if (Array.isArray(v)) return v.slice(0, 3).map((x) => redact(x, d + 1)).concat(v.length > 3 ? [`… ещё ${v.length - 3}`] : []);
+  if (Array.isArray(v)) return v.slice(0, 3).map((x) => redact(x, d + 1)).concat(v.length > 3 ? [`… +${v.length - 3} more`] : []);
   if (v && typeof v === 'object') return d > 5 ? '{…}' : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, SECRET.test(k) && typeof x !== 'object' ? '***' : redact(x, d + 1)]));
   return typeof v === 'string' && v.length > 80 ? `${v.slice(0, 80)}…` : v;
 }

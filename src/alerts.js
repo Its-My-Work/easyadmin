@@ -1,4 +1,5 @@
 import { decrypt, encrypt } from './crypto.js';
+import { translate } from '../public/js/i18n-dict.js';
 import { sendMail } from './smtp.js';
 
 export const EVENT_TYPES = {
@@ -21,7 +22,13 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
   const open = (row) => ({ ...row, config: JSON.parse(decrypt(key, row.config_enc)), events: row.events ? row.events.split(',') : [] });
   const list = () => db.prepare('SELECT * FROM channels ORDER BY id').all().map(open);
 
-  async function sendTo(channel, event) {
+  /** Язык уведомлений: настройка в БД (Настройки → Уведомления), по умолчанию EASYADMIN_LANG. */
+  const getLang = () => db.prepare("SELECT v FROM settings WHERE k = 'notify_lang'").get()?.v ?? config.lang ?? 'ru';
+  const setLang = (l) => db.prepare("INSERT INTO settings (k, v) VALUES ('notify_lang', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(l);
+  const tr = (s) => (getLang() === 'en' ? translate(s) : s);
+
+  async function sendTo(channel, rawEvent) {
+    const event = { ...rawEvent, text: tr(rawEvent.text) };
     const text = `${event.icon ?? '⚠️'} ${event.text}`;
     const c = channel.config;
     if (channel.type === 'telegram') {
@@ -39,7 +46,7 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
       });
       if (!r.ok) throw new Error(`Webhook: HTTP ${r.status}`);
     } else if (channel.type === 'email') {
-      await sendMail({ ...c, subject: `EasyAdmin: ${EVENT_TYPES[event.type] ?? 'уведомление'}`, text: `${event.text}\n\n— EasyAdmin` });
+      await sendMail({ ...c, subject: `EasyAdmin: ${tr(EVENT_TYPES[event.type] ?? 'уведомление')}`, text: `${event.text}\n\n— EasyAdmin` });
     } else throw new Error('Неизвестный тип канала');
   }
 
@@ -87,7 +94,7 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
   }
 
   return {
-    list, emit, evaluate, expect, sendTo,
+    list, emit, evaluate, expect, sendTo, getLang, setLang,
     seal: (cfg) => encrypt(key, JSON.stringify(cfg)),
     publicChannel: (c) => ({ id: c.id, name: c.name, type: c.type, enabled: !!c.enabled, events: c.events,
       summary: c.type === 'telegram' ? `чат ${c.config.chatId}` : c.type === 'email' ? `${c.config.to}` : (() => { try { return new URL(c.config.url).host; } catch { return ''; } })() }),

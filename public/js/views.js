@@ -3,6 +3,7 @@ import { empty, matches, meter, panelChip, serviceFilters, serviceRow, statusBad
 import { openService } from './drawer.js';
 import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, relTime, toast, uptime } from './dom.js';
 import { allServices, can, panelById, refresh, store } from './store.js';
+import { lang, setLang } from './i18n.js';
 import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard, twoFaCard, usersCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
@@ -268,7 +269,7 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [channelsCard(), usersCard()] : []), twoFaCard(), ...(can('admin') ? [hooksCard(), backupCard()] : []), passwordCard(), themeCard());
+    ...(can('admin') ? [channelsCard(), usersCard()] : []), twoFaCard(), ...(can('admin') ? [hooksCard(), backupCard()] : []), passwordCard(), languageCard(), themeCard());
   return page;
 }
 async function move(i, d) {
@@ -281,6 +282,11 @@ function passwordCard() {
   const cur = h('input', { class: 'input', type: 'password', autocomplete: 'current-password' }), next = h('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
   return h('section', { class: 'card stack' }, h('h3', null, 'Смена пароля'), h('div', { class: 'grid-2' }, field('Текущий', cur), field('Новый', next, 'Минимум 8 символов')),
     h('div', null, h('button', { class: 'btn', onclick: async () => { try { await post('/api/me/password', { current: cur.value, next: next.value }); toast('Пароль изменён', 'success'); cur.value = next.value = ''; } catch (e) { toast(e.message, 'error'); } } }, 'Сменить пароль')));
+}
+
+function languageCard() {
+  const btn = (code, label) => h('button', { class: `btn ${lang === code ? 'on' : ''}`, onclick: () => setLang(code) }, label);
+  return h('section', { class: 'card stack' }, h('h3', null, 'Язык интерфейса'), h('div', { class: 'inline' }, btn('ru', 'Русский'), btn('en', 'English')));
 }
 
 function themeCard() {

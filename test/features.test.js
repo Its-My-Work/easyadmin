@@ -323,3 +323,34 @@ describe('экспорт, бэкап, метрики', () => {
     assert.match(text, /easyadmin_services_total\{panel="A"\}/);
   });
 });
+
+describe('локализация на сервере', () => {
+  test('ошибки API переводятся по заголовку X-Lang', async () => {
+    const bad = (lang) => api('anon', 'POST', '/api/login', { username: 'admin', password: 'wrong' }, lang ? { 'X-Lang': lang } : undefined);
+    assert.equal((await bad()).data.error, 'Неверный логин или пароль');
+    assert.equal((await bad('en')).data.error, 'Wrong username or password');
+    assert.match((await api('admin', 'GET', '/api/nothing', undefined, { 'X-Lang': 'en' })).data.error, /Not found/);
+  });
+  test('язык уведомлений: настройка, права, тексты каналов', async () => {
+    assert.equal((await api('admin', 'GET', '/api/settings')).data.notifyLang, 'ru');
+    assert.equal((await api('admin', 'PUT', '/api/settings', { notifyLang: 'de' })).status, 400);
+    const id = (await api('admin', 'GET', '/api/channels')).data.channels[0].id;
+    hookPosts.length = 0;
+    await api('admin', 'POST', `/api/channels/${id}/test`);
+    assert.match(hookPosts.at(-1).body.text, /тестовое уведомление/);
+    assert.equal((await api('admin', 'PUT', '/api/settings', { notifyLang: 'en' })).data.notifyLang, 'en');
+    await api('admin', 'POST', `/api/channels/${id}/test`);
+    assert.match(hookPosts.at(-1).body.text, /test notification/);
+    // реальные события тоже на английском
+    const dead = createMockPanel({ token: 'Z', seed: {} }); const url = await dead.listen();
+    const pid = (await api('admin', 'POST', '/api/panels', { name: 'Lang', url, token: 'Z' })).data.id;
+    await api('admin', 'GET', '/api/overview?force=1'); await dead.close();
+    for (let i = 0; i < 3; i++) await api('admin', 'GET', '/api/overview?force=1');
+    await wait(100);
+    const down = hookPosts.find((p) => p.body.type === 'panel_down');
+    assert.match(down.body.text, /Panel “Lang” is unavailable/);
+    await api('admin', 'DELETE', `/api/panels/${pid}`);
+    await api('admin', 'PUT', '/api/settings', { notifyLang: 'ru' });
+    assert.equal((await api('ro', 'GET', '/api/settings')).status, 403);
+  });
+});

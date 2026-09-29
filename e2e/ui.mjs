@@ -3,7 +3,8 @@
 import { chromium } from 'playwright';
 import { totp } from '../src/totp.js';
 const b = await chromium.launch({ ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}), args: ['--no-sandbox'] });
-const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark' });
+const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark', locale: 'ru-RU' });
+await ctx.addInitScript(() => { try { localStorage.setItem('ea-lang', 'ru'); } catch {} });
 const p = await ctx.newPage();
 const errors = [];
 p.on('pageerror', (e) => errors.push('PAGEERR ' + e.message));

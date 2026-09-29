@@ -1,3 +1,5 @@
+import { locale, t } from './i18n.js';
+
 /** Мини-хелперы DOM. Весь текст вставляется через textContent → XSS невозможен. */
 export function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -7,6 +9,7 @@ export function h(tag, attrs, ...children) {
     else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
     else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
     else if (k === 'value') el.value = v;
+    else if (['placeholder', 'title', 'aria-label', 'alt'].includes(k) && typeof v === 'string') el.setAttribute(k, v);
     else if (k === 'checked' || k === 'disabled' || k === 'selected' || k === 'open') el[k] = !!v;
     else el.setAttribute(k, v === true ? '' : v);
   }
@@ -16,7 +19,7 @@ export function h(tag, attrs, ...children) {
 function append(el, children) {
   for (const c of children.flat(Infinity)) {
     if (c == null || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    el.append(c instanceof Node ? c : document.createTextNode(typeof c === 'string' ? t(c) : String(c)));
   }
 }
 // Element.append(null) вставляет текст «null» — приводим к безопасному поведению для условных детей.
@@ -96,7 +99,7 @@ export function uptime(sec) {
 }
 export const gb = (v) => (v == null ? '—' : `${Math.round(v * 10) / 10} ГБ`);
 export const host = (u) => { try { return new URL(u).host; } catch { return u; } };
-export const fmtTime = (ts) => new Date(ts).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+export const fmtTime = (ts) => new Date(ts).toLocaleString(locale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 /* ---------- toast ---------- */
 export function toast(message, kind = 'info', ms = 4000) {

@@ -3,6 +3,7 @@ import { loadConfig } from './config.js';
 import { loadKey } from './crypto.js';
 import { openDb } from './db.js';
 import { createApp } from './app.js';
+import { translate } from '../public/js/i18n-dict.js';
 
 const config = loadConfig();
 fs.mkdirSync(config.dataDir, { recursive: true });
@@ -12,7 +13,8 @@ const app = createApp({ config, db, key });
 const { server } = app;
 
 server.listen(config.port, config.host, () => {
-  console.log(`EasyAdmin запущен: http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`);
+  const msg = `EasyAdmin запущен: http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`;
+  console.log(config.lang === 'en' ? translate(msg) : msg);
   app.start();
 });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { app.stop(); server.close(() => process.exit(0)); });

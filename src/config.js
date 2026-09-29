@@ -13,6 +13,7 @@ export function loadConfig(env = process.env) {
     sessionDays: int(env.EASYADMIN_SESSION_DAYS, 30),
     cacheTtlMs: int(env.EASYADMIN_CACHE_TTL_MS, 10_000),
     pollIntervalMs: int(env.EASYADMIN_POLL_MS, 60_000),
+    lang: env.EASYADMIN_LANG === 'en' ? 'en' : 'ru',
     publicUrl: env.EASYADMIN_PUBLIC_URL || '',
     logsPaths: (env.EASYPANEL_LOGS_PATHS || '/ws/serviceLogs,/api/ws/serviceLogs,/ws/logs').split(',').map((x) => x.trim()).filter(Boolean),
     oidc: {

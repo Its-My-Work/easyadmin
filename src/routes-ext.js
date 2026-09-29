@@ -67,6 +67,15 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
+  /* ---------------- настройки (язык уведомлений) ---------------- */
+  const settingsRoutes = [
+    ['GET', '/api/settings', () => ({ notifyLang: alerts.getLang() }), { admin: true }],
+    ['PUT', '/api/settings', (ctx) => {
+      if (ctx.body.notifyLang !== undefined) { need(['ru', 'en'].includes(ctx.body.notifyLang), 'Language: ru or en'); alerts.setLang(ctx.body.notifyLang); }
+      return { notifyLang: alerts.getLang() };
+    }, { admin: true }],
+  ];
+
   /* ---------------- диагностика ответов панели ---------------- */
   const diagRoutes = [
     ['GET', '/api/panels/:id/diagnose', async (ctx) => {
@@ -380,5 +389,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...channelRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...channelRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

@@ -4,7 +4,8 @@ import { STATUS, TYPE_LABEL, allServices, can, favorites, isDb, notify, refresh,
 
 export const statusBadge = (status) => {
   const [label, kind] = STATUS[status] || STATUS.unknown;
-  return h('span', { class: `badge ${kind}` }, h('i', { class: 'dot' }), label);
+  const hint = status === 'degraded' ? 'Панель отвечает, но часть данных получить не удалось — причина указана на карточке и странице панели' : null;
+  return h('span', { class: `badge ${kind}`, title: hint }, h('i', { class: 'dot' }), label);
 };
 
 export const svcBadge = (enabled, health) => {

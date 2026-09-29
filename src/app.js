@@ -7,6 +7,7 @@ import {
 } from './easypanel.js';
 import { HttpError, RawResponse, StreamResponse, compile, parseCookies, readJson, redirect, sendJson, sendRaw, serveStatic } from './http.js';
 import { createOidc } from './oidc.js';
+import { translate } from '../public/js/i18n-dict.js';
 import { createAlerts } from './alerts.js';
 import { extraRoutes } from './routes-ext.js';
 import { createManager } from './manager.js';
@@ -481,7 +482,8 @@ export function createApp({ config, db, key, fetchImpl }) {
       const status = e.status || 500;
       if (status === 500) console.error(e);
       if (res.headersSent) return res.end();
-      sendJson(res, status, { ...(e.extra ?? {}), error: status === 500 ? 'Внутренняя ошибка' : e.message });
+      const msg = status === 500 ? 'Внутренняя ошибка' : e.message;
+      sendJson(res, status, { ...(e.extra ?? {}), error: req.headers['x-lang'] === 'en' ? translate(msg) : msg });
     }
   }
 

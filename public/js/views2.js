@@ -1,6 +1,7 @@
 import { del, get, post, put } from './api.js';
 import { empty, panelChip, showResults, statusBadge, clearSelection } from './components.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, relTime, toast } from './dom.js';
+import { locale } from './i18n.js';
 import { TYPE_LABEL, allServices, can, isDb, panelById, refresh, store } from './store.js';
 
 const pageHead = (title, ...actions) => h('div', { class: 'page-head' }, h('h1', null, title), h('div', { class: 'inline' }, actions));
@@ -234,7 +235,7 @@ async function certsView(body) {
     clear(body).append(...data.map((p) => h('section', { class: 'card' }, h('div', { class: 'card-head' }, panelChip({ name: p.panelName, color: p.color })),
       p.error ? h('div', { class: 'callout warn' }, icon('alert'), p.error) : p.certs.length ? h('table', { class: 'tbl' }, h('tbody', null, p.certs.sort((a, b) => (a.expiresAt ?? 9e15) - (b.expiresAt ?? 9e15)).map((c) => {
         const days = c.expiresAt ? Math.floor((c.expiresAt - Date.now()) / 86_400_000) : null;
-        return h('tr', null, h('td', null, h('b', null, c.domain)), h('td', { class: 'muted' }, c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('ru-RU') : '—'),
+        return h('tr', null, h('td', null, h('b', null, c.domain)), h('td', { class: 'muted' }, c.expiresAt ? new Date(c.expiresAt).toLocaleDateString(locale()) : '—'),
           h('td', { class: 'w-actions' }, days == null ? h('span', { class: 'badge muted' }, 'срок неизвестен') : h('span', { class: `badge ${days < 7 ? 'err' : days < 30 ? 'warn' : 'ok'}` }, days < 0 ? 'истёк' : `${days} дн.`)));
       }))) : h('p', { class: 'muted' }, 'Сертификатов нет.'))));
     if (!data.length) body.append(empty('Нет панелей'));
@@ -284,7 +285,10 @@ export function channelsCard() {
         load();
       } }] });
   };
-  return h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Уведомления'), h('button', { class: 'btn sm', onclick: () => form() }, icon('plus', 14), 'Добавить канал')), box,
+  const langSel = h('select', { class: 'input', style: { width: 'auto' }, onchange: async () => { try { await put('/api/settings', { notifyLang: langSel.value }); toast('Язык уведомлений сохранён', 'success'); } catch (e) { toast(e.message, 'error'); } } },
+    h('option', { value: 'ru' }, 'Русский'), h('option', { value: 'en' }, 'English'));
+  get('/api/settings').then((r) => { langSel.value = r.notifyLang; }).catch(() => { langSel.hidden = true; });
+  return h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Уведомления'), h('div', { class: 'inline' }, h('span', { class: 'muted small' }, 'Язык уведомлений'), langSel, h('button', { class: 'btn sm', onclick: () => form() }, icon('plus', 14), 'Добавить канал'))), box,
     h('p', { class: 'muted small', style: { marginTop: '10px' } }, 'Уведомления о падении панели приходят после двух неудачных проверок подряд. Остановки сервисов, сделанные через EasyAdmin, не считаются сбоем.'));
 }
 

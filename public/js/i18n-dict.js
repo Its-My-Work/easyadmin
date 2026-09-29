@@ -5,7 +5,7 @@
  */
 export const EN = [
   /* --- общие --- */
-  ['Закрыть', 'Close'], ['Отмена', 'Cancel'], ['Подтвердить', 'Confirm'], ['Выполнить', 'Run'], ['Применить', 'Apply'], ['Сохранить', 'Save'],
+  ['Закрыть', 'Close'], ['— ок', '— ok'], ['— {0}', '— {0}'], ['Отмена', 'Cancel'], ['Подтвердить', 'Confirm'], ['Выполнить', 'Run'], ['Применить', 'Apply'], ['Сохранить', 'Save'],
   ['Создать', 'Create'], ['Удалить', 'Delete'], ['Добавить', 'Add'], ['Изменить', 'Edit'], ['Повторить', 'Retry'], ['Копировать', 'Copy'],
   ['Скопировано', 'Copied'], ['Сохранено', 'Saved'], ['Готово', 'Done'], ['Есть ошибки', 'Completed with errors'], ['ок', 'ok'], ['ошибка', 'error'],
   ['Ошибка {0}', 'Error {0}'], ['Нет связи с сервером EasyAdmin', 'Cannot reach the EasyAdmin server'], ['Ничего не найдено', 'Nothing found'],
@@ -85,8 +85,10 @@ export const EN = [
   ['панель {0}', 'panel {0}'],
 
   /* --- карточка сервиса --- */
-  ['Деплой', 'Deploy'], ['Перезапуск', 'Restart'], ['Запуск', 'Start'], ['Стоп', 'Stop'], ['Остановка', 'Stopping'], ['Удаление', 'Deleting'],
-  ['Перезапустить', 'Restart'], ['Остановить', 'Stop'], ['Запустить', 'Start'], ['Деплой запущен', 'Deployment started'], ['Сервис запущен', 'Service started'],
+  ['Деплой', 'Deploy'], ['Перезапуск', 'Restart'], ['Запуск', 'Start'], ['Стоп', 'Stop'], ['Остановка', 'Stopping'], ['Удаление', 'Delete'],
+  ['Деплой: {0}…', 'Deploying: {0}…'], ['Запуск: {0}…', 'Starting: {0}…'], ['Остановка: {0}…', 'Stopping: {0}…'], ['Перезапуск: {0}…', 'Restarting: {0}…'], ['Удаление: {0}…', 'Deleting: {0}…'],
+  ['{0} · не вызывался', '{0} · never called'], ['{0} · вызван {1}', '{0} · called {1}'], ['вызван', 'called'], ['не вызывался', 'never called'],
+  ['Перезапустить', 'Restart'], ['Остановить', 'Stop'], ['Запустить', 'Start'], ['Деплой запущен', 'Deployment started'], ['Деплой запущен: {0}', 'Deployment started: {0}'], ['Сервис запущен: {0}', 'Service started: {0}'], ['Сервис остановлен: {0}', 'Service stopped: {0}'], ['Сервис перезапущен: {0}', 'Service restarted: {0}'], ['Сервис удалён: {0}', 'Service deleted: {0}'], ['Сервис запущен', 'Service started'],
   ['Сервис остановлен', 'Service stopped'], ['Сервис перезапущен', 'Service restarted'], ['Сервис удалён', 'Service deleted'], ['Удалить сервис?', 'Delete service?'],
   ['Сервис «{0}/{1}» на панели «{2}» будет удалён вместе с данными. Это необратимо.', 'Service “{0}/{1}” on panel “{2}” will be deleted together with its data. This cannot be undone.'],
   ['Нет подходящих сервисов для этого действия', 'No suitable services for this action'], ['{0}: {1} шт.', '{0}: {1} pcs.'],
@@ -133,7 +135,7 @@ export const EN = [
   ['Создание сервиса', 'Service created'], ['Правка env', 'Env edited'], ['Создание проекта', 'Project created'], ['Удаление проекта', 'Project deleted'], ['Клонирование', 'Clone'],
   ['Смена образа', 'Image changed'], ['Очистка образов', 'Images cleaned up'], ['Массово: env', 'Bulk: env'], ['Массово: образ', 'Bulk: image'], ['Шаблон сохранён', 'Template saved'],
   ['Деплой по вебхуку', 'Deploy via webhook'], ['Скачан бэкап', 'Backup downloaded'], ['2FA включена', '2FA enabled'], ['2FA отключена', '2FA disabled'], ['Канал уведомлений', 'Notification channel'],
-  ['Поиск: пользователь, панель, действие, сервис…', 'Search: user, panel, action, service…'], ['Массово: {0}', 'Bulk: {0}'], ['Вход через SSO', 'Sign-in via SSO'], ['Вход', 'Sign-in'],
+  ['Поиск: пользователь, панель, действие, сервис…', 'Search: user, panel, action, service…'], ['Массово: {0}', 'Bulk: {0}'], ['Вход через SSO', 'Sign-in via SSO'],
   ['вебхук: {0}', 'webhook: {0}'], ['расписание: {0}', 'schedule: {0}'],
 
   /* --- настройки --- */

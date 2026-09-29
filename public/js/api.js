@@ -1,3 +1,5 @@
+import { lang } from './i18n.js';
+
 export class ApiError extends Error {
   constructor(message, status, data) { super(message); this.status = status; this.data = data; }
 }
@@ -7,7 +9,7 @@ export async function api(method, path, body) {
   try {
     res = await fetch(path, {
       method,
-      headers: { 'X-Requested-With': 'easyadmin', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { 'X-Requested-With': 'easyadmin', 'X-Lang': lang, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       credentials: 'same-origin',
     });
