@@ -5,7 +5,7 @@ import http from 'node:http';
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
  * seed: { projects: { name: [{name, type, enabled}] } }
  */
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs' } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false } = {}) {
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -31,10 +31,10 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'domains.listDomains': (i) => need(find(i)).domains,
     'domains.createDomain': (i) => { need(find(i)).domains.push({ id: `d${Date.now()}`, host: i.host, https: i.https, port: i.port }); return null; },
     'domains.deleteDomain': (i) => { const s = need(find(i)); s.domains = s.domains.filter((d) => d.id !== i.id); return null; },
-    'ports.listPorts': (i) => need(find(i)).ports,
+    'ports.listPorts': (i) => { if (requireType && !i.type) throw Object.assign(new Error('Invalid service type.'), { code: 'BAD_REQUEST' }); return need(find(i)).ports; },
     'ports.createPort': (i) => { need(find(i)).ports.push({ id: `p${Date.now()}`, published: i.published, target: i.target, protocol: i.protocol }); return null; },
     'ports.deletePort': (i) => { const s = need(find(i)); s.ports = s.ports.filter((p) => p.id !== i.id); return null; },
-    'mounts.listMounts': (i) => need(find(i)).mounts,
+    'mounts.listMounts': (i) => { if (requireType && !i.type) throw Object.assign(new Error('Invalid service type.'), { code: 'BAD_REQUEST' }); return need(find(i)).mounts; },
     'mounts.createMount': (i) => { need(find(i)).mounts.push({ id: `m${Date.now()}`, type: i.type, name: i.name, mountPath: i.mountPath }); return null; },
     'mounts.deleteMount': (i) => { const s = need(find(i)); s.mounts = s.mounts.filter((m) => m.id !== i.id); return null; },
     'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
@@ -73,7 +73,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     const url = new URL(req.url, 'http://x');
     const proc = url.pathname.replace('/api/trpc/', '');
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
-    const trpcErr = (message, code, httpStatus) => send(httpStatus, { error: { json: { message, code: -32001, data: { code, httpStatus, path: proc } } } });
+    const trpcErr = (message, code, httpStatus) => flatErrors ? send(httpStatus, { json: { defined: false, code, status: httpStatus, message } }) : send(httpStatus, { error: { json: { message, code: -32001, data: { code, httpStatus, path: proc } } } });
     if (proc === 'auth.login' && req.method === 'POST') return send(200, { result: { data: { json: { token } } } });
     if (req.headers.authorization !== `Bearer ${token}`) return trpcErr('Unauthorized', 'UNAUTHORIZED', 401);
     let input;
@@ -83,7 +83,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     const fn = procs[proc];
     if (!fn) return trpcErr(`No procedure ${proc}`, 'NOT_FOUND', 404);
     try { send(200, { result: { data: { json: ok(fn(input ?? {})) } } }); }
-    catch (e) { trpcErr(e.message, e.code ?? 'INTERNAL_SERVER_ERROR', e.code === 'NOT_FOUND' ? 404 : 500); }
+    catch (e) { trpcErr(e.message, e.code ?? 'INTERNAL_SERVER_ERROR', e.code === 'NOT_FOUND' ? 404 : e.code === 'BAD_REQUEST' ? 400 : 500); }
   });
 
   // WebSocket логов: текст, JSON, фрагментированное сообщение, ping, затем «тики» до закрытия клиентом

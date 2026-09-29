@@ -62,7 +62,9 @@ export class PanelClient {
         res.on('end', () => {
           const status = res.statusCode || 0;
           let json; try { json = JSON.parse(data); } catch { /* не JSON */ }
-          const err = json?.error;
+          // ошибка: {error:{json:{message,data:{code}}}} либо (у части версий) сразу {json:{message,code,status,defined}}
+          const flat = json?.json && typeof json.json === 'object' && typeof json.json.message === 'string' && ('code' in json.json || 'status' in json.json) ? json.json : null;
+          const err = json?.error ?? (flat ? { json: { message: flat.message, data: { code: flat.code } } } : null);
           if (err) {
             const code = err.json?.data?.code ?? err.data?.code;
             const msg = err.json?.message ?? err.message ?? 'Ошибка панели';
@@ -279,8 +281,8 @@ export async function inspectService(client, { type, project, name }) {
   const [service, domains, ports, mounts] = await Promise.all([
     settle(client.query(svcProc(type, 'inspectService'), ref)),
     settle(client.query('domains.listDomains', ref)),
-    settle(client.query('ports.listPorts', ref)),
-    settle(client.query('mounts.listMounts', ref)),
+    settle(client.query('ports.listPorts', { ...ref, type })),
+    settle(client.query('mounts.listMounts', { ...ref, type })),
   ]);
   if (service.error) throw new PanelError(service.error);
   return {
@@ -309,15 +311,15 @@ export const SERVICE_OPS = {
     ...r, host: p.host, https: p.https !== false, port: num(p.port) ?? 80, path: p.path || '/',
   }),
   domainDelete: (c, r, _s, p) => c.mutate('domains.deleteDomain', { ...r, id: p.id, domainId: p.id }),
-  portAdd: (c, r, _s, p) => c.mutate('ports.createPort', {
-    ...r, published: num(p.published), target: num(p.target), publishedPort: num(p.published), targetPort: num(p.target),
+  portAdd: (c, r, s, p) => c.mutate('ports.createPort', {
+    ...r, type: s.type, published: num(p.published), target: num(p.target), publishedPort: num(p.published), targetPort: num(p.target),
     protocol: p.protocol === 'udp' ? 'udp' : 'tcp',
   }),
-  portDelete: (c, r, _s, p) => c.mutate('ports.deletePort', { ...r, id: p.id, portId: p.id }),
-  mountAdd: (c, r, _s, p) => c.mutate('mounts.createMount', {
-    ...r, type: p.type || 'volume', name: p.name, mountPath: p.mountPath, hostPath: p.hostPath, content: p.content,
+  portDelete: (c, r, s, p) => c.mutate('ports.deletePort', { ...r, type: s.type, id: p.id, portId: p.id }),
+  mountAdd: (c, r, s, p) => c.mutate('mounts.createMount', {
+    ...r, serviceType: s.type, type: p.type || 'volume', name: p.name, mountPath: p.mountPath, hostPath: p.hostPath, content: p.content,
   }),
-  mountDelete: (c, r, _s, p) => c.mutate('mounts.deleteMount', { ...r, id: p.id, mountId: p.id }),
+  mountDelete: (c, r, s, p) => c.mutate('mounts.deleteMount', { ...r, type: s.type, id: p.id, mountId: p.id }),
   notes: (c, r, _s, p) => c.mutate('common.setNotes', { ...r, notes: String(p.notes ?? '') }),
 };
 

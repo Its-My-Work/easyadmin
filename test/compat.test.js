@@ -5,6 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
+import { createMockPanel } from './mock-easypanel.js';
 import { PanelClient, normalizeTree, redact, shapeOf, unwrapJson } from '../src/easypanel.js';
 
 // «Чужая» версия панели: без superjson и с другой формой списка проектов
@@ -29,6 +30,25 @@ before(async () => {
   id = (await (await fetch(base + '/api/panels', { method: 'POST', headers: { ...h, Cookie: cookie }, body: JSON.stringify({ name: 'P', url, token: 't' }) })).json()).id;
 });
 after(() => { app.stop(); app.server.closeAllConnections(); app.server.close(); panel.close(); });
+
+describe('формат ошибок и тип сервиса (как у реальной панели)', () => {
+  test('ошибка вида {json:{message,code}} читается как сообщение, а не сырой JSON', async () => {
+    const m = createMockPanel({ token: 'X', flatErrors: true, seed: { p: [{ name: 's' }] } });
+    const u = await m.listen();
+    await assert.rejects(new PanelClient({ url: u, token: 'X' }).query('nope.nothing'), (e) => e.message.includes('No procedure') && !e.message.includes('{"json"'));
+    await assert.rejects(new PanelClient({ url: u, token: 'bad' }).query('projects.listProjects'), (e) => e.kind === 'auth');
+    await m.close();
+  });
+  test('порты и тома запрашиваются с типом сервиса', async () => {
+    const m = createMockPanel({ token: 'X', flatErrors: true, requireType: true, seed: { p: [{ name: 'c', type: 'compose' }] } });
+    const u = await m.listen();
+    const { inspectService } = await import('../src/easypanel.js');
+    const r = await inspectService(new PanelClient({ url: u, token: 'X' }), { type: 'compose', project: 'p', name: 'c' });
+    assert.deepEqual(r.warnings, []);
+    assert.deepEqual(r.ports, []);
+    await m.close();
+  });
+});
 
 describe('совместимость с другими формами ответов', () => {
   test('клиент понимает ответ без superjson-обёртки', async () => {

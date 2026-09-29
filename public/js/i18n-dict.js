@@ -1,0 +1,278 @@
+/**
+ * Словарь ru → en. Общий для браузера и сервера (сообщения об ошибках, уведомления).
+ * Ключ — русская строка как в коде; {0}, {1}… — подстановки (значения переводятся рекурсивно).
+ * Пробелы по краям при поиске игнорируются.
+ */
+export const EN = [
+  /* --- общие --- */
+  ['Закрыть', 'Close'], ['Отмена', 'Cancel'], ['Подтвердить', 'Confirm'], ['Выполнить', 'Run'], ['Применить', 'Apply'], ['Сохранить', 'Save'],
+  ['Создать', 'Create'], ['Удалить', 'Delete'], ['Добавить', 'Add'], ['Изменить', 'Edit'], ['Повторить', 'Retry'], ['Копировать', 'Copy'],
+  ['Скопировано', 'Copied'], ['Сохранено', 'Saved'], ['Готово', 'Done'], ['Есть ошибки', 'Completed with errors'], ['ок', 'ok'], ['ошибка', 'error'],
+  ['Ошибка {0}', 'Error {0}'], ['Нет связи с сервером EasyAdmin', 'Cannot reach the EasyAdmin server'], ['Ничего не найдено', 'Nothing found'],
+  ['Измените фильтры.', 'Try changing the filters.'], ['Включить', 'Enable'], ['Отключить', 'Disable'], ['Вкл/выкл', 'On/off'],
+  ['Скачать', 'Download'], ['Очистить', 'Clear'], ['Выше', 'Up'], ['Ниже', 'Down'], ['Проверить', 'Test'], ['Новый', 'New'], ['Текущий', 'Current'],
+  ['Пока пусто', 'Nothing here yet'], ['Название', 'Name'], ['Имя', 'Name'], ['Тип', 'Type'], ['Статус', 'Status'], ['Роль', 'Role'], ['Порт', 'Port'],
+  ['без изменений', 'unchanged'], ['Меню', 'Menu'], ['или', 'or'], ['Время', 'Time'], ['Пользователь', 'User'], ['Действие', 'Action'], ['Объект', 'Object'],
+  ['Панель', 'Panel'], ['Панели', 'Panels'], ['Проект', 'Project'], ['Проекты', 'Projects'], ['Сервис', 'Service'], ['Сервисы', 'Services'],
+  ['Образ', 'Image'], ['Образы', 'Images'], ['Диск', 'Disk'], ['Аптайм', 'Uptime'], ['Ресурсы', 'Resources'], ['Домены', 'Domains'], ['Заметки', 'Notes'],
+  ['Секрет', 'Secret'], ['Фильтр…', 'Filter…'], ['Пауза', 'Pause'], ['Продолжить', 'Resume'], ['Подключение…', 'Connecting…'],
+  ['никогда', 'never'], ['только что', 'just now'], ['{0} с назад', '{0}s ago'], ['{0} мин назад', '{0} min ago'], ['{0} ч назад', '{0} h ago'], ['{0} дн назад', '{0} d ago'],
+  ['{0} д {1} ч', '{0}d {1}h'], ['{0} ч {1} м', '{0}h {1}m'], ['{0} ГБ', '{0} GB'], ['{0} мс', '{0} ms'], ['{0} дн.', '{0}d'], ['{0} строк', '{0} lines'],
+  ['Обновлено {0}', 'Updated {0}'], ['Для подтверждения введите', 'To confirm, type'], ['Ссылка перестанет работать.', 'The link will stop working.'],
+
+  /* --- статусы --- */
+  ['Онлайн', 'Online'], ['Частично', 'Partial'], ['Недоступна', 'Unavailable'], ['Ошибка токена', 'Token error'], ['Проверка…', 'Checking…'],
+  ['Работает', 'Running'], ['Остановлен', 'Stopped'], ['Сбой', 'Failed'], ['Нет контейнера', 'No container'], ['● Онлайн', '● Online'],
+  ['Сервис включён, но контейнер не запущен', 'The service is enabled but its container is not running'],
+  ['Сервис включён, но контейнер не найден', 'The service is enabled but its container was not found'],
+  ['Панель отвечает, но часть данных получить не удалось — причина указана на карточке и странице панели', 'The panel responds, but some data could not be fetched — see the reason on the panel card and page'],
+  ['Работают', 'Running'], ['Остановлены', 'Stopped'], ['Все', 'All'], ['Все панели', 'All panels'], ['Все типы', 'All types'], ['Любой статус', 'Any status'],
+  ['{0} выбрано', '{0} selected'], ['Снять выбор', 'Clear selection'], ['Выбрать все', 'Select all'],
+
+  /* --- навигация и каркас --- */
+  ['Обзор', 'Overview'], ['Все сервисы', 'All services'], ['Инвентарь', 'Inventory'], ['Шаблоны', 'Templates'], ['Расписания', 'Schedules'],
+  ['Журнал', 'Audit log'], ['Журнал действий', 'Audit log'], ['Настройки', 'Settings'], ['Поиск и команды', 'Search and commands'],
+  ['Найти сервис, панель или команду…', 'Find a service, panel or command…'], ['Страница', 'Page'], ['Команда', 'Command'],
+  ['Инвентарь: образы и сертификаты', 'Inventory: images and certificates'], ['Обновить данные', 'Refresh data'], ['Обновить всё', 'Refresh all'], ['Обновить', 'Refresh'],
+  ['Добавить панель', 'Add panel'], ['Выйти', 'Sign out'], ['Остановлено сервисов', 'Stopped services'], ['Сервер недоступен', 'Server unavailable'],
+  ['Сессия истекла — войдите снова', 'Session expired — please sign in again'], ['Не удалось обновить данные: {0}', 'Could not refresh data: {0}'],
+  ['администратор', 'administrator'], ['оператор', 'operator'], ['только чтение', 'read-only'],
+
+  /* --- вход --- */
+  ['Логин', 'Username'], ['Пароль', 'Password'], ['Пароль (мин. 8 символов)', 'Password (min. 8 characters)'], ['Код 2FA (6 цифр)', '2FA code (6 digits)'],
+  ['Создать и войти', 'Create and sign in'], ['Войти', 'Sign in'], ['Первый запуск', 'First run'], ['Вход', 'Sign in'],
+  ['Создайте учётную запись администратора. Через неё вы будете управлять всеми панелями Easypanel.', 'Create an administrator account. You will manage all your Easypanel panels through it.'],
+  ['Одна авторизация — все ваши панели Easypanel.', 'One sign-in — all your Easypanel panels.'], ['Войти через {0}', 'Sign in with {0}'],
+
+  /* --- обзор --- */
+  ['Очистка Docker', 'Docker cleanup'], ['Очистка Docker на нескольких панелях', 'Docker cleanup on several panels'], ['Все на связи', 'All reachable'],
+  ['{0} недоступно', '{0} unavailable'], ['на всех панелях', 'across all panels'], ['{0} остановлено', '{0} stopped'], ['Средний CPU', 'Average CPU'],
+  ['по онлайн-панелям', 'across online panels'], ['Требуют внимания', 'Needs attention'], ['Нет связи', 'No connection'], ['Нет данных', 'No data'],
+  ['Добавьте первую панель Easypanel', 'Add your first Easypanel panel'],
+  ['Понадобится адрес панели и API-токен (Easypanel → Settings → Users → Generate API Token). Токен хранится в зашифрованном виде.', 'You will need the panel address and an API token (Easypanel → Settings → Users → Generate API Token). The token is stored encrypted.'],
+  ['Подключить панель', 'Connect a panel'], ['Администратор ещё не подключил панели или у вас нет доступа к ним.', 'The administrator has not connected any panels yet, or you have no access to them.'],
+
+  /* --- страница панели --- */
+  ['Панель не найдена', 'Panel not found'], ['Возможно, она была удалена.', 'It may have been deleted.'], ['К обзору', 'Back to overview'],
+  ['Активность', 'Activity'], ['Консоль API', 'API console'], ['Диагностика: что отвечает панель', 'Diagnostics: what the panel replies'], ['Система', 'System'],
+  ['Настройки панели', 'Panel settings'], ['Токен отклонён', 'Token rejected'], ['Панель недоступна', 'Panel unavailable'],
+  ['Показаны последние известные данные.', 'Showing the last known data.'], ['Часть данных недоступна', 'Some data is unavailable'],
+  ['Панель ответила не на все запросы.', 'The panel did not answer all requests.'], ['Диагностика', 'Diagnostics'],
+  ['{0} ядер · load {1}', '{0} cores · load {1}'], ['{0} / {1} ГБ', '{0} / {1} GB'], ['Сеть ↓{0} ↑{1} МБ', 'Network ↓{0} ↑{1} MB'],
+  ['Проектов пока нет', 'No projects yet'], ['Создайте проект, чтобы разместить в нём сервисы.', 'Create a project to host services in it.'],
+  ['Создать проект', 'Create project'], ['В проекте нет сервисов.', 'This project has no services.'],
+  ['Поиск по имени, проекту, домену…', 'Search by name, project, domain…'], ['История пуста', 'No history yet'],
+  ['Здесь появятся деплои и другие операции панели. Нажмите на запись, чтобы увидеть лог.', 'Deployments and other panel operations will appear here. Click an entry to see its log.'],
+  ['Не удалось получить детали: {0}\n\n{1}', 'Could not fetch details: {0}\n\n{1}'], ['// результат', '// result'], ['Некорректный JSON', 'Invalid JSON'],
+  ['Выполнить mutation?', 'Run this mutation?'], ['{0} на панели «{1}»', '{0} on panel “{1}”'], ['Ошибка: {0}', 'Error: {0}'],
+  ['Прямой вызов любой tRPC-процедуры панели — на случай функций, которых ещё нет в интерфейсе. Мутации попадают в журнал.', 'Call any tRPC procedure of the panel directly — for features not yet in the UI. Mutations are recorded in the audit log.'],
+  ['Процедура', 'Procedure'], ['Диагностика · {0}', 'Diagnostics · {0}'], ['Копировать отчёт', 'Copy report'], ['Отчёт скопирован', 'Report copied'],
+  ['Значения секретов скрыты. Отчёт можно отправить разработчику целиком.', 'Secret values are hidden. The whole report can be sent to the developer.'],
+  ['Распознано проектов: {0}{1}', 'Projects recognized: {0}{1}'], ['макс {0}%', 'max {0}%'], ['Нагрузка', 'Load'], ['6 ч', '6 h'], ['24 ч', '24 h'], ['7 дн', '7 d'],
+  ['История копится — данные появятся через несколько минут работы.', 'History is being collected — data will appear after a few minutes of uptime.'],
+
+  /* --- проекты, сервисы, система --- */
+  ['Новый проект · {0}', 'New project · {0}'], ['Имя проекта', 'Project name'], ['Латиница, цифры, - _ .', 'Latin letters, digits, - _ .'], ['Проект создан', 'Project created'],
+  ['Удалить проект?', 'Delete project?'], ['Удалить проект', 'Delete project'], ['Проект «{0}» и все его сервисы ({1}) на панели «{2}» будут удалены.', 'Project “{0}” and all its services ({1}) on panel “{2}” will be deleted.'],
+  ['Проект удалён', 'Project deleted'], ['Сначала создайте проект', 'Create a project first'], ['Приложение (App)', 'Application (App)'], ['nginx:latest (необязательно)', 'nginx:latest (optional)'],
+  ['пусто = сгенерировать', 'empty = generate'], ['Пароль БД', 'Database password'], ['Новый сервис · {0}', 'New service · {0}'], ['Сервис создан', 'Service created'],
+  ['{0}: готово', '{0}: done'], ['Система · {0}', 'System · {0}'], ['Очистить образы Docker', 'Clean up Docker images'], ['Удалит неиспользуемые образы.', 'Removes unused images.'],
+  ['Удалит неиспользуемые контейнеры, сети и образы.', 'Removes unused containers, networks and images.'], ['Перезапустить Easypanel', 'Restart Easypanel'],
+  ['Сама панель будет недоступна пару минут.', 'The panel itself will be unavailable for a couple of minutes.'], ['Перезагрузить сервер', 'Reboot server'],
+  ['Сервер целиком уйдёт в перезагрузку.', 'The whole server will reboot.'], ['Панель / проект', 'Panel / project'], ['Подключите панель, чтобы увидеть сервисы.', 'Connect a panel to see services.'],
+  ['{0} из {1}', '{0} of {1}'], ['Очистить неиспользуемые образы', 'Clean up unused images'], ['Docker system prune (всё неиспользуемое)', 'Docker system prune (everything unused)'],
+  ['Операция', 'Operation'], ['Выберите панели', 'Select panels'], ['Подтвердите', 'Please confirm'], ['Операция затронет {0} панел(ей).', 'The operation will affect {0} panel(s).'],
+  ['панель {0}', 'panel {0}'],
+
+  /* --- карточка сервиса --- */
+  ['Деплой', 'Deploy'], ['Перезапуск', 'Restart'], ['Запуск', 'Start'], ['Стоп', 'Stop'], ['Остановка', 'Stopping'], ['Удаление', 'Deleting'],
+  ['Перезапустить', 'Restart'], ['Остановить', 'Stop'], ['Запустить', 'Start'], ['Деплой запущен', 'Deployment started'], ['Сервис запущен', 'Service started'],
+  ['Сервис остановлен', 'Service stopped'], ['Сервис перезапущен', 'Service restarted'], ['Сервис удалён', 'Service deleted'], ['Удалить сервис?', 'Delete service?'],
+  ['Сервис «{0}/{1}» на панели «{2}» будет удалён вместе с данными. Это необратимо.', 'Service “{0}/{1}” on panel “{2}” will be deleted together with its data. This cannot be undone.'],
+  ['Нет подходящих сервисов для этого действия', 'No suitable services for this action'], ['{0}: {1} шт.', '{0}: {1} pcs.'],
+  ['Действие затронет {0} сервис(ов) на {1} панел(ях).', 'The action will affect {0} service(s) on {1} panel(s).'], ['{0} {1} сервис(ов)…', '{0} {1} service(s)…'],
+  ['Готово: {0} из {1}', 'Done: {0} of {1}'], ['Выполнено {0}, с ошибкой {1}', 'Succeeded {0}, failed {1}'], ['Успешно {0}, с ошибкой {1}', 'Succeeded {0}, failed {1}'],
+  ['Изменить переменные окружения у выбранных', 'Edit environment variables of the selected'], ['Сменить образ у выбранных App', 'Change the image of the selected Apps'], ['Образ…', 'Image…'],
+  ['В избранное', 'Add to favorites'], ['Избранное', 'Favorite'], ['Сервис {0}', 'Service {0}'], ['Открыть панель Easypanel', 'Open the Easypanel panel'],
+  ['Окружение', 'Environment'], ['Логи', 'Logs'], ['Порты и тома', 'Ports and volumes'], ['Источник', 'Source'], ['Автоматизация', 'Automation'], ['Данные', 'Data'], ['Обзор сервиса', 'Service overview'],
+  ['Не удалось загрузить сервис', 'Could not load the service'], ['Заметки о сервисе…', 'Notes about the service…'], ['Ресурсы сейчас', 'Current resource usage'],
+  ['Репозиторий', 'Repository'], ['Доменов', 'Domains'], ['Томов', 'Volumes'], ['Портов', 'Ports'], ['Сохранить заметки', 'Save notes'], ['Клонировать…', 'Clone…'],
+  ['Сохранить как шаблон', 'Save as template'], ['Показать значения', 'Show values'], ['Скрыть', 'Hide'], ['Сначала покажите значения', 'Reveal the values first'],
+  ['Переменные сохранены', 'Variables saved'], ['Сохранить и задеплоить', 'Save and deploy'],
+  ['Формат: одна переменная на строку, KEY=value. Значения скрыты, пока вы не нажмёте «Показать».', 'Format: one variable per line, KEY=value. Values are hidden until you click “Show”.'],
+  ['порт {0} · {1}', 'port {0} · {1}'], ['Удалить домен', 'Delete domain'], ['Удалить домен?', 'Delete domain?'], ['Домен удалён', 'Domain deleted'], ['Доменов пока нет.', 'No domains yet.'],
+  ['Добавить домен', 'Add domain'], ['Хост', 'Host'], ['Порт контейнера', 'Container port'], ['Укажите хост', 'Enter a host'], ['Домен добавлен', 'Domain added'],
+  ['data (для volume)', 'data (for volume)'], ['/srv/data (для bind)', '/srv/data (for bind)'], ['Открытые порты', 'Exposed ports'], ['Порт удалён', 'Port deleted'],
+  ['Нет открытых портов.', 'No exposed ports.'], ['Внешний', 'External'], ['Внутренний', 'Internal'], ['Протокол', 'Protocol'], ['Укажите оба порта', 'Enter both ports'],
+  ['Порт добавлен', 'Port added'], ['Открыть порт', 'Expose port'], ['Тома и монтирования', 'Volumes and mounts'], ['Удалить монтирование?', 'Delete mount?'],
+  ['Монтирование удалено', 'Mount deleted'], ['Нет монтирований.', 'No mounts.'], ['Путь в контейнере', 'Path in container'], ['Имя тома', 'Volume name'], ['Путь на хосте', 'Path on host'],
+  ['Укажите путь в контейнере', 'Enter the path in the container'], ['Монтирование добавлено', 'Mount added'], ['0 = без лимита', '0 = no limit'],
+  ['Лимит памяти, МБ', 'Memory limit, MB'], ['Резерв памяти, МБ', 'Memory reservation, MB'], ['Лимит CPU, ядер', 'CPU limit, cores'], ['Резерв CPU, ядер', 'CPU reservation, cores'],
+  ['Лимиты сохранены', 'Limits saved'], ['Docker-образ', 'Docker image'], ['Укажите образ', 'Enter an image'], ['Источник обновлён', 'Source updated'],
+  ['Применить образ', 'Apply image'], ['Владелец', 'Owner'], ['Ветка', 'Branch'], ['Путь сборки', 'Build path'], ['Укажите владельца и репозиторий', 'Enter the owner and repository'],
+  ['Применить репозиторий', 'Apply repository'], ['После смены источника выполните деплой, чтобы изменения вступили в силу.', 'Run a deploy after changing the source for the change to take effect.'],
+  ['на паузе, накоплено {0}', 'paused, {0} buffered'], ['Поток завершён', 'Stream ended'], ['Соединение потеряно — переподключение…', 'Connection lost — reconnecting…'],
+  ['Прокручивать к новым строкам', 'Scroll to new lines'], ['Следить', 'Follow'], ['Переподключить', 'Reconnect'],
+  ['Вебхук позволяет запускать действие по ссылке без входа — например, из GitHub Actions или GitLab CI после публикации образа. Ссылка показывается один раз; храните её как секрет.', 'A webhook lets you trigger an action by URL without signing in — e.g. from GitHub Actions or GitLab CI after publishing an image. The link is shown once; keep it secret.'],
+  ['Вебхуков для этого сервиса нет.', 'No webhooks for this service.'], ['Вебхук деплоя', 'Deploy webhook'], ['Вебхук перезапуска', 'Restart webhook'], ['Вебхук создан', 'Webhook created'],
+  ['Скопируйте сейчас — повторно ссылка не показывается.', 'Copy it now — the link is not shown again.'], ['Удаление сервиса', 'Delete service'],
+  ['Контейнер и данные будут удалены с сервера панели. Отменить нельзя.', 'The container and its data will be removed from the panel server. This cannot be undone.'], ['Удалить сервис', 'Delete service'],
+
+  /* --- форма панели --- */
+  ['Панель · {0}', 'Panel · {0}'], ['Подключить панель Easypanel', 'Connect an Easypanel panel'], ['Прод EU', 'Prod EU'], ['оставьте пустым, чтобы не менять', 'leave empty to keep unchanged'],
+  ['API-токен', 'API token'], ['email администратора панели', 'panel administrator email'], ['пароль панели', 'panel password'],
+  ['Используется один раз для получения токена; пароль не сохраняется. Токен сессии живёт ~30 дней — для постоянного лучше API-токен.', 'Used once to obtain a token; the password is not stored. A session token lives ~30 days — an API token is better for permanent use.'],
+  ['Использовать API-токен', 'Use an API token'], ['Нет токена? Войти по email и паролю', 'No token? Sign in with email and password'], ['Проверяю…', 'Checking…'],
+  ['✓ Соединение установлено ({0} мс)', '✓ Connected ({0} ms)'], ['Адрес панели', 'Panel address'], ['Например https://panel.example.com или http://1.2.3.4:3000', 'E.g. https://panel.example.com or http://1.2.3.4:3000'],
+  ['Теги', 'Tags'], ['Через запятую', 'Comma-separated'], ['Цвет', 'Color'], ['Не проверять TLS-сертификат (самоподписанный)', 'Do not verify the TLS certificate (self-signed)'],
+  ['Удалить панель?', 'Delete panel?'], ['«{0}» будет отключена от EasyAdmin. Сама панель и сервисы не затрагиваются.', '“{0}” will be disconnected from EasyAdmin. The panel itself and its services are not affected.'],
+  ['Панель удалена', 'Panel deleted'], ['Подключить', 'Connect'], ['Панель подключена', 'Panel connected'], ['Панель добавлена', 'Panel added'], ['Панель изменена', 'Panel updated'],
+  ['Панелей пока нет.', 'No panels yet.'],
+
+  /* --- журнал --- */
+  ['Создание сервиса', 'Service created'], ['Правка env', 'Env edited'], ['Создание проекта', 'Project created'], ['Удаление проекта', 'Project deleted'], ['Клонирование', 'Clone'],
+  ['Смена образа', 'Image changed'], ['Очистка образов', 'Images cleaned up'], ['Массово: env', 'Bulk: env'], ['Массово: образ', 'Bulk: image'], ['Шаблон сохранён', 'Template saved'],
+  ['Деплой по вебхуку', 'Deploy via webhook'], ['Скачан бэкап', 'Backup downloaded'], ['2FA включена', '2FA enabled'], ['2FA отключена', '2FA disabled'], ['Канал уведомлений', 'Notification channel'],
+  ['Поиск: пользователь, панель, действие, сервис…', 'Search: user, panel, action, service…'], ['Массово: {0}', 'Bulk: {0}'], ['Вход через SSO', 'Sign-in via SSO'], ['Вход', 'Sign-in'],
+  ['вебхук: {0}', 'webhook: {0}'], ['расписание: {0}', 'schedule: {0}'],
+
+  /* --- настройки --- */
+  ['Смена пароля', 'Change password'], ['Минимум 8 символов', 'At least 8 characters'], ['Пароль изменён', 'Password changed'], ['Сменить пароль', 'Change password'],
+  ['Оформление', 'Appearance'], ['Как в системе', 'System default'], ['Светлая', 'Light'], ['Тёмная', 'Dark'], ['Язык', 'Language'], ['Язык интерфейса', 'Interface language'],
+  ['Язык уведомлений', 'Notification language'], ['Язык уведомлений сохранён', 'Notification language saved'],
+  ['Уведомления', 'Notifications'], ['Добавить канал', 'Add channel'], ['Тест', 'Test'], ['Тестовое уведомление отправлено', 'Test notification sent'], ['Удалить канал?', 'Delete channel?'],
+  ['Каналов пока нет. Добавьте Telegram или webhook, чтобы узнавать о сбоях сразу.', 'No channels yet. Add Telegram, email or a webhook to learn about failures immediately.'],
+  ['Доступно только администратору.', 'Available to administrators only.'], ['Команда DevOps', 'DevOps team'], ['необязательно (заголовок X-EasyAdmin-Secret)', 'optional (X-EasyAdmin-Secret header)'],
+  ['Токен бота', 'Bot token'], ['Создайте бота у @BotFather', 'Create a bot via @BotFather'], ['Личный чат, группа или канал (бот должен быть добавлен)', 'Personal chat, group or channel (the bot must be added)'],
+  ['STARTTLS (порт 587)', 'STARTTLS (port 587)'], ['SSL/TLS (порт 465)', 'SSL/TLS (port 465)'], ['Без шифрования', 'No encryption'], ['логин (необязательно)', 'username (optional)'], ['пароль', 'password'],
+  ['SMTP-сервер', 'SMTP server'], ['Шифрование', 'Encryption'], ['От кого', 'From'], ['Кому (через запятую)', 'To (comma-separated)'], ['Канал · {0}', 'Channel · {0}'],
+  ['Новый канал уведомлений', 'New notification channel'], ['События', 'Events'], ['{0} · {1} · событий: {2}', '{0} · {1} · events: {2}'],
+  ['Уведомления о падении панели приходят после двух неудачных проверок подряд. Остановки сервисов, сделанные через EasyAdmin, не считаются сбоем.', 'Panel-down notifications are sent after two consecutive failed checks. Service stops made through EasyAdmin are not treated as failures.'],
+  ['Включена', 'Enabled'], ['Выключена', 'Disabled'], ['Включить 2FA', 'Enable 2FA'], ['Отключить 2FA', 'Disable 2FA'], ['Двухфакторная аутентификация', 'Two-factor authentication'],
+  ['Добавьте ключ в приложение-аутентификатор (Google Authenticator, Aegis, 1Password и др.):', 'Add the key to an authenticator app (Google Authenticator, Aegis, 1Password, etc.):'],
+  ['Открыть в приложении (otpauth)', 'Open in app (otpauth)'], ['Код из приложения', 'Code from the app'], ['Введите текущий 6-значный код для подтверждения', 'Enter the current 6-digit code to confirm'],
+  ['Код из приложения при входе. Рекомендуем включить: EasyAdmin даёт доступ ко всем вашим серверам.', 'A code from your app at sign-in. We recommend enabling it: EasyAdmin gives access to all your servers.'],
+  ['Бэкап скачан', 'Backup downloaded'], ['Скачать бэкап', 'Download backup'], ['Резервная копия', 'Backup'],
+  ['База EasyAdmin (панели, пользователи, журнал, шаблоны). Токены панелей зашифрованы — без ключа шифрования их не восстановить: либо храните EASYADMIN_SECRET, либо включите ключ в бэкап (тогда файл нужно беречь как секрет). Восстановление:', 'The EasyAdmin database (panels, users, audit log, templates). Panel tokens are encrypted — they cannot be restored without the encryption key: either keep EASYADMIN_SECRET or include the key in the backup (then protect the file as a secret). Restore:'],
+  ['Включить ключ шифрования в файл', 'Include the encryption key in the file'], ['Удалить вебхук?', 'Delete webhook?'],
+  ['Вебхуков нет. Создайте его в карточке сервиса → «Автоматизация».', 'No webhooks. Create one in the service card → “Automation”.'], ['Вебхуки для CI/CD', 'Webhooks for CI/CD'],
+  ['Панели: {0}', 'Panels: {0}'], ['Все панели', 'All panels'], ['это вы', 'you'], ['Удалить пользователя?', 'Delete user?'],
+  ['Только чтение — видит статусы, без env и секретов', 'Read-only — sees statuses, no env or secrets'], ['Оператор — деплой, перезапуск, env, домены; без удаления и системных операций', 'Operator — deploy, restart, env, domains; no deletion or system operations'],
+  ['Администратор — всё', 'Administrator — everything'], ['Пользователь · {0}', 'User · {0}'], ['Новый пользователь', 'New user'], ['Новый пароль', 'New password'],
+  ['Доступные панели (ничего не отмечено = все)', 'Available panels (none selected = all)'], ['Сбросить 2FA (пользователь потеряет телефон)', 'Reset 2FA (the user lost their phone)'], ['Пользователи', 'Users'],
+
+  /* --- шаблоны, клонирование, массовые операции --- */
+  ['Панель назначения', 'Target panel'], ['проект (существующий или новый)', 'project (existing or new)'], ['имя сервиса', 'service name'], ['Имя сервиса', 'Service name'], ['Сразу задеплоить', 'Deploy right away'],
+  ['Клонировать {0}/{1}', 'Clone {0}/{1}'], ['Клонировать', 'Clone'], ['Клонирование завершено', 'Clone completed'], ['Клонирование с ошибками', 'Clone completed with errors'],
+  ['Переносятся переменные окружения, источник (образ или репозиторий) и лимиты ресурсов. Домены, порты и тома не копируются — они привязаны к серверу.', 'Environment variables, the source (image or repository) and resource limits are copied. Domains, ports and volumes are not — they are tied to the server.'],
+  ['Название шаблона', 'Template name'], ['В шаблон попадут env, источник и ресурсы. Он хранится в зашифрованном виде.', 'The template will contain env, source and resources. It is stored encrypted.'],
+  ['Шаблон', 'Template'], ['Образ / репозиторий', 'Image / repository'], ['Развернуть', 'Deploy'], ['Удалить шаблон?', 'Delete template?'], ['Шаблонов пока нет', 'No templates yet'],
+  ['Откройте карточку любого сервиса → «Сохранить как шаблон». Затем его можно развернуть на любой панели.', 'Open any service card → “Save as template”. You can then deploy it on any panel.'],
+  ['Развернуть «{0}»', 'Deploy “{0}”'], ['Среди выбранных нет App-сервисов', 'None of the selected services is an App'], ['Среди выбранных нет App/Compose сервисов', 'None of the selected services is an App/Compose'],
+  ['Установить или изменить (KEY=value, по строке)', 'Set or change (KEY=value, one per line)'], ['Удалить ключи (через запятую)', 'Remove keys (comma-separated)'], ['Новый образ', 'New image'],
+  ['Будет применён ко всем выбранным App-сервисам', 'Will be applied to all selected App services'], ['Изменить env: {0} сервис(ов)', 'Edit env: {0} service(s)'], ['Сменить образ: {0} сервис(ов)', 'Change image: {0} service(s)'],
+  ['Задеплоить после изменения', 'Deploy after the change'], ['Пропущено {0} несовместимых с этой операцией.', 'Skipped {0} not compatible with this operation.'],
+  ['Остальные переменные и комментарии в env сохраняются.', 'Other variables and comments in env are preserved.'],
+
+  /* --- расписания --- */
+  ['Вс', 'Sun'], ['Пн', 'Mon'], ['Вт', 'Tue'], ['Ср', 'Wed'], ['Чт', 'Thu'], ['Пт', 'Fri'], ['Сб', 'Sat'], ['каждые {0}', 'every {0}'], ['в {0}{1}', 'at {0}{1}'], ['ежедневно', 'daily'],
+  ['{0} панел(ей)', '{0} panel(s)'], ['{0} сервис(ов)', '{0} service(s)'], ['Последний запуск {0}: {1}', 'Last run {0}: {1}'], ['Ещё не запускалось', 'Has not run yet'], ['Выполнено', 'Completed'],
+  ['Ошибки: {0}', 'Errors: {0}'], ['Запустить сейчас', 'Run now'], ['Удалить расписание?', 'Delete schedule?'], ['Расписаний пока нет', 'No schedules yet'],
+  ['Например: ночной перезапуск сервисов или еженедельная очистка Docker на всех панелях.', 'For example: a nightly service restart or a weekly Docker cleanup on all panels.'],
+  ['Новое расписание', 'New schedule'], ['Время указывается по часовому поясу сервера EasyAdmin. Ошибки заданий приходят в уведомления.', 'Times use the EasyAdmin server time zone. Job errors are sent as notifications.'],
+  ['Ночной рестарт', 'Nightly restart'], ['Система (очистка Docker)', 'System (Docker cleanup)'], ['Раз в день', 'Once a day'], ['Через интервал', 'At an interval'],
+  ['Время (по времени сервера)', 'Time (server time)'], ['Дни недели (пусто = ежедневно)', 'Weekdays (empty = daily)'], ['Интервал, минут (от 5)', 'Interval, minutes (from 5)'],
+  ['Что делаем', 'What to do'], ['Когда', 'When'], ['Расписание создано', 'Schedule created'], ['Ночной рестарт', 'Nightly restart'],
+
+  /* --- инвентарь --- */
+  ['Сертификаты', 'Certificates'], ['Фильтр по сервису, образу, панели…', 'Filter by service, image, panel…'], ['Расхождения версий ({0})', 'Version mismatches ({0})'],
+  ['Одноимённые сервисы с разными образами на разных панелях.', 'Same-named services with different images on different panels.'], ['Расхождений версий между панелями нет.', 'No version mismatches between panels.'],
+  ['Не удалось получить данные: {0}', 'Could not fetch data: {0}'], ['срок неизвестен', 'expiry unknown'], ['истёк', 'expired'], ['Сертификатов нет.', 'No certificates.'], ['Нет панелей', 'No panels'],
+
+  /* --- ошибки и сообщения сервера --- */
+  ['Некорректное имя: {0}', 'Invalid name: {0}'], ['Нет доступа к этой панели', 'No access to this panel'], ['Почта не подтверждена у провайдера', 'Email is not verified by the provider'],
+  ['SSO не настроен', 'SSO is not configured'], ['Администратор уже создан', 'The administrator already exists'], ['Укажите логин', 'Enter a username'],
+  ['Пароль — минимум 8 символов', 'Password must be at least 8 characters'], ['Слишком много попыток. Подождите минуту.', 'Too many attempts. Wait a minute.'],
+  ['Введите код из приложения-аутентификатора', 'Enter the code from your authenticator app'], ['Неверный код 2FA', 'Invalid 2FA code'], ['Неверный логин или пароль', 'Wrong username or password'],
+  ['Текущий пароль неверен', 'The current password is wrong'], ['Новый пароль — минимум 8 символов', 'The new password must be at least 8 characters'],
+  ['Сначала начните настройку 2FA', 'Start setting up 2FA first'], ['Неверный код', 'Invalid code'], ['Неверный пароль', 'Wrong password'], ['Роль: admin, operator или viewer', 'Role: admin, operator or viewer'],
+  ['Такой логин уже существует', 'This username already exists'], ['Пользователь не найден', 'User not found'], ['Неверная роль', 'Invalid role'],
+  ['Нельзя снять права администратора с самого себя', 'You cannot remove your own administrator rights'], ['Нельзя удалить самого себя', 'You cannot delete yourself'],
+  ['Укажите email', 'Enter an email'], ['Укажите пароль', 'Enter a password'], ['Укажите API-токен', 'Enter an API token'], ['Укажите название', 'Enter a name'],
+  ['Неизвестное действие', 'Unknown action'], ['Удаление доступно только администратору', 'Deletion is available to administrators only'], ['Неизвестная операция', 'Unknown operation'],
+  ['Укажите процедуру', 'Enter a procedure'], ['Выберите от 1 до 200 сервисов', 'Select 1 to 200 services'], ['Слишком большой запрос', 'Request too large'],
+  ['Требуется вход', 'Sign-in required'], ['Не найдено', 'Not found'], ['Внутренняя ошибка', 'Internal error'], ['Некорректный JSON', 'Invalid JSON'],
+  ['Недостаточно прав (роль {0})', 'Insufficient permissions (role {0})'], ['Слишком много запросов', 'Too many requests'],
+  ['Некорректный URL', 'Invalid URL'], ['Разрешены только http и https', 'Only http and https are allowed'], ['Недопустимое имя процедуры: {0}', 'Invalid procedure name: {0}'],
+  ['Ответ панели слишком большой', 'The panel response is too large'], ['Ошибка панели', 'Panel error'], ['Панель перенаправляет на {0} — укажите итоговый адрес (обычно https://)', 'The panel redirects to {0} — use the final address (usually https://)'],
+  ['Токен отклонён панелью', 'The token was rejected by the panel'], ['Ответ не похож на API Easypanel (проверьте адрес)', 'The response does not look like the Easypanel API (check the address)'],
+  ['Соединение отклонено', 'Connection refused'], ['Таймаут {0} мс ({1})', 'Timeout {0} ms ({1})'], ['Панель не вернула токен (включена 2FA?)', 'The panel returned no token (is 2FA enabled?)'],
+  ['… ещё {0}', '… {0} more'], ['Неизвестный тип сервиса: {0}', 'Unknown service type: {0}'], ['Деплой неприменим к базам данных', 'Deploy does not apply to databases'],
+  ['Неизвестное действие: {0}', 'Unknown action: {0}'], ['Неизвестная операция: {0}', 'Unknown operation: {0}'],
+  ['Панель ответила, но список проектов не распознан. Откройте «Диагностика» на странице панели и пришлите результат разработчику.', 'The panel responded, but the project list was not recognized. Open “Diagnostics” on the panel page and send the result to the developer.'],
+  ['Статистика недоступна: {0}', 'Statistics unavailable: {0}'], ['Статистика получена, но формат не распознан (см. «Диагностика»)', 'Statistics received, but the format was not recognized (see “Diagnostics”)'],
+  ['OIDC-провайдер должен работать по HTTPS', 'The OIDC provider must use HTTPS'], ['OIDC: HTTP {0} от {1}', 'OIDC: HTTP {0} from {1}'], ['В discovery нет {0}', 'Discovery has no {0}'],
+  ['Некорректный id_token', 'Invalid id_token'], ['Алгоритм подписи {0} не поддерживается', 'Signature algorithm {0} is not supported'], ['Ключ подписи не найден в JWKS', 'Signing key not found in JWKS'],
+  ['Подпись id_token неверна', 'The id_token signature is invalid'], ['Неверный издатель (iss)', 'Invalid issuer (iss)'], ['id_token выдан для другого клиента (aud)', 'The id_token was issued for another client (aud)'],
+  ['Неверный azp', 'Invalid azp'], ['id_token просрочен', 'The id_token has expired'], ['Неверный nonce', 'Invalid nonce'], ['В id_token нет sub', 'The id_token has no sub'],
+  ['Сессия входа истекла или недействительна — попробуйте снова', 'The sign-in session expired or is invalid — try again'], ['Провайдер не вернул id_token', 'The provider returned no id_token'],
+  ['Ваш домен не допущен к входу', 'Your domain is not allowed to sign in'],
+  ['Тип канала: telegram, webhook или email', 'Channel type: telegram, webhook or email'], ['Укажите токен бота и chat id', 'Enter the bot token and chat id'],
+  ['Шифрование: starttls, tls или none', 'Encryption: starttls, tls or none'], ['Укажите SMTP-сервер, отправителя и получателей', 'Enter the SMTP server, sender and recipients'],
+  ['Некорректный порт', 'Invalid port'], ['URL должен быть http(s)', 'The URL must be http(s)'], ['Укажите URL webhook', 'Enter the webhook URL'], ['Канал не найден', 'Channel not found'],
+  ['EasyAdmin: тестовое уведомление', 'EasyAdmin: test notification'],
+  ['Не удалось подключиться к логам ({0}). Путь WebSocket зависит от версии Easypanel — его можно задать переменной EASYPANEL_LOGS_PATHS.', 'Could not connect to the logs ({0}). The WebSocket path depends on the Easypanel version — set it with the EASYPANEL_LOGS_PATHS variable.'],
+  ['Сервис {0}/{1} уже существует на панели «{2}»', 'Service {0}/{1} already exists on panel “{2}”'], ['Укажите название шаблона', 'Enter a template name'], ['Шаблон не найден', 'Template not found'],
+  ['Операция: env или image', 'Operation: env or image'], ['Укажите переменные для изменения или удаления', 'Specify variables to set or remove'], ['Смена образа доступна только для App', 'Changing the image is available for Apps only'],
+  ['Тип не поддерживается', 'Type not supported'], ['Массово доступны только очистки Docker', 'Only Docker cleanups are available in bulk'], ['Недопустимое действие', 'Invalid action'], ['Выберите цели', 'Select targets'],
+  ['Режим: daily или interval', 'Mode: daily or interval'], ['Время в формате ЧЧ:ММ', 'Time in HH:MM format'], ['Интервал — от 5 минут', 'Interval — from 5 minutes'],
+  ['Бэкап недоступен для БД в памяти', 'Backup is not available for an in-memory database'], ['{0}: панель удалена', '{0}: panel deleted'], ['Ошибок: {0} — {1}', 'Errors: {0} — {1}'],
+  ['SMTP: не заданы сервер, отправитель или получатель', 'SMTP: server, sender or recipient not set'], ['SMTP: таймаут {0} мс', 'SMTP: timeout {0} ms'], ['SMTP: соединение закрыто', 'SMTP: connection closed'],
+  ['Неверная строка: «{0}» (нужно KEY=value)', 'Invalid line: “{0}” (KEY=value expected)'], ['таймаут рукопожатия', 'handshake timeout'], ['неверный Sec-WebSocket-Accept', 'invalid Sec-WebSocket-Accept'],
+  ['проект', 'project'], ['создание сервиса', 'service creation'], ['переменные окружения', 'environment variables'], ['источник (образ)', 'source (image)'], ['источник (GitHub)', 'source (GitHub)'],
+  ['ресурсы', 'resources'], ['деплой', 'deploy'],
+
+  /* --- уведомления (сервер) --- */
+  ['Панель недоступна', 'Panel unavailable'], ['Панель снова доступна', 'Panel is back online'], ['Ошибка токена панели', 'Panel token error'], ['Заканчивается диск', 'Disk is running out'],
+  ['Истекает сертификат', 'Certificate expiring'], ['Сервис остановился или упал', 'Service stopped or crashed'], ['Ошибка задания по расписанию', 'Schedule job error'], ['Неизвестный тип канала', 'Unknown channel type'],
+  ['Панель «{0}»: токен отклонён ({1})', 'Panel “{0}”: token rejected ({1})'], ['Панель «{0}» недоступна: {1}', 'Panel “{0}” is unavailable: {1}'], ['Панель «{0}» снова доступна', 'Panel “{0}” is back online'],
+  ['Панель «{0}»: диск заполнен на {1}%', 'Panel “{0}”: disk is {1}% full'], ['остановлен', 'stopped'], ['не работает (контейнер упал)', 'is not running (container crashed)'],
+  ['Сервис {0} на панели «{1}» {2}', 'Service {0} on panel “{1}” {2}'], ['чат {0}', 'chat {0}'], ['Расписание «{0}»: {1}', 'Schedule “{0}”: {1}'],
+  ['Панель «{0}»: сертификат {1} истекает через {2} дн.', 'Panel “{0}”: certificate {1} expires in {2} d.'], ['EasyAdmin запущен: http://{0}:{1}', 'EasyAdmin is running: http://{0}:{1}'],
+  ['— EasyAdmin', '— EasyAdmin'], ['уведомление', 'notification'],
+];
+
+/* ------------------------------------------------------------------ */
+const CYR = /[А-Яа-яЁё]/;
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function compile() {
+  const exact = new Map();
+  const patterns = [];
+  for (const [ru, en] of EN) {
+    const key = ru.trim();
+    if (!/\{\d+\}/.test(key)) { if (!exact.has(key)) exact.set(key, en.trim()); continue; }
+    const re = new RegExp(`^${key.split(/(\{\d+\})/).map((p) => (/^\{\d+\}$/.test(p) ? '([\\s\\S]+?)' : esc(p))).join('')}$`);
+    patterns.push({ re, en: en.trim(), weight: key.replace(/\{\d+\}/g, '').length });
+  }
+  patterns.sort((a, b) => b.weight - a.weight);
+  return { exact, patterns };
+}
+const { exact, patterns } = compile();
+
+/** Переводит русскую строку на английский; неизвестные строки (и данные пользователя) возвращает как есть. */
+export function translate(str) {
+  if (typeof str !== 'string' || !CYR.test(str)) return str;
+  const lead = str.match(/^\s*/)[0], trail = str.match(/\s*$/)[0];
+  const core = str.trim();
+  if (!core) return str;
+  const hit = exact.get(core);
+  if (hit !== undefined) return lead + hit + trail;
+  for (const { re, en } of patterns) {
+    const m = re.exec(core);
+    if (m) return lead + en.replace(/\{(\d+)\}/g, (_, i) => translate(m[Number(i) + 1] ?? '')) + trail;
+  }
+  return str;
+}
+
+export const hasCyrillic = (s) => CYR.test(s);
