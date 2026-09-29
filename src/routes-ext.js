@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import tls from 'node:tls';
 import path from 'node:path';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.js';
 import { ACTIONS, SYSTEM_OPS, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
@@ -323,9 +324,16 @@ export function extraRoutes(d) {
     if (text(c)) return text(c);
     if (Array.isArray(c)) return c.map((x) => findDomain(x, depth + 1)).filter(Boolean).join(', ') || null;
     if (c && typeof c === 'object' && depth < 3) {
-      for (const k of ['domain', 'domains', 'host', 'hostname', 'name', 'commonName', 'cn', 'subject', 'id']) { const r = findDomain(c[k], depth + 1); if (r) return r; }
+      for (const k of ['main', 'domain', 'domains', 'host', 'hostname', 'name', 'commonName', 'cn', 'subject', 'id']) { const r = findDomain(c[k], depth + 1); if (r) return r; }
+      for (const v of Object.values(c)) if (text(v)) return text(v); // последняя надежда: первое строковое поле
     }
     return null;
+  };
+  /** Дополнительные имена (SAN) сертификата, если панель их отдаёт. */
+  const findSans = (c) => {
+    const d = c?.domain && typeof c.domain === 'object' ? c.domain : c;
+    const v = d?.sans ?? d?.altNames ?? d?.alt ?? c?.sans;
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
   };
   const toTime = (v) => {
     if (typeof v === 'number' && v > 0) return v < 1e12 ? v * 1000 : v;
@@ -339,10 +347,40 @@ export function extraRoutes(d) {
     return null;
   };
   const certExpiry = findExpiry;
+  /* Панель не отдаёт срок действия — читаем его у самого домена по TLS (кэш 30 мин, неудачи 5 мин). */
+  const tlsCache = new Map();
+  const HOSTNAME = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i;
+  function probeTlsExpiry(host, port, timeoutMs = 4000) {
+    return new Promise((resolve) => {
+      let done = false, sock;
+      const fin = (v) => { if (!done) { done = true; try { sock?.destroy(); } catch { /* уже закрыт */ } resolve(v); } };
+      try {
+        sock = tls.connect({ host, port, servername: HOSTNAME.test(host) && !/^[\d.]+$/.test(host) ? host : undefined, rejectUnauthorized: false, timeout: timeoutMs }, () => {
+          const t = Date.parse(sock.getPeerCertificate()?.valid_to ?? '');
+          fin(Number.isFinite(t) ? t : null);
+        });
+        sock.on('error', () => fin(null)); sock.on('timeout', () => fin(null));
+      } catch { fin(null); }
+    });
+  }
+  async function tlsExpiry(host) {
+    if (!config.tlsProbe || host.startsWith('*.') || !HOSTNAME.test(host)) return null;
+    const hit = tlsCache.get(host);
+    if (hit && now() - hit.at < (hit.val ? 1_800_000 : 300_000)) return hit.val;
+    const val = await probeTlsExpiry(host, config.tlsProbePort ?? 443);
+    tlsCache.set(host, { at: now(), val });
+    return val;
+  }
   async function certsOf(row) {
     const raw = await manager.clientFor(row).query('certificates.listCertificates');
     const list = Array.isArray(raw) ? raw : Array.isArray(raw?.certificates) ? raw.certificates : [];
-    return list.map((c) => ({ domain: findDomain(c) ?? (JSON.stringify(c) ?? '?').slice(0, 80), expiresAt: certExpiry(c), raw: c }));
+    return mapLimit(list, 8, async (c) => {
+      const domain = findDomain(c) ?? (JSON.stringify(c) ?? '?').slice(0, 80);
+      const sans = findSans(c);
+      let expiresAt = certExpiry(c), source = expiresAt ? 'panel' : null;
+      if (!expiresAt) { expiresAt = await tlsExpiry(domain.split(', ')[0]); if (expiresAt) source = 'tls'; }
+      return { domain, sans, expiresAt, source, raw: c };
+    });
   }
   const inventoryRoutes = [
     ['GET', '/api/images', async (ctx) => {

@@ -189,7 +189,7 @@ export const EN = [
   /* --- инвентарь --- */
   ['Сертификаты', 'Certificates'], ['Фильтр по сервису, образу, панели…', 'Filter by service, image, panel…'], ['Расхождения версий ({0})', 'Version mismatches ({0})'],
   ['Одноимённые сервисы с разными образами на разных панелях.', 'Same-named services with different images on different panels.'], ['Расхождений версий между панелями нет.', 'No version mismatches between panels.'],
-  ['Не удалось получить данные: {0}', 'Could not fetch data: {0}'], ['срок неизвестен', 'expiry unknown'], ['истёк', 'expired'], ['Сертификатов нет.', 'No certificates.'], ['Нет панелей', 'No panels'],
+  ['Не удалось получить данные: {0}', 'Could not fetch data: {0}'], ['срок неизвестен', 'expiry unknown'], ['истёк', 'expired'], ['Срок получен по TLS-соединению с доменом', 'Expiry read over a TLS connection to the domain'], ['Сертификатов нет.', 'No certificates.'], ['Нет панелей', 'No panels'],
 
   /* --- ошибки и сообщения сервера --- */
   ['Некорректное имя: {0}', 'Invalid name: {0}'], ['Нет доступа к этой панели', 'No access to this panel'], ['Почта не подтверждена у провайдера', 'Email is not verified by the provider'],

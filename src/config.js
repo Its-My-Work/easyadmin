@@ -23,6 +23,9 @@ export function loadConfig(env = process.env) {
       adminEmails: (env.OIDC_ADMIN_EMAILS || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean),
       allowedDomains: (env.OIDC_ALLOWED_DOMAINS || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean),
     },
+    // Срок сертификата определяем по TLS-рукопожатию с самим доменом (панель его не отдаёт)
+    tlsProbe: env.EASYADMIN_TLS_PROBE !== 'false',
+    tlsProbePort: int(env.EASYADMIN_TLS_PROBE_PORT, 443),
     diskAlertPct: int(env.EASYADMIN_DISK_ALERT_PCT, 90),
     metricsToken: env.EASYADMIN_METRICS_TOKEN || '',
     requestTimeoutMs: int(env.EASYADMIN_TIMEOUT_MS, 15_000),

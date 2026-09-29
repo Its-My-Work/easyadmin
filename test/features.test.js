@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
+import tls from 'node:tls';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -14,7 +16,7 @@ import { mergeEnv, parseEnvLines } from '../src/templates.js';
 import { base32Decode, base32Encode, hotp, totp } from '../src/totp.js';
 import { createMockPanel } from './mock-easypanel.js';
 
-let A, B, urlA, urlB, app, base, hook, hookUrl, hookPosts = [], tmp;
+let A, B, urlA, urlB, app, base, hook, hookUrl, hookPosts = [], tmp, cfgRef;
 const jars = {};
 async function api(who, method, p, body, extraHeaders) {
   const res = await fetch(base + p, {
@@ -36,7 +38,8 @@ before(async () => {
   urlA = await A.listen(); urlB = await B.listen();
   hook = http.createServer(async (req, res) => { const c = []; for await (const x of req) c.push(x); hookPosts.push({ headers: req.headers, body: JSON.parse(Buffer.concat(c).toString()) }); res.end('ok'); });
   await new Promise((r) => hook.listen(0, '127.0.0.1', r)); hookUrl = `http://127.0.0.1:${hook.address().port}/`;
-  const config = { ...loadConfig({ EASYADMIN_DATA: tmp, EASYADMIN_METRICS_TOKEN: 'mtok' }), cacheTtlMs: 1, requestTimeoutMs: 3000 };
+  const config = { ...loadConfig({ EASYADMIN_DATA: tmp, EASYADMIN_METRICS_TOKEN: 'mtok' }), cacheTtlMs: 1, requestTimeoutMs: 3000, tlsProbe: false };
+  cfgRef = config;
   app = createApp({ config, db: openDb(tmp), key: crypto.randomBytes(32) });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${app.server.address().port}`;
@@ -283,6 +286,7 @@ describe('сертификаты в нестандартных форматах'
       { name: 'unix.example.com', expiresAt: Math.floor(Date.now() / 1000) + 86400 * 20 },
       { domains: ['a.example.com', 'b.example.com'], info: { expire: 'not a date' } },
       { weird: { x: 1 } },
+      { domain: { main: 'main.example.com', sans: ['a.example.com', 'b.example.com'] } },
     ] });
     const url = await C.listen();
     const pid = (await api('admin', 'POST', '/api/panels', { name: 'Cx', url, token: 'C' })).data.id;
@@ -292,8 +296,31 @@ describe('сертификаты в нестандартных форматах'
     assert.equal(new Date(cx.certs[0].expiresAt).getUTCFullYear(), 2030);
     const days = (cx.certs[1].expiresAt - Date.now()) / 86400000; assert.ok(days > 19 && days < 21);
     assert.equal(cx.certs[2].expiresAt, null);
+    
     assert.match(cx.certs[3].domain, /weird/);
+    assert.equal(cx.certs[4].domain, 'main.example.com'); assert.deepEqual(cx.certs[4].sans, ['a.example.com', 'b.example.com']);
     await api('admin', 'DELETE', `/api/panels/${pid}`); await C.close();
+  });
+});
+
+describe('срок сертификата по TLS-рукопожатию', () => {
+  test('если панель не отдаёт срок, он читается у самого домена', { skip: (() => { try { execFileSync('openssl', ['version']); return false; } catch { return 'нет openssl'; } })() }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ea-probe-'));
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', `${dir}/k.pem`, '-out', `${dir}/c.pem`, '-days', '30', '-subj', '/CN=localhost'], { stdio: 'ignore' });
+    const srv = tls.createServer({ key: fs.readFileSync(`${dir}/k.pem`), cert: fs.readFileSync(`${dir}/c.pem`) }, (s) => s.end());
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const M = createMockPanel({ token: 'T', certs: [{ domain: { main: 'localhost' } }, { domain: { main: '*.wild.example.com' } }] });
+    const url = await M.listen();
+    const pid = (await api('admin', 'POST', '/api/panels', { name: 'Tls', url, token: 'T' })).data.id;
+    cfgRef.tlsProbe = true; cfgRef.tlsProbePort = srv.address().port;
+    try {
+      const cx = (await api('admin', 'GET', '/api/certs')).data.find((p) => p.panelId === pid);
+      const days = (cx.certs[0].expiresAt - Date.now()) / 86400000;
+      assert.ok(days > 28 && days < 31, `дней до конца: ${days}`);
+      assert.equal(cx.certs[0].source, 'tls');
+      assert.equal(cx.certs[0].domain, 'localhost');
+      assert.equal(cx.certs[1].expiresAt, null, 'wildcard не проверяется');
+    } finally { cfgRef.tlsProbe = false; srv.close(); await api('admin', 'DELETE', `/api/panels/${pid}`); await M.close(); fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

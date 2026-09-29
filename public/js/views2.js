@@ -235,7 +235,7 @@ async function certsView(body) {
     clear(body).append(...data.map((p) => h('section', { class: 'card' }, h('div', { class: 'card-head' }, panelChip({ name: p.panelName, color: p.color })),
       p.error ? h('div', { class: 'callout warn' }, icon('alert'), p.error) : p.certs.length ? h('table', { class: 'tbl' }, h('tbody', null, p.certs.sort((a, b) => (a.expiresAt ?? 9e15) - (b.expiresAt ?? 9e15)).map((c) => {
         const days = c.expiresAt ? Math.floor((c.expiresAt - Date.now()) / 86_400_000) : null;
-        return h('tr', null, h('td', null, h('b', null, c.domain)), h('td', { class: 'muted' }, c.expiresAt ? new Date(c.expiresAt).toLocaleDateString(locale()) : '—'),
+        return h('tr', null, h('td', null, h('b', null, c.domain), c.sans?.length ? h('div', { class: 'muted small' }, c.sans.join(', ')) : null), h('td', { class: 'muted', title: c.source === 'tls' ? 'Срок получен по TLS-соединению с доменом' : null }, c.expiresAt ? new Date(c.expiresAt).toLocaleDateString(locale()) : '—'),
           h('td', { class: 'w-actions' }, days == null ? h('span', { class: 'badge muted' }, 'срок неизвестен') : h('span', { class: `badge ${days < 7 ? 'err' : days < 30 ? 'warn' : 'ok'}` }, days < 0 ? 'истёк' : `${days} дн.`)));
       }))) : h('p', { class: 'muted' }, 'Сертификатов нет.'))));
     if (!data.length) body.append(empty('Нет панелей'));
