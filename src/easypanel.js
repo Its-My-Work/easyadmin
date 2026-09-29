@@ -5,8 +5,9 @@ const PROC = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const MAX_BYTES = 32 * 1024 * 1024;
 
 export class PanelError extends Error {
-  constructor(message, { kind = 'error', status } = {}) {
+  constructor(message, { kind = 'error', status, body } = {}) {
     super(message);
+    this.body = body;
     this.kind = kind; // 'auth' | 'network' | 'timeout' | 'error'
     this.status = status;
   }
@@ -66,10 +67,11 @@ export class PanelClient {
           const flat = json?.json && typeof json.json === 'object' && typeof json.json.message === 'string' && ('code' in json.json || 'status' in json.json) ? json.json : null;
           const err = json?.error ?? (flat ? { json: { message: flat.message, data: { code: flat.code } } } : null);
           if (err) {
-            const code = err.json?.data?.code ?? err.data?.code;
-            const msg = err.json?.message ?? err.message ?? 'Ошибка панели';
+            const code = err.json?.data?.code ?? err.data?.code ?? err.json?.code ?? err.code;
+            // без текста ошибки показываем код и кусок ответа — иначе причину не понять (и диагностика бесполезна)
+            const msg = err.json?.message ?? err.message ?? `Ошибка панели (${code ?? status ?? '?'}): ${data.slice(0, 160)}`;
             const auth = code === 'UNAUTHORIZED' || code === 'FORBIDDEN' || status === 401 || status === 403;
-            return finish(reject, new PanelError(msg, { kind: auth ? 'auth' : 'error', status }));
+            return finish(reject, new PanelError(msg, { kind: auth ? 'auth' : 'error', status, body: data.slice(0, 600) }));
           }
           if (status >= 300 && status < 400) {
             return finish(reject, new PanelError(`Панель перенаправляет на ${res.headers.location || '?'} — укажите итоговый адрес (обычно https://)`, { status }));
@@ -294,6 +296,35 @@ export async function inspectService(client, { type, project, name }) {
   };
 }
 
+const plain = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
+
+/**
+ * Монтирование: у разных версий панели поле `type` — либо тип сервиса (а свойства монтирования вложены в `mount`),
+ * либо тип монтирования (volume|bind|file). Пробуем оба варианта; ошибка первого показывается, если не подошёл ни один.
+ */
+function mountVariants(r, s, p, o, id) {
+  const mt = p.type ?? o.type ?? 'volume';
+  const flat = { name: p.name ?? o.name, mountPath: p.mountPath ?? o.mountPath, hostPath: p.hostPath ?? o.hostPath, content: p.content ?? o.content };
+  const idf = id != null ? { id, mountId: id } : {};
+  return [
+    { ...o, ...r, ...idf, ...flat, type: s.type, mount: { type: mt, ...flat } },
+    { ...o, ...r, ...idf, ...flat, serviceType: s.type, type: mt },
+  ];
+}
+
+/** Выполняет мутацию, пробуя варианты входных данных, пока не пройдёт валидация панели. */
+async function firstOk(c, proc, variants) {
+  let first;
+  for (const [i, body] of variants.entries()) {
+    try { return await c.mutate(proc, body); } catch (e) {
+      first ??= e;
+      const retry = i < variants.length - 1 && !['auth', 'network', 'timeout'].includes(e.kind) && (e.status === 400 || /invalid|expected|required/i.test(e.message));
+      if (!retry) throw first;
+    }
+  }
+  throw first;
+}
+
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
 
 /** Белый список тонких операций; params приходят из UI. */
@@ -310,15 +341,30 @@ export const SERVICE_OPS = {
   domainAdd: (c, r, _s, p) => c.mutate('domains.createDomain', {
     ...r, host: p.host, https: p.https !== false, port: num(p.port) ?? 80, path: p.path || '/',
   }),
+  domainUpdate: (c, r, _s, p) => {
+    // отправляем исходный объект целиком (на случай полей, о которых мы не знаем) + правки
+    const o = plain(p.original); const id = p.id ?? o.id ?? o._id;
+    const port = num(p.port) ?? o.port ?? o.service?.port; const path = p.path ?? o.path ?? o.service?.path ?? '/';
+    const body = { ...o, ...r, id, domainId: id, host: p.host ?? o.host, https: p.https ?? o.https, port, path };
+    if (o.service && typeof o.service === 'object') body.service = { ...o.service, port, path };
+    return c.mutate('domains.updateDomain', body);
+  },
   domainDelete: (c, r, _s, p) => c.mutate('domains.deleteDomain', { ...r, id: p.id, domainId: p.id }),
   portAdd: (c, r, s, p) => c.mutate('ports.createPort', {
     ...r, type: s.type, published: num(p.published), target: num(p.target), publishedPort: num(p.published), targetPort: num(p.target),
     protocol: p.protocol === 'udp' ? 'udp' : 'tcp',
   }),
+  portUpdate: (c, r, s, p) => {
+    const o = plain(p.original); const id = p.id ?? o.id ?? o._id;
+    const published = num(p.published) ?? o.published; const target = num(p.target) ?? o.target;
+    return c.mutate('ports.updatePort', { ...o, ...r, type: s.type, id, portId: id, published, target, publishedPort: published, targetPort: target, protocol: p.protocol === 'udp' ? 'udp' : (p.protocol === 'tcp' ? 'tcp' : o.protocol ?? 'tcp') });
+  },
   portDelete: (c, r, s, p) => c.mutate('ports.deletePort', { ...r, type: s.type, id: p.id, portId: p.id }),
-  mountAdd: (c, r, s, p) => c.mutate('mounts.createMount', {
-    ...r, serviceType: s.type, type: p.type || 'volume', name: p.name, mountPath: p.mountPath, hostPath: p.hostPath, content: p.content,
-  }),
+  mountAdd: (c, r, s, p) => firstOk(c, 'mounts.createMount', mountVariants(r, s, p, {})),
+  mountUpdate: (c, r, s, p) => {
+    const o = plain(p.original); const id = p.id ?? o.id ?? o._id;
+    return firstOk(c, 'mounts.updateMount', mountVariants(r, s, p, o, id));
+  },
   mountDelete: (c, r, s, p) => c.mutate('mounts.deleteMount', { ...r, type: s.type, id: p.id, mountId: p.id }),
   notes: (c, r, _s, p) => c.mutate('common.setNotes', { ...r, notes: String(p.notes ?? '') }),
 };

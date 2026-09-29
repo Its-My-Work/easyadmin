@@ -204,3 +204,22 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); c
 .lang-btn { font-weight: 700; letter-spacing: .04em; } .lang-corner { position: fixed; top: 14px; right: 14px; z-index: 5; }
 
 .pal-group { padding: 10px 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; } .pal-item mark { background: transparent; color: var(--accent); font-weight: 750; } .pal-extra { margin-left: 8px; } .pal-foot { padding: 8px 14px; border-top: 1px solid var(--border); }
+
+/* карточка сервиса: вертикальная навигация (без горизонтальной прокрутки) */
+.drawer { width: min(900px, 100vw); }
+.drawer-main { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+.dnav { display: flex; flex-direction: column; gap: 2px; padding: 10px 8px 14px; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg2); }
+.dtab { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 9px; background: none; color: var(--muted); font: inherit; font-weight: 550; text-align: left; cursor: pointer; }
+.dtab:hover { background: var(--panel2); color: var(--text); } .dtab.active { background: var(--accent-soft); color: var(--text); } .dtab.active .icon { color: var(--accent); }
+.dtab .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dtab .cnt { font-size: 11px; min-width: 20px; padding: 0 6px; text-align: center; border-radius: 99px; background: var(--panel2); color: var(--muted); } .dtab.active .cnt { background: var(--accent); color: var(--accent-fg); }
+.dtab.danger { color: var(--err); } .dtab.danger:hover, .dtab.danger.active { background: rgba(248,113,113,.12); color: var(--err); } .dtab.danger.active .icon { color: var(--err); }
+.dsep { flex: 1; min-height: 12px; }
+.drawer-main .drawer-body { min-height: 0; }
+.section-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.kv b.clip { max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; } .kv b.clip.open { white-space: normal; word-break: break-all; }
+@media (max-width: 820px) {
+  .drawer-main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .dnav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px; }
+  .dtab { width: auto; padding: 7px 10px; } .dsep { display: none; }
+}

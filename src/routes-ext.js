@@ -78,6 +78,9 @@ export function extraRoutes(d) {
   ];
 
   /* ---------------- диагностика ответов панели ---------------- */
+  // значения полей pass/secret/token/key в сыром теле ответа скрываем
+  const SECRET_JSON = new RegExp('("[^"]*(?:pass|secret|token|key)[^"]*"\\s*:\\s*)"[^"]*"', 'gi');
+  const redactJson = (body) => String(body).replace(SECRET_JSON, '$1"***"');
   const diagRoutes = [
     ['GET', '/api/panels/:id/diagnose', async (ctx) => {
       const row = panelOr404(ctx.params.id);
@@ -89,7 +92,7 @@ export function extraRoutes(d) {
           const v = await c.query(proc, proc === 'actions.listActions' ? {} : undefined);
           const sample = JSON.stringify(redact(v), null, 1) ?? 'undefined';
           return { proc, ok: true, ms: now() - t0, shape: shapeOf(v), sample: sample.slice(0, 2500), ...(proc === 'projects.listProjectsAndServices' ? { recognized: normalizeTree(v).projects.map((p) => `${p.name} (${p.services.length})`) } : {}) };
-        } catch (e) { return { proc, ok: false, ms: now() - t0, error: e.message, kind: e.kind }; }
+        } catch (e) { return { proc, ok: false, ms: now() - t0, error: e.message, kind: e.kind, status: e.status, body: e.body ? redactJson(e.body) : undefined }; }
       }));
       return { panel: row.name, url: row.url, results };
     }, { admin: true }],

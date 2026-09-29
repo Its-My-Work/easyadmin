@@ -79,14 +79,49 @@ export function logSocketCandidates(baseUrl, { project, name, token, paths }) {
   });
 }
 
-/** Достаёт текст из сообщения: чистая строка или JSON вида {line|message|data|log}. */
+const TEXT_KEYS = ['line', 'message', 'data', 'log', 'logs', 'text', 'msg', 'output', 'content', 'payload', 'body', 'stdout', 'stderr'];
+
+const tryJson = (s) => { try { return JSON.parse(s); } catch { return undefined; } };
+
+/** Ищет в разобранном JSON текст лога: известные ключи → массивы → самая длинная строка. */
+function pickText(v, depth = 0) {
+  if (typeof v === 'string') return v;
+  if (v == null || depth > 4) return null;
+  if (Array.isArray(v)) return v.map((x) => pickText(x, depth + 1)).filter((x) => x != null).join('\n');
+  if (typeof v === 'object') {
+    for (const k of TEXT_KEYS) if (k in v) { const r = pickText(v[k], depth + 1); if (r != null) return r; }
+    let best = null; // неизвестные ключи: берём самую длинную строку среди значений
+    for (const x of Object.values(v)) { const r = typeof x === 'string' ? x : x && typeof x === 'object' ? pickText(x, depth + 1) : null; if (r && (best == null || r.length > best.length)) best = r; }
+    return best;
+  }
+  return null;
+}
+
+/** Раскрывает «литеральные» эскейпы (\r\n, \", \uXXXX), если текст пришёл экранированным без разбора JSON. */
+function unescapeLoose(s) {
+  return s.replace(/\\(u[0-9a-fA-F]{4}|[nrt"\\/])/g, (_, c) => ({ n: '\n', r: '\r', t: '\t', '"': '"', '\\': '\\', '/': '/' })[c] ?? String.fromCharCode(parseInt(c.slice(1), 16)));
+}
+
+/**
+ * Достаёт строки лога из сообщения WebSocket. Понимает: чистый текст; JSON-строку; JSON-объект с любыми
+ * названиями полей; массив; несколько объектов подряд (NDJSON / склеенные); двойное кодирование; экранированный текст.
+ */
 export function extractLines(raw) {
-  let text = raw;
-  try {
-    const j = JSON.parse(raw);
-    if (typeof j === 'string') text = j;
-    else if (j && typeof j === 'object') text = j.line ?? j.message ?? j.data ?? j.log ?? j.text ?? raw;
-    if (typeof text !== 'string') text = JSON.stringify(text);
-  } catch { /* не JSON */ }
-  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/).filter((l) => l.length);
+  let text = String(raw);
+  for (let i = 0; i < 3; i++) { // до трёх слоёв кодирования
+    const t = text.trim();
+    if (!/^[\[{"]/.test(t)) break;
+    let parsed = tryJson(t);
+    if (parsed === undefined && /^\{[\s\S]*\}\s*[\r\n]*$/.test(t)) { // NDJSON / несколько объектов подряд
+      const parts = t.split(/\}\s*(?=\{)/).map((x, k, arr) => (k < arr.length - 1 ? `${x}}` : x));
+      const objs = parts.map(tryJson);
+      if (parts.length > 1 && objs.every((o) => o !== undefined)) parsed = objs;
+    }
+    if (parsed === undefined) break;
+    const next = pickText(parsed);
+    if (next == null || next === text) break;
+    text = next;
+  }
+  if (!text.includes('\n') && /\\r?\\n|\\"|\\u00/.test(text)) text = unescapeLoose(text);
+  return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/).map((l) => l.replace(/\r/g, '')).filter((l) => l.length);
 }

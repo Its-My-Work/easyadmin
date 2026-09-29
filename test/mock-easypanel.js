@@ -5,7 +5,7 @@ import http from 'node:http';
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
  * seed: { projects: { name: [{name, type, enabled}] } }
  */
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false } = {}) {
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -13,6 +13,17 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
   const ok = (v) => v ?? null;
   const drift = () => Math.round((20 + Math.random() * 50) * 10) / 10;
 
+  // «nested»: type — тип сервиса, свойства в mount; «flat»: type — тип монтирования (volume|bind|file)
+  const mountBody = (i) => {
+    const bad = (m) => Object.assign(new Error(m), { code: 'BAD_REQUEST' });
+    if (mountStyle === 'nested') {
+      if (!['app', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis', 'compose'].includes(i.type)) throw bad('Invalid service type.');
+      if (!i.mount) throw bad('mount required');
+      return { type: i.mount.type, name: i.mount.name, mountPath: i.mount.mountPath, hostPath: i.mount.hostPath, content: i.mount.content };
+    }
+    if (!['volume', 'bind', 'file'].includes(i.type)) throw bad('Invalid mount type.');
+    return { type: i.type, name: i.name, mountPath: i.mountPath, hostPath: i.hostPath, content: i.content };
+  };
   const procs = {
     'projects.listProjectsAndServices': () => ({
       projects: [...projects.keys()].map((name) => ({ name })),
@@ -21,7 +32,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'projects.listProjects': () => [...projects.keys()].map((name) => ({ name })),
     'projects.createProject': (i) => { projects.set(i.name, []); return null; },
     'projects.destroyProject': (i) => { projects.delete(i.name ?? i.projectName); return null; },
-    'monitor.getSystemStats': () => ({
+    'monitor.getSystemStats': () => statsError ? (() => { throw Object.assign(new Error(''), { code: 'INTERNAL_SERVER_ERROR', noMessage: true }); })() : ({
       uptime: 123456,
       memInfo: { totalMemMb: 8000, usedMemMb: 3200, freeMemMb: 4800, usedMemPercentage: stats.mem ?? drift(), freeMemPercentage: 40 },
       diskInfo: { totalGb: 100, usedGb: 41, freeGb: 59, usedPercentage: stats.disk ?? 41, freePercentage: 59 },
@@ -35,14 +46,18 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'ports.createPort': (i) => { need(find(i)).ports.push({ id: `p${Date.now()}`, published: i.published, target: i.target, protocol: i.protocol }); return null; },
     'ports.deletePort': (i) => { const s = need(find(i)); s.ports = s.ports.filter((p) => p.id !== i.id); return null; },
     'mounts.listMounts': (i) => { if (requireType && !i.type) throw Object.assign(new Error('Invalid service type.'), { code: 'BAD_REQUEST' }); return need(find(i)).mounts; },
-    'mounts.createMount': (i) => { need(find(i)).mounts.push({ id: `m${Date.now()}`, type: i.type, name: i.name, mountPath: i.mountPath }); return null; },
+    'mounts.createMount': (i) => { const m = mountBody(i); need(find(i)).mounts.push({ id: `m${Date.now()}${Math.random().toString(36).slice(2, 5)}`, ...m }); return null; },
+    'mounts.updateMount': (i) => { const s = need(find(i)); const m = s.mounts.find((x) => x.id === i.id); if (!m) throw Object.assign(new Error('Mount not found'), { code: 'NOT_FOUND' }); Object.assign(m, mountBody(i)); return null; },
+    'ports.updatePort': (i) => { const s = need(find(i)); const p = s.ports.find((x) => x.id === i.id); if (!p) throw Object.assign(new Error('Port not found'), { code: 'NOT_FOUND' }); Object.assign(p, { published: i.published, target: i.target, protocol: i.protocol }); return null; },
+    'domains.updateDomain': (i) => { const s = need(find(i)); const d = s.domains.find((x) => x.id === i.id); if (!d) throw Object.assign(new Error('Domain not found'), { code: 'NOT_FOUND' }); Object.assign(d, { host: i.host, https: i.https, port: i.port, path: i.path }); return null; },
     'mounts.deleteMount': (i) => { const s = need(find(i)); s.mounts = s.mounts.filter((m) => m.id !== i.id); return null; },
     'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
     'actions.listActions': () => [],
     'certificates.listCertificates': () => certs,
-    'projects.getDockerContainers': () => {
+    'projects.getDockerContainers': (i) => {
+      if (containersPerProject && !i.projectName) throw Object.assign(new Error('Input validation failed'), { code: 'BAD_REQUEST' });
       if (containers) return containers;
-      return [...projects.entries()].flatMap(([p, l]) => l.map((s) => ({ name: `${p}_${s.name}.1.abc`, state: s.crash ? 'exited' : (s.enabled ? 'running' : 'shutdown') })));
+      return [...projects.entries()].filter(([p]) => !containersPerProject || p === i.projectName).flatMap(([p, l]) => l.map((s) => ({ name: `${p}_${s.name}.1.abc`, state: s.crash ? 'exited' : (s.enabled ? 'running' : 'shutdown') })));
     },
     'monitor.getServiceStats': () => ({ cpu: 1.5, memory: 120 }),
     'settings.systemPrune': () => null,
@@ -73,7 +88,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     const url = new URL(req.url, 'http://x');
     const proc = url.pathname.replace('/api/trpc/', '');
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
-    const trpcErr = (message, code, httpStatus) => flatErrors ? send(httpStatus, { json: { defined: false, code, status: httpStatus, message } }) : send(httpStatus, { error: { json: { message, code: -32001, data: { code, httpStatus, path: proc } } } });
+    const trpcErr = (message, code, httpStatus) => message === '' ? send(httpStatus, { error: { json: { code: -32603, data: { code, httpStatus, path: proc } } } }) : flatErrors ? send(httpStatus, { json: { defined: false, code, status: httpStatus, message } }) : send(httpStatus, { error: { json: { message, code: -32001, data: { code, httpStatus, path: proc } } } });
     if (proc === 'auth.login' && req.method === 'POST') return send(200, { result: { data: { json: { token } } } });
     if (req.headers.authorization !== `Bearer ${token}`) return trpcErr('Unauthorized', 'UNAUTHORIZED', 401);
     let input;

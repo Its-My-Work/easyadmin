@@ -45,7 +45,7 @@ await step('save template + templates page', async () => {
 await step('automation tab: webhook', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
-  await p.click('.drawer .tab:has-text("Автоматизация")'); await p.click('.drawer button:has-text("Вебхук деплоя")');
+  await p.click('.drawer .dtab:has-text("Автоматизация")'); await p.click('.drawer button:has-text("Вебхук деплоя")');
   await p.waitForSelector('.modal .secret:has-text("curl -X POST")'); await p.keyboard.press('Escape');
 });
 await step('schedule create + run', async () => {
@@ -77,10 +77,29 @@ await step('settings: channel + 2FA + backup', async () => {
   await p.waitForSelector('input[placeholder^="Код 2FA"]:visible');
   await p.fill('input[placeholder^="Код 2FA"]', totp(secret)); await p.click('button[type=submit]'); await p.waitForSelector('.panel-card');
 });
+await step('drawer nav: вертикальное меню без горизонтальной прокрутки, цифры переключают разделы', async () => {
+  await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
+  await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
+  const overflow = await p.evaluate(() => { const n = document.querySelector('.dnav'); return n.scrollWidth > n.clientWidth + 1; });
+  if (overflow) throw new Error('у меню есть горизонтальная прокрутка');
+  await p.keyboard.press('4'); await p.waitForSelector('.dtab.active:has-text("Домены")');
+  await p.click('.drawer .section-head button'); await p.waitForSelector('.modal');
+  await p.fill('.modal input[placeholder="app.example.com"]', 'edit.example.com'); await p.click('.modal-foot button:has-text("Сохранить")');
+  await p.waitForSelector('.drawer .list-item:has-text("edit.example.com")');
+  await p.click('.drawer .list-item:has-text("edit.example.com") button[title="Изменить"]'); await p.waitForSelector('.modal');
+  await p.fill('.modal input[placeholder="app.example.com"]', 'renamed.example.com'); await p.click('.modal-foot button:has-text("Сохранить")');
+  await p.waitForSelector('.drawer .list-item:has-text("renamed.example.com")');
+  await p.keyboard.press('5'); await p.waitForSelector('.dtab.active:has-text("Порты и тома")');
+  await p.locator('.drawer .section-head button').nth(1).click(); await p.waitForSelector('.modal'); await p.fill('.modal input[placeholder="/var/lib/data"]', '/data1'); await p.fill('.modal input[placeholder="data"]', 'vol1'); await p.click('.modal-foot button:has-text("Сохранить")');
+  await p.waitForSelector('.drawer .list-item:has-text("/data1")');
+  await p.click('.drawer .list-item:has-text("/data1") button[title="Изменить"]'); await p.waitForSelector('.modal'); await p.fill('.modal input[placeholder="/var/lib/data"]', '/data2'); await p.click('.modal-foot button:has-text("Сохранить")');
+  await p.waitForSelector('.drawer .list-item:has-text("/data2")');
+  await p.screenshot({ path: 'v4-drawer.png' }); await p.keyboard.press('Escape');
+});
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
-  await p.click('.drawer .tab:has-text("Логи")');
+  await p.click('.drawer .dtab:has-text("Логи")');
   await p.waitForSelector('.logview .ll:has-text("line one")', { timeout: 8000 });
   await p.waitForSelector('.logview .ll:has-text("tick")');
   await p.fill('.drawer input[placeholder="Фильтр…"]', 'json'); await p.waitForTimeout(200);

@@ -15,14 +15,35 @@ export function createManager({ db, key, config }) {
     });
   }
 
+  const containersMode = new Map(); // panelId → { mode: 'global' | 'project' | 'none', at }
+  async function fetchContainers(client, row, tree) {
+    const known = containersMode.get(row.id);
+    const mode = known && (known.mode !== 'none' || Date.now() - known.at < 1_800_000) ? known.mode : undefined; // «не поддерживается» перепроверяем раз в 30 мин
+    const remember = (m) => containersMode.set(row.id, { mode: m, at: Date.now() });
+    if (!mode || mode === 'global') {
+      try { const v = await client.query('projects.getDockerContainers'); remember('global'); return v; }
+      catch (e) { if (mode === 'global' || e.kind === 'auth' || e.kind === 'network' || e.kind === 'timeout') throw e; }
+    }
+    if (mode === 'none') return null;
+    const names = tree.projects.map((p) => p.name);
+    const parts = await Promise.all(names.map((projectName) => client.query('projects.getDockerContainers', { projectName }).catch(() => null)));
+    if (!parts.some((x) => x != null)) { remember('none'); return null; }
+    remember('project');
+    return parts.filter((x) => x != null).flatMap((v) => (Array.isArray(v) ? v : v?.containers ?? []));
+  }
+
   async function fetchSnapshot(row) {
     const t0 = Date.now();
     const client = clientFor(row);
-    const [tree, stats, containers] = await Promise.allSettled([
+    const [tree, stats] = await Promise.allSettled([
       client.query('projects.listProjectsAndServices'),
       client.query('monitor.getSystemStats'),
-      client.query('projects.getDockerContainers'),
     ]);
+    // контейнеры — best-effort: сначала по всей панели, а если панель требует projectName — по каждому проекту
+    let containers = { status: 'rejected' };
+    if (tree.status === 'fulfilled') {
+      try { containers = { status: 'fulfilled', value: await fetchContainers(client, row, normalizeTree(tree.value)) }; } catch (e) { containers = { status: 'rejected', reason: e }; }
+    }
     const failed = [tree, stats].find((r) => r.status === 'rejected'); // контейнеры — best-effort, их ошибка не считается
     let snap;
     if (tree.status === 'rejected') {

@@ -120,6 +120,10 @@ export const EN = [
   ['Скопируйте сейчас — повторно ссылка не показывается.', 'Copy it now — the link is not shown again.'], ['Удаление сервиса', 'Delete service'],
   ['Контейнер и данные будут удалены с сервера панели. Отменить нельзя.', 'The container and its data will be removed from the panel server. This cannot be undone.'], ['Удалить сервис', 'Delete service'],
 
+  ['Разделы сервиса', 'Service sections'], ['Изменить домен', 'Edit domain'], ['Путь', 'Path'], ['Домен обновлён', 'Domain updated'], ['Изменить порт', 'Edit port'], ['Порт обновлён', 'Port updated'],
+  ['Содержимое файла', 'File content'], ['Изменить монтирование', 'Edit mount'], ['Добавить монтирование', 'Add mount'], ['Монтирование обновлено', 'Mount updated'], ['Удалить порт?', 'Delete port?'],
+  ['Нет открытых портов. Внутренний порт приложения задаётся в домене (поле «Порт контейнера»).', 'No exposed ports. The application’s internal port is set in the domain (the “Container port” field).'], ['{0} стр.', '{0} lines'],
+
   /* --- форма панели --- */
   ['Панель · {0}', 'Panel · {0}'], ['Подключить панель Easypanel', 'Connect an Easypanel panel'], ['Прод EU', 'Prod EU'], ['оставьте пустым, чтобы не менять', 'leave empty to keep unchanged'],
   ['API-токен', 'API token'], ['email администратора панели', 'panel administrator email'], ['пароль панели', 'panel password'],
@@ -206,7 +210,7 @@ export const EN = [
   ['Требуется вход', 'Sign-in required'], ['Не найдено', 'Not found'], ['Внутренняя ошибка', 'Internal error'], ['Некорректный JSON', 'Invalid JSON'],
   ['Недостаточно прав (роль {0})', 'Insufficient permissions (role {0})'], ['Слишком много запросов', 'Too many requests'],
   ['Некорректный URL', 'Invalid URL'], ['Разрешены только http и https', 'Only http and https are allowed'], ['Недопустимое имя процедуры: {0}', 'Invalid procedure name: {0}'],
-  ['Ответ панели слишком большой', 'The panel response is too large'], ['Ошибка панели', 'Panel error'], ['Панель перенаправляет на {0} — укажите итоговый адрес (обычно https://)', 'The panel redirects to {0} — use the final address (usually https://)'],
+  ['Ответ панели слишком большой', 'The panel response is too large'], ['Ошибка панели', 'Panel error'], ['Ошибка панели ({0}): {1}', 'Panel error ({0}): {1}'], ['{0} ({1})', '{0} ({1})'], ['Панель перенаправляет на {0} — укажите итоговый адрес (обычно https://)', 'The panel redirects to {0} — use the final address (usually https://)'],
   ['Токен отклонён панелью', 'The token was rejected by the panel'], ['Ответ не похож на API Easypanel (проверьте адрес)', 'The response does not look like the Easypanel API (check the address)'],
   ['Соединение отклонено', 'Connection refused'], ['Таймаут {0} мс ({1})', 'Timeout {0} ms ({1})'], ['Панель не вернула токен (включена 2FA?)', 'The panel returned no token (is 2FA enabled?)'],
   ['… ещё {0}', '… {0} more'], ['Неизвестный тип сервиса: {0}', 'Unknown service type: {0}'], ['Деплой неприменим к базам данных', 'Deploy does not apply to databases'],

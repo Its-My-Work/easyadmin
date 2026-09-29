@@ -40,14 +40,18 @@ await step('new service modal', async () => { await p.click('button:has-text("Se
 await step('activity/console tabs', async () => { await p.click('.tab:has-text("Activity")'); await p.waitForTimeout(400); await scan('activity'); await p.click('.tab:has-text("API console")'); await p.click('button:has-text("Run")'); await p.waitForTimeout(500); await scan('console'); await p.click('.tab:has-text("Services")'); });
 await step('drawer tabs', async () => {
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in'); await p.waitForTimeout(500); await scan('drawer overview');
-  for (const t of await p.locator('.drawer .tabs .tab').allTextContents()) {
-    await p.click(`.drawer .tab:text-is("${t}")`); await p.waitForTimeout(t === 'Logs' ? 900 : 250); await scan(`drawer ${t}`);
+  for (const t of await p.locator('.drawer .dtab .lbl').allTextContents()) {
+    await p.click(`.drawer .dtab:has(.lbl:text-is("${t}"))`); await p.waitForTimeout(t === 'Logs' ? 900 : 250); await scan(`drawer ${t}`);
     if (t === 'Environment') { await p.click('.drawer button:has-text("Show values")'); await scan('drawer env shown'); await p.click('.drawer button:has-text("Hide")'); }
   }
-  await p.click('.drawer .tab:text-is("Overview")'); await p.click('.drawer button:has-text("Clone")'); await p.waitForSelector('.modal'); await scan('clone modal'); await esc();
+  for (const [tab, btn] of [['Domains', 'Add domain'], ['Ports and volumes', 'Expose port'], ['Ports and volumes', 'Add mount']]) {
+    await p.click(`.drawer .dtab:has(.lbl:text-is("${tab}"))`); await p.click(`.drawer .section-head button:has-text("${btn}")`); await p.waitForSelector('.modal'); await scan(`form ${btn}`);
+    await p.click('.modal-foot button:has-text("Save")'); await p.waitForTimeout(300); await scan(`form ${btn} error`); await esc();
+  }
+  await p.click('.drawer .dtab:has(.lbl:text-is("Overview"))'); await p.click('.drawer button:has-text("Clone")'); await p.waitForSelector('.modal'); await scan('clone modal'); await esc();
   await p.click('.drawer button:has-text("Save as template")'); await p.waitForSelector('.modal'); await scan('template modal'); await esc();
-  await p.click('.drawer .tab:text-is("Automation")'); await p.click('.drawer button:has-text("Deploy webhook")'); await p.waitForSelector('.modal'); await scan('webhook modal'); await esc();
-  await p.click('.drawer .tab:text-is("Delete")'); await scan('danger tab'); await p.click('.drawer button:has-text("Delete service")'); await p.waitForSelector('.modal'); await scan('delete confirm'); await esc();
+  await p.click('.drawer .dtab:has(.lbl:text-is("Automation"))'); await p.click('.drawer button:has-text("Deploy webhook")'); await p.waitForSelector('.modal'); await scan('webhook modal'); await esc();
+  await p.click('.drawer .dtab:has(.lbl:text-is("Delete"))'); await scan('danger tab'); await p.click('.drawer button:has-text("Delete service")'); await p.waitForSelector('.modal'); await scan('delete confirm'); await esc();
   await p.keyboard.press('Escape');
 });
 await step('service action toasts', async () => { const row = p.locator('tr.row', { hasText: 'worker' }).first(); await row.hover(); await row.locator('button[title="Restart"]').click(); await p.waitForSelector('.toast.success'); await scan('toast'); });

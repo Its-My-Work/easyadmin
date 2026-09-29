@@ -50,6 +50,34 @@ describe('формат ошибок и тип сервиса (как у реал
   });
 });
 
+describe('поведение реальной панели: контейнеры по проектам, ошибка без текста', () => {
+  test('getDockerContainers требует projectName → здоровье сервисов берётся по каждому проекту', async () => {
+    const m = createMockPanel({ token: 'X', containersPerProject: true, seed: { a: [{ name: 'up' }, { name: 'crashy', crash: true }], b: [{ name: 'other' }] } });
+    const u = await m.listen();
+    const a2 = createApp({ config: { ...loadConfig({}), cacheTtlMs: 1 }, db: openDb(':memory:'), key: crypto.randomBytes(32) });
+    await new Promise((r) => a2.server.listen(0, '127.0.0.1', r));
+    const b2 = `http://127.0.0.1:${a2.server.address().port}`;
+    const h = { 'Content-Type': 'application/json', 'X-Requested-With': 'easyadmin' };
+    const ck = (await fetch(b2 + '/api/setup', { method: 'POST', headers: h, body: JSON.stringify({ username: 'a', password: 'password1' }) })).headers.get('set-cookie').split(';')[0];
+    await fetch(b2 + '/api/panels', { method: 'POST', headers: { ...h, Cookie: ck }, body: JSON.stringify({ name: 'P', url: u, token: 'X' }) });
+    const ov = await (await fetch(b2 + '/api/overview?force=1', { headers: { Cookie: ck } })).json();
+    const svc = (proj, name) => ov[0].tree.projects.find((p) => p.name === proj).services.find((x) => x.name === name);
+    assert.equal(svc('a', 'crashy').health, 'failing'); assert.equal(svc('a', 'up').health, 'running'); assert.equal(svc('b', 'other').health, 'running');
+    const calls = m.calls.filter((c) => c.proc === 'projects.getDockerContainers').length;
+    await fetch(b2 + '/api/overview?force=1', { headers: { Cookie: ck } });
+    const after = m.calls.filter((c) => c.proc === 'projects.getDockerContainers');
+    assert.equal(after.length - calls, 2, 'режим запомнен: без повторных запросов без projectName (по одному на проект)');
+    assert.ok(after.slice(calls).every((c) => c.input?.projectName));
+    a2.stop(); a2.server.closeAllConnections(); a2.server.close(); await m.close();
+  });
+  test('ошибка без текста: показываем код и кусок ответа, а диагностика отдаёт тело ответа', async () => {
+    const m = createMockPanel({ token: 'X', statsError: true, seed: {} });
+    const u = await m.listen();
+    await assert.rejects(new PanelClient({ url: u, token: 'X' }).query('monitor.getSystemStats'), (e) => /INTERNAL_SERVER_ERROR/.test(e.message) && e.body.includes('httpStatus'));
+    await m.close();
+  });
+});
+
 describe('совместимость с другими формами ответов', () => {
   test('клиент понимает ответ без superjson-обёртки', async () => {
     const v = await new PanelClient({ url, token: 't' }).query('projects.listProjectsAndServices');

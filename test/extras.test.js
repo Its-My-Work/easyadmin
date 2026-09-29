@@ -102,6 +102,18 @@ describe('WebSocket-клиент', () => {
     await assert.rejects(openWebSocket(`${url.replace('http', 'ws')}/nope?token=T`), /HTTP 404/);
     await assert.rejects(openWebSocket(`${url.replace('http', 'ws')}/ws/serviceLogs?token=bad`), /HTTP 401/);
   });
+  test('extractLines: реальные формы сообщений панели — любые поля, эскейпы, NDJSON, двойное кодирование', () => {
+    // объект с неизвестным именем поля: берётся самая длинная строка, \r\n превращаются в переводы строк
+    assert.deepEqual(extractLines(JSON.stringify({ type: 'log', chunk: 'INFO: a\r\nINFO: b "q"\r\n' })), ['INFO: a', 'INFO: b "q"']);
+    assert.deepEqual(extractLines('{"logs":"one\\ntwo"}'), ['one', 'two']);
+    assert.deepEqual(extractLines('{"line":"a"}\n{"line":"b"}'), ['a', 'b'], 'NDJSON');
+    assert.deepEqual(extractLines('{"line":"a"}{"line":"b"}'), ['a', 'b'], 'склеенные объекты');
+    assert.deepEqual(extractLines('[{"line":"a"},{"line":"b"}]'), ['a', 'b']);
+    assert.deepEqual(extractLines(JSON.stringify(JSON.stringify({ message: 'deep\nline' }))), ['deep', 'line'], 'двойное кодирование');
+    // текст пришёл экранированным, но не как валидный JSON (как на скриншоте пользователя)
+    assert.deepEqual(extractLines('K\\r\\nINFO: 1.2.3.4 - \\"GET /x HTTP/1.1\\" 200\\r\\nINFO: next'), ['K', 'INFO: 1.2.3.4 - "GET /x HTTP/1.1" 200', 'INFO: next']);
+    assert.deepEqual(extractLines('обычный текст: "в кавычках"'), ['обычный текст: "в кавычках"'], 'чистый текст не портится');
+  });
   test('extractLines: JSON, ANSI, многострочный текст', () => {
     assert.deepEqual(extractLines('{"line":"a"}'), ['a']);
     assert.deepEqual(extractLines('"quoted"'), ['quoted']);

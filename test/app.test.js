@@ -152,6 +152,35 @@ describe('управление сервисами', () => {
     assert.equal(panelA.projects.get('web')[0].mounts.length, 1);
     assert.equal((await op('nope', {})).status, 502);
   });
+  test('редактирование домена, порта и монтирования: правки применяются к существующей записи', async () => {
+    const op = (o, params) => api('POST', `/api/panels/${idA}/service/op`, { ...ref, op: o, params });
+    await op('domainAdd', { host: 'old.example.com', port: 80 });
+    const d = panelA.projects.get('web')[0].domains.at(-1);
+    assert.equal((await op('domainUpdate', { id: d.id, original: d, host: 'new.example.com', port: 8080, path: '/x', https: false })).status, 200);
+    assert.deepEqual([d.host, d.port, d.path, d.https], ['new.example.com', 8080, '/x', false]);
+    await op('portAdd', { published: 8081, target: 80 });
+    const p = panelA.projects.get('web')[0].ports.at(-1);
+    assert.equal((await op('portUpdate', { id: p.id, original: p, published: 9090, target: 90, protocol: 'udp' })).status, 200);
+    assert.deepEqual([p.published, p.target, p.protocol], [9090, 90, 'udp']);
+    await op('mountAdd', { type: 'volume', name: 'v1', mountPath: '/one' });
+    const m = panelA.projects.get('web')[0].mounts.at(-1);
+    assert.equal((await op('mountUpdate', { id: m.id, original: m, type: 'bind', hostPath: '/srv/x', mountPath: '/two' })).status, 200);
+    assert.deepEqual([m.type, m.hostPath, m.mountPath], ['bind', '/srv/x', '/two']);
+    assert.equal((await op('domainUpdate', { id: 'nope', host: 'a.b' })).status, 502, 'несуществующая запись — ошибка панели, а не 200');
+  });
+  test('монтирование: панель со вложенным форматом (type = тип сервиса, свойства в mount) тоже работает', async () => {
+    const N = createMockPanel({ token: 'N', mountStyle: 'nested', seed: { p: [{ name: 's' }] } });
+    const url = await N.listen();
+    const nid = (await api('POST', '/api/panels', { name: 'Nested', url, token: 'N' })).data.id;
+    const r = await api('POST', `/api/panels/${nid}/service/op`, { type: 'app', project: 'p', name: 's', op: 'mountAdd', params: { type: 'file', mountPath: '/etc/x.conf', content: 'hello' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const m = N.projects.get('p')[0].mounts[0];
+    assert.deepEqual([m.type, m.mountPath, m.content], ['file', '/etc/x.conf', 'hello']);
+    const u = await api('POST', `/api/panels/${nid}/service/op`, { type: 'app', project: 'p', name: 's', op: 'mountUpdate', params: { id: m.id, original: m, type: 'file', mountPath: '/etc/y.conf', content: 'bye' } });
+    assert.equal(u.status, 200, JSON.stringify(u.data));
+    assert.deepEqual([m.mountPath, m.content], ['/etc/y.conf', 'bye']);
+    await api('DELETE', `/api/panels/${nid}`); await N.close();
+  });
   test('валидация имён защищает от инъекций', async () => {
     const r = await api('POST', `/api/panels/${idA}/service/action`, { type: 'app', project: '../x', name: 'site', action: 'stop' });
     assert.equal(r.status, 400);

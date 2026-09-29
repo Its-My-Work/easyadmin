@@ -12,10 +12,24 @@ export function closeDrawer() {
   current?.el.remove(); current?.back.remove(); current = null;
   document.removeEventListener('keydown', onKey);
 }
-const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('#overlay-root .backdrop')) closeDrawer(); };
+const onKey = (e) => {
+  if (document.querySelector('#overlay-root .backdrop')) return;
+  if (e.key === 'Escape') return closeDrawer();
+  // 1–9 переключают разделы (не мешаем вводу текста)
+  if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '')) current?.switchIndex?.(Number(e.key) - 1);
+};
 
 const pick = (o, ...keys) => { for (const k of keys) if (o?.[k] != null && o[k] !== '') return o[k]; return undefined; };
 const asList = (v) => (Array.isArray(v) ? v : []);
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
+
+/** Поля домена/порта/тома из ответа панели — с запасными названиями на случай другой версии API. */
+const domainOf = (x) => ({ id: x.id ?? x._id, host: x.host ?? x.domain ?? '', https: x.https ?? x.ssl ?? true, port: x.port ?? x.service?.port ?? x.destinationPort ?? x.targetPort ?? '', path: x.path ?? x.service?.path ?? '/' });
+const portOf = (x) => ({ id: x.id ?? x._id, published: x.published ?? x.publishedPort ?? x.external ?? x.hostPort ?? '', target: x.target ?? x.targetPort ?? x.internal ?? x.containerPort ?? '', protocol: String(x.protocol ?? 'tcp').toLowerCase() });
+const mountOf = (x) => ({ id: x.id ?? x._id, type: x.type ?? 'volume', name: x.name ?? x.volume ?? '', hostPath: x.hostPath ?? x.source ?? '', mountPath: x.mountPath ?? x.target ?? x.path ?? '', content: x.content ?? '' });
+
+const NAV_ICON = { overview: 'grid', env: 'edit', logs: 'terminal', domains: 'globe', storage: 'database', resources: 'activity', source: 'box', automation: 'link', raw: 'layers', danger: 'trash' };
 
 /** Открывает боковую панель сервиса. */
 export function openService(s) {
@@ -24,9 +38,9 @@ export function openService(s) {
   const ro = !can('operator');
   const ref = { type: s.type, project: s.project, name: s.name };
   const base = `/api/panels/${s.panelId}`;
-  const state = { data: null, tab: 'overview', dirtyEnv: null };
+  const state = { data: null, tab: 'overview' };
   const body = h('div', { class: 'drawer-body' }, h('div', { class: 'skeleton', style: { height: '120px' } }));
-  const tabsEl = h('div', { class: 'tabs' });
+  const navEl = h('nav', { class: 'dnav', 'aria-label': 'Разделы сервиса' });
   const live = () => store.panels.find((p) => p.id === s.panelId)?.tree?.projects.find((p) => p.name === s.project)?.services.find((x) => x.name === s.name) ?? s;
   const headActions = h('div', { class: 'row-actions' });
   const star = h('button', { class: 'btn icon ghost sm star', title: 'В избранное', 'aria-label': 'Избранное', onclick: () => { const on = toggleFavorite(s); star.classList.toggle('on', on); } }, icon('star', 16));
@@ -39,7 +53,7 @@ export function openService(s) {
         h('h2', null, s.name, ' ', star),
         h('div', { class: 'inline' }, typeChip(s.type), h('span', { class: 'status-slot' }))),
       h('button', { class: 'btn icon ghost', onclick: closeDrawer, 'aria-label': 'Закрыть' }, icon('x'))),
-    headActions, tabsEl, body);
+    headActions, h('div', { class: 'drawer-main' }, navEl, body));
   const back = h('div', { class: 'drawer-back', onclick: closeDrawer });
   document.body.append(back, el);
   document.addEventListener('keydown', onKey);
@@ -60,12 +74,26 @@ export function openService(s) {
   current.unsub = subscribe(renderHead);
 
   const tabs = [
-    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение']]), ...(ro ? [] : [['logs', 'Логи']]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
+    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', 'Логи']]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
     ['resources', 'Ресурсы'], ...(s.type === 'app' && !ro ? [['source', 'Источник']] : []),
     ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
   ];
+  const remembered = lsGet('ea-drawer-tab');
+  if (tabs.some(([id]) => id === remembered)) state.tab = remembered;
+  const count = (id) => {
+    const d = state.data; if (!d) return null;
+    const n = id === 'domains' ? asList(d.domains).length : id === 'storage' ? asList(d.ports).length + asList(d.mounts).length : null;
+    return n || null;
+  };
+  const switchTab = (id) => { state.tab = id; lsSet('ea-drawer-tab', id); renderTabs(); renderBody(); };
+  current.switchIndex = (i) => { if (tabs[i]) switchTab(tabs[i][0]); };
   const renderTabs = () => {
-    clear(tabsEl).append(...tabs.map(([id, label]) => h('button', { class: `tab ${state.tab === id ? 'active' : ''}${id === 'danger' ? ' danger' : ''}`, onclick: () => { state.tab = id; renderTabs(); renderBody(); } }, label)));
+    clear(navEl).append(...tabs.flatMap(([id, label], i) => {
+      const n = count(id);
+      const btn = h('button', { class: `dtab ${state.tab === id ? 'active' : ''}${id === 'danger' ? ' danger' : ''}`, title: `${label} (${i + 1})`, 'aria-current': state.tab === id ? 'page' : null, onclick: () => switchTab(id) },
+        icon(NAV_ICON[id], 16), h('span', { class: 'lbl' }, label), n ? h('span', { class: 'cnt' }, n) : null);
+      return id === 'danger' ? [h('div', { class: 'dsep' }), btn] : [btn];
+    }));
   };
 
   const op = async (name, params, okMsg) => {
@@ -80,7 +108,7 @@ export function openService(s) {
   async function load() {
     try {
       state.data = await get(`${base}/service?${new URLSearchParams(ref)}`);
-      renderBody();
+      renderTabs(); renderBody();
     } catch (e) {
       clear(body).append(h('div', { class: 'callout err' }, icon('alert'), h('div', null, h('b', null, 'Не удалось загрузить сервис'), h('p', null, e.message),
         h('button', { class: 'btn sm', onclick: load }, 'Повторить'))));
@@ -102,7 +130,7 @@ export function openService(s) {
   function overview(svc, d) {
     const domainsList = asList(d.domains);
     const notes = h('textarea', { class: 'input', rows: 4, placeholder: 'Заметки о сервисе…' }, pick(svc, 'notes') ?? '');
-    const kv = (k, v) => v == null ? null : h('div', { class: 'kv' }, h('span', null, k), h('b', null, String(v)));
+    const kv = (k, v) => { if (v == null) return null; const str = String(v); return h('div', { class: 'kv' }, h('span', null, k), str.length > 44 ? h('b', { class: 'clip', title: str, onclick: (e) => e.currentTarget.classList.toggle('open') }, str) : h('b', null, str)); };
     const statsBox = h('div');
     get(`${base}/service-stats?project=${encodeURIComponent(s.project)}&name=${encodeURIComponent(s.name)}`).then(({ stats }) => {
       const flat = Object.entries(stats && typeof stats === 'object' ? stats : {}).filter(([, v]) => typeof v === 'number' || typeof v === 'string').slice(0, 8);
@@ -139,44 +167,79 @@ export function openService(s) {
       ta, h('div', { class: 'inline' }, toggle, copy, h('span', { class: 'spacer' }), save, isDb(s.type) ? null : saveDeploy));
   }
 
+  const itemActions = (onEdit, onDelete) => ro ? null : h('div', { class: 'inline' },
+    h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: onEdit }, icon('edit', 15)),
+    h('button', { class: 'btn icon ghost sm danger-text', title: 'Удалить', onclick: onDelete }, icon('trash', 15)));
+  const sectionHead = (title, onAdd, label) => h('div', { class: 'section-head' }, h('h4', null, title), ro ? null : h('button', { class: 'btn sm', onclick: onAdd }, icon('plus', 14), label));
+  const confirmDel = (title, message, opName, params, okMsg) => async () => { if (await confirmDialog({ title, message, danger: true, confirmText: 'Удалить' })) op(opName, params, okMsg); };
+  const check = (checked, label) => { const i = h('input', { type: 'checkbox', checked }); return { i, el: h('label', { class: 'check' }, i, label) }; };
+  const dialog = (title, body, onSave, saveLabel = 'Сохранить') => modal({ title, body, actions: [{ label: 'Отмена', kind: 'ghost' }, { label: saveLabel, kind: 'primary', onClick: onSave }] });
+
   /* ---- Домены ---- */
+  function domainForm(x) {
+    const v = x ? domainOf(x) : { host: '', port: 80, path: '/', https: true };
+    const host = h('input', { class: 'input', placeholder: 'app.example.com', value: v.host }), port = h('input', { class: 'input', type: 'number', min: 1, max: 65535, value: v.port }), path = h('input', { class: 'input mono', value: v.path });
+    const https = check(v.https !== false, 'HTTPS (Let’s Encrypt)');
+    dialog(x ? 'Изменить домен' : 'Добавить домен', h('div', { class: 'stack' }, field('Хост', host), h('div', { class: 'grid-2' }, field('Порт контейнера', port), field('Путь', path)), https.el), async () => {
+      if (!host.value.trim()) throw new Error('Укажите хост');
+      const params = { id: x ? v.id : undefined, original: x, host: host.value.trim(), port: port.value, path: path.value || '/', https: https.i.checked };
+      return x ? op('domainUpdate', params, 'Домен обновлён') : op('domainAdd', params, 'Домен добавлен');
+    });
+  }
   function domains(_svc, d) {
     const list = asList(d.domains);
-    const hostI = h('input', { class: 'input', placeholder: 'app.example.com' });
-    const portI = h('input', { class: 'input', type: 'number', value: 80, min: 1, max: 65535 });
-    const httpsI = h('input', { type: 'checkbox', checked: true });
-    return h('div', { class: 'stack' },
-      list.length ? h('div', { class: 'list' }, list.map((x) => h('div', { class: 'list-item' },
-        h('div', null, h('b', null, x.host), h('div', { class: 'muted small' }, `порт ${x.port ?? '—'} · ${x.https === false ? 'HTTP' : 'HTTPS'}`)),
-        ro ? null : h('button', { class: 'btn icon ghost sm', title: 'Удалить домен', onclick: async () => { if (await confirmDialog({ title: 'Удалить домен?', message: x.host, danger: true, confirmText: 'Удалить' })) op('domainDelete', { id: x.id ?? x._id }, 'Домен удалён'); } }, icon('trash', 15)))))
-        : h('div', { class: 'muted' }, 'Доменов пока нет.'),
-      ro ? null : h('div', { class: 'card flat stack' }, h('h4', null, 'Добавить домен'),
-        h('div', { class: 'grid-2' }, field('Хост', hostI), field('Порт контейнера', portI)),
-        h('label', { class: 'check' }, httpsI, 'HTTPS (Let’s Encrypt)'),
-        h('div', null, h('button', { class: 'btn primary', onclick: () => { if (!hostI.value.trim()) return toast('Укажите хост', 'error'); op('domainAdd', { host: hostI.value.trim(), port: portI.value, https: httpsI.checked }, 'Домен добавлен'); } }, icon('plus', 14), 'Добавить'))));
+    return h('div', { class: 'stack' }, sectionHead('Домены', () => domainForm(), 'Добавить домен'),
+      list.length ? h('div', { class: 'list' }, list.map((x) => {
+        const v = domainOf(x);
+        return h('div', { class: 'list-item' },
+          h('div', null, h('a', { class: 'link-row', href: `${v.https === false ? 'http' : 'https'}://${v.host}${v.path && v.path !== '/' ? v.path : ''}`, target: '_blank', rel: 'noopener' }, h('b', null, v.host), icon('external', 12)),
+            h('div', { class: 'muted small' }, `порт ${v.port === '' ? '—' : v.port} · ${v.https === false ? 'HTTP' : 'HTTPS'}${v.path && v.path !== '/' ? ` · ${v.path}` : ''}`)),
+          itemActions(() => domainForm(x), confirmDel('Удалить домен?', v.host, 'domainDelete', { id: v.id }, 'Домен удалён')));
+      })) : h('div', { class: 'muted' }, 'Доменов пока нет.'));
   }
 
   /* ---- Порты и тома ---- */
-  function storage(_svc, d) {
+  function portForm(x) {
+    const v = x ? portOf(x) : { published: '', target: '', protocol: 'tcp' };
+    const pub = h('input', { class: 'input', type: 'number', placeholder: '8080', value: v.published }), tgt = h('input', { class: 'input', type: 'number', placeholder: '80', value: v.target });
+    const proto = h('select', { class: 'input' }, ['tcp', 'udp'].map((t) => h('option', { value: t, selected: v.protocol === t }, t.toUpperCase())));
+    dialog(x ? 'Изменить порт' : 'Открыть порт', h('div', { class: 'grid-3' }, field('Внешний', pub), field('Внутренний', tgt), field('Протокол', proto)), async () => {
+      if (!pub.value || !tgt.value) throw new Error('Укажите оба порта');
+      const params = { id: x ? v.id : undefined, original: x, published: pub.value, target: tgt.value, protocol: proto.value };
+      return x ? op('portUpdate', params, 'Порт обновлён') : op('portAdd', params, 'Порт добавлен');
+    });
+  }
+  function mountForm(x) {
+    const v = x ? mountOf(x) : { type: 'volume', name: '', hostPath: '', mountPath: '', content: '' };
+    const type = h('select', { class: 'input', onchange: sync }, ['volume', 'bind', 'file'].map((t) => h('option', { value: t, selected: v.type === t }, t)));
+    const mPath = h('input', { class: 'input mono', placeholder: '/var/lib/data', value: v.mountPath });
+    const name = h('input', { class: 'input mono', placeholder: 'data', value: v.name }), host = h('input', { class: 'input mono', placeholder: '/srv/data', value: v.hostPath });
+    const content = h('textarea', { class: 'input mono', rows: 6, spellcheck: 'false' }, v.content);
+    const fName = field('Имя тома', name), fHost = field('Путь на хосте', host), fContent = field('Содержимое файла', content);
+    function sync() { fName.hidden = type.value !== 'volume'; fHost.hidden = type.value !== 'bind'; fContent.hidden = type.value !== 'file'; }
+    sync();
+    dialog(x ? 'Изменить монтирование' : 'Добавить монтирование', h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Тип', type), field('Путь в контейнере', mPath)), fName, fHost, fContent), async () => {
+      if (!mPath.value.trim()) throw new Error('Укажите путь в контейнере');
+      const t = type.value;
+      const params = { id: x ? v.id : undefined, original: x, type: t, mountPath: mPath.value.trim(), name: t === 'volume' ? name.value.trim() || undefined : undefined, hostPath: t === 'bind' ? host.value.trim() || undefined : undefined, content: t === 'file' ? content.value : undefined };
+      return x ? op('mountUpdate', params, 'Монтирование обновлено') : op('mountAdd', params, 'Монтирование добавлено');
+    });
+  }
+  function storage(svc, d) {
     const ports = asList(d.ports), mounts = asList(d.mounts);
-    const pub = h('input', { class: 'input', type: 'number', placeholder: '8080' });
-    const tgt = h('input', { class: 'input', type: 'number', placeholder: '80' });
-    const proto = h('select', { class: 'input' }, h('option', { value: 'tcp' }, 'TCP'), h('option', { value: 'udp' }, 'UDP'));
-    const mType = h('select', { class: 'input' }, ['volume', 'bind', 'file'].map((t) => h('option', { value: t }, t)));
-    const mName = h('input', { class: 'input', placeholder: 'data (для volume)' });
-    const mHost = h('input', { class: 'input', placeholder: '/srv/data (для bind)' });
-    const mPath = h('input', { class: 'input', placeholder: '/var/lib/data' });
     return h('div', { class: 'stack' },
-      h('h4', null, 'Открытые порты'),
-      ports.length ? h('div', { class: 'list' }, ports.map((x) => h('div', { class: 'list-item' }, h('b', null, `${x.published ?? x.publishedPort} → ${x.target ?? x.targetPort}`), h('span', { class: 'muted small' }, String(x.protocol ?? 'tcp').toUpperCase()),
-        ro ? null : h('button', { class: 'btn icon ghost sm', onclick: () => op('portDelete', { id: x.id }, 'Порт удалён') }, icon('trash', 15))))) : h('div', { class: 'muted' }, 'Нет открытых портов.'),
-      ro ? null : h('div', { class: 'card flat stack' }, h('div', { class: 'grid-3' }, field('Внешний', pub), field('Внутренний', tgt), field('Протокол', proto)),
-        h('div', null, h('button', { class: 'btn', onclick: () => { if (!pub.value || !tgt.value) return toast('Укажите оба порта', 'error'); op('portAdd', { published: pub.value, target: tgt.value, protocol: proto.value }, 'Порт добавлен'); } }, icon('plus', 14), 'Открыть порт'))),
-      h('h4', null, 'Тома и монтирования'),
-      mounts.length ? h('div', { class: 'list' }, mounts.map((x) => h('div', { class: 'list-item' }, h('div', null, h('b', null, x.mountPath), h('div', { class: 'muted small' }, `${x.type ?? 'volume'} · ${x.name ?? x.hostPath ?? ''}`)),
-        ro ? null : h('button', { class: 'btn icon ghost sm', onclick: async () => { if (await confirmDialog({ title: 'Удалить монтирование?', message: x.mountPath, danger: true, confirmText: 'Удалить' })) op('mountDelete', { id: x.id }, 'Монтирование удалено'); } }, icon('trash', 15))))) : h('div', { class: 'muted' }, 'Нет монтирований.'),
-      ro ? null : h('div', { class: 'card flat stack' }, h('div', { class: 'grid-2' }, field('Тип', mType), field('Путь в контейнере', mPath)), h('div', { class: 'grid-2' }, field('Имя тома', mName), field('Путь на хосте', mHost)),
-        h('div', null, h('button', { class: 'btn', onclick: () => { if (!mPath.value) return toast('Укажите путь в контейнере', 'error'); op('mountAdd', { type: mType.value, name: mName.value || undefined, hostPath: mHost.value || undefined, mountPath: mPath.value }, 'Монтирование добавлено'); } }, icon('plus', 14), 'Добавить'))));
+      sectionHead('Открытые порты', () => portForm(), 'Открыть порт'),
+      ports.length ? h('div', { class: 'list' }, ports.map((x) => {
+        const v = portOf(x);
+        return h('div', { class: 'list-item' }, h('div', null, h('b', null, `${v.published === '' ? '—' : v.published} → ${v.target === '' ? '—' : v.target}`), h('span', { class: 'muted small ml' }, v.protocol.toUpperCase())),
+          itemActions(() => portForm(x), confirmDel('Удалить порт?', `${v.published} → ${v.target}`, 'portDelete', { id: v.id }, 'Порт удалён')));
+      })) : h('div', { class: 'muted' }, 'Нет открытых портов. Внутренний порт приложения задаётся в домене (поле «Порт контейнера»).'),
+      sectionHead('Тома и монтирования', () => mountForm(), 'Добавить монтирование'),
+      mounts.length ? h('div', { class: 'list' }, mounts.map((x) => {
+        const v = mountOf(x);
+        return h('div', { class: 'list-item' }, h('div', null, h('b', { class: 'mono' }, v.mountPath), h('div', { class: 'muted small' }, `${v.type}${v.type === 'volume' && v.name ? ` · ${v.name}` : ''}${v.type === 'bind' && v.hostPath ? ` · ${v.hostPath}` : ''}${v.type === 'file' && v.content ? ` · ${v.content.split('\n').length} стр.` : ''}`)),
+          itemActions(() => mountForm(x), confirmDel('Удалить монтирование?', v.mountPath, 'mountDelete', { id: v.id }, 'Монтирование удалено')));
+      })) : h('div', { class: 'muted' }, 'Нет монтирований.'));
   }
 
   /* ---- Ресурсы ---- */

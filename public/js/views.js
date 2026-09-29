@@ -173,7 +173,7 @@ export async function diagnose(p) {
       ...r.results.map((x) => h('details', { class: 'diag', open: x.proc === 'projects.listProjectsAndServices' || !x.ok },
         h('summary', null, h('span', { class: `badge ${x.ok ? 'ok' : 'err'}` }, x.ok ? 'ок' : 'ошибка'), h('b', null, ` ${x.proc}`), h('span', { class: 'muted small' }, `  ${x.ms} мс`)),
         x.ok ? h('div', { class: 'stack-sm' }, h('div', { class: 'mono small' }, x.shape), x.recognized ? h('div', { class: 'small' }, `Распознано проектов: ${x.recognized.length}${x.recognized.length ? ' — ' + x.recognized.join(', ') : ''}`) : null, h('pre', { class: 'code' }, x.sample))
-          : h('div', { class: 'callout err compact' }, icon('alert', 14), x.error))));
+          : h('div', { class: 'stack-sm' }, h('div', { class: 'callout err compact' }, icon('alert', 14), x.error), x.body ? h('pre', { class: 'code' }, x.body) : null))));
   } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
   return m;
 }
