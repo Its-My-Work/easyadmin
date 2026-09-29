@@ -209,6 +209,42 @@ export function extraRoutes(d) {
       need(t, 'Шаблон не найден');
       try { return await deployTo(ctx, openTpl(t).cfg, ctx.body, !!ctx.body.deploy); } catch (e) { throw asHttp(e); }
     }, { admin: true }],
+    // Экспорт нашего шаблона в схему Easypanel ({services:[{type,data}]}) — её можно вставить в «Create from JSON» панели
+    ['GET', '/api/templates/:id/schema', (ctx) => {
+      const t = db.prepare('SELECT * FROM templates WHERE id = ?').get(Number(ctx.params.id)); need(t, 'Шаблон не найден');
+      const { cfg } = openTpl(t);
+      const serviceName = String(t.name).toLowerCase().replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'service';
+      const data = { serviceName };
+      if (cfg.env) data.env = cfg.env;
+      if (cfg.type === 'app' && cfg.source) data.source = cfg.source;
+      if (cfg.type === 'app' && cfg.build) data.build = cfg.build;
+      const body = JSON.stringify({ services: [{ type: cfg.type, data }] }, null, 2);
+      return new RawResponse(body, 'application/json; charset=utf-8', { 'Content-Disposition': `attachment; filename="${serviceName}.easypanel.json"` });
+    }, { admin: true }],
+    // Развернуть схему шаблона Easypanel (как «Create from JSON» в панели): templates.createFromSchema {projectName, schema}
+    ['POST', '/api/panels/:id/templates/import', async (ctx) => {
+      const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
+      const project = nameOf(ctx.body.project, 'project');
+      let schema = ctx.body.schema;
+      if (typeof schema === 'string') { try { schema = JSON.parse(schema); } catch { throw new HttpError(400, 'Схема — некорректный JSON'); } }
+      need(schema && typeof schema === 'object' && !Array.isArray(schema), 'Схема должна быть объектом вида {"services": [...]}');
+      need(Array.isArray(schema.services) && schema.services.length > 0 && schema.services.length <= 30, 'В схеме должен быть непустой список services (до 30)');
+      for (const svc of schema.services) {
+        need(svc && ['app', 'compose', ...SERVICE_TYPES].includes(svc.type), `Неизвестный тип сервиса в схеме: ${svc?.type ?? '—'}`);
+        need(svc.data && typeof svc.data === 'object' && typeof svc.data.serviceName === 'string', 'У каждого сервиса в схеме должен быть data.serviceName');
+        nameOf(svc.data.serviceName, 'service');
+      }
+      const c = manager.clientFor(row);
+      try {
+        const existing = await treeOf(row);
+        const taken = schema.services.map((x) => x.data.serviceName).filter((n) => existing.some((p) => p.name === project && p.services.some((y) => y.name === n)));
+        need(!taken.length, `В проекте ${project} уже есть сервис: ${taken.join(', ')}`);
+        if (!existing.some((p) => p.name === project)) await c.mutate('projects.createProject', { name: project });
+        await mutateAudited(ctx, row, 'template.import', `${project}: ${schema.services.map((x) => `${x.type}/${x.data.serviceName}`).join(', ')}`.slice(0, 200), () => c.mutate('templates.createFromSchema', { projectName: project, schema }));
+        manager.invalidate(row.id);
+        return { ok: true, services: schema.services.length };
+      } catch (e) { throw asHttp(e); }
+    }, { admin: true }],
     ['POST', '/api/clone', async (ctx) => {
       const from = ctx.body.from ?? {}; const r = ref(from); const src = panelOr404(from.panelId); assertPanel(ctx, src.id);
       try {

@@ -82,6 +82,7 @@ export function templatesPage() {
     clear(box).append(list.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Шаблон', 'Тип', 'Образ / репозиторий', 'Env', 'Источник', ''].map((x) => h('th', null, x)))),
       h('tbody', null, list.map((t) => h('tr', null, h('td', null, h('b', null, t.name)), h('td', null, TYPE_LABEL[t.type] ?? t.type), h('td', { class: 'mono small' }, t.image ?? '—'), h('td', null, t.envLines), h('td', { class: 'muted small' }, t.origin ?? ''),
         h('td', { class: 'w-actions' }, can('admin') ? h('div', { class: 'inline' }, h('button', { class: 'btn sm primary', onclick: () => deployTemplate(t) }, icon('rocket', 13), 'Развернуть'),
+          h('a', { class: 'btn icon ghost sm', href: `/api/templates/${t.id}/schema`, download: '', title: 'Скачать как схему Easypanel (Create from JSON)', 'aria-label': 'Скачать схему' }, icon('download', 14)),
           h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить шаблон?', message: t.name, danger: true, confirmText: 'Удалить' })) { await del(`/api/templates/${t.id}`); load(); } } }, icon('trash', 14))) : null)))))) : empty('Шаблонов пока нет', 'Нажмите «Создать шаблон» и отметьте действующие сервисы — или откройте карточку сервиса → «Сохранить как шаблон». Затем шаблон можно развернуть на любой панели.'));
   });
   const deployTemplate = (t) => {
@@ -93,7 +94,54 @@ export function templatesPage() {
   };
   tplLoad = load; // форма — в модалке и может пережить пересборку страницы
   load();
-  return h('div', { class: 'page' }, pageHead('Шаблоны', can('admin') ? h('button', { class: 'btn primary', onclick: () => createTemplateModal(() => tplLoad?.()) }, icon('plus', 15), 'Создать шаблон') : null), box);
+  return h('div', { class: 'page' }, pageHead('Шаблоны', can('admin') ? h('div', { class: 'inline' }, h('button', { class: 'btn', onclick: importSchemaModal }, icon('upload', 15), 'Импорт схемы Easypanel'), h('button', { class: 'btn primary', onclick: () => createTemplateModal(() => tplLoad?.()) }, icon('plus', 15), 'Создать шаблон')) : null), box);
+}
+
+/** Разворачивание схемы шаблона Easypanel ({services:[{type,data}]}) — то же, что «Create from JSON» в панели. */
+function importSchemaModal() {
+  const reachable = store.panels.filter((x) => ['online', 'degraded'].includes(x.status));
+  if (!reachable.length) return toast('Нет доступных панелей', 'error');
+  const panelSel = h('select', { class: 'input', onchange: syncProjects }, reachable.map((x) => h('option', { value: x.id }, x.name)));
+  const proj = h('input', { class: 'input', placeholder: 'my-project', list: 'imp-projects', autocomplete: 'off' });
+  const dl = h('datalist', { id: 'imp-projects' });
+  const text = h('textarea', { class: 'input mono', rows: 12, spellcheck: 'false', placeholder: '{\n  "services": [\n    { "type": "app", "data": { "serviceName": "web", "source": { "type": "image", "image": "nginx:latest" } } }\n  ]\n}' });
+  const file = h('input', { type: 'file', accept: '.json,application/json', class: 'input' });
+  const preview = h('div', { class: 'muted small' });
+  const TYPES = ['app', 'compose', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis'];
+  const parse = () => {
+    const raw = text.value.trim(); if (!raw) return { empty: true };
+    let sc; try { sc = JSON.parse(raw); } catch (e) { return { error: `Некорректный JSON: ${e.message}` }; }
+    if (!sc || !Array.isArray(sc.services) || !sc.services.length) return { error: 'В схеме нет списка services' };
+    const bad = sc.services.find((x) => !x || !TYPES.includes(x.type) || typeof x.data?.serviceName !== 'string');
+    if (bad) return { error: 'У каждого сервиса нужны type (app, compose, postgres…) и data.serviceName' };
+    return { schema: sc };
+  };
+  function showPreview() {
+    const r = parse();
+    clear(preview);
+    if (r.empty) return;
+    if (r.error) return preview.append(h('span', { class: 'danger-text' }, r.error));
+    preview.append(h('b', null, `Сервисов в схеме: ${r.schema.services.length}`), h('ul', { class: 'result-list' }, r.schema.services.map((x) => h('li', null, typeChip(x.type), h('b', null, x.data.serviceName), x.data.source?.image ? h('span', { class: 'muted small mono' }, x.data.source.image) : null))));
+  }
+  function syncProjects() {
+    const p = panelById(panelSel.value);
+    clear(dl).append(...(p?.tree?.projects ?? []).map((x) => h('option', { value: x.name })));
+  }
+  text.addEventListener('input', showPreview);
+  file.addEventListener('change', async () => { const f = file.files[0]; if (!f) return; if (f.size > 1_000_000) return toast('Файл слишком большой', 'error'); text.value = await f.text(); showPreview(); });
+  syncProjects();
+  modal({ title: 'Импорт схемы шаблона Easypanel', wide: true, body: h('div', { class: 'stack' },
+    h('div', { class: 'grid-2' }, field('Панель', panelSel), h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('Проект')), proj, dl)),
+    field('Схема (JSON)', text, 'Тот же формат, что у «Create from JSON» в Easypanel и у шаблонов из github.com/easypanel-io/templates (результат generate). Значения вида $(PROJECT_NAME) подставит сама панель.'),
+    field('…или файл', file), preview),
+  actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Развернуть', kind: 'primary', onClick: async () => {
+    const r = parse();
+    if (r.empty) throw new Error('Вставьте схему или выберите файл');
+    if (r.error) throw new Error(r.error);
+    if (!proj.value.trim()) throw new Error('Укажите проект');
+    const res = await post(`/api/panels/${panelSel.value}/templates/import`, { project: proj.value.trim(), schema: r.schema });
+    toast(`Развёрнуто сервисов: ${res.services}`, 'success'); refresh(true, { silent: true });
+  } }] });
 }
 
 /** Создание шаблонов прямо на странице «Шаблоны»: отмечаем действующие сервисы (любых панелей) — по одному шаблону на сервис. */

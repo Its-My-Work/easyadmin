@@ -141,6 +141,20 @@ await step('шаблоны: создать из действующих серв�
   await p.waitForSelector('tr:has-text("Из-страницы-шаблонов")', { timeout: 8000 });
   if ((await p.locator('.tbl tbody tr').count()) !== before + 1) throw new Error('число шаблонов не выросло на 1');
 });
+await step('шаблоны: импорт схемы Easypanel и экспорт шаблона', async () => {
+  await p.goto(U + '#/templates'); await p.waitForSelector('.page');
+  await p.click('button:has-text("Импорт схемы Easypanel")'); await p.waitForSelector('.modal textarea');
+  await p.fill('.modal input[placeholder="my-project"]', 'imp-e2e');
+  await p.fill('.modal textarea', '{"services":[{"type":"app","data":{"serviceName":"imp-web","source":{"type":"image","image":"nginx:latest"}}},{"type":"redis","data":{"serviceName":"imp-cache"}}]}');
+  await p.waitForSelector('.modal :text("Сервисов в схеме: 2")');
+  await p.fill('.modal textarea', '{oops'); await p.waitForSelector('.modal .danger-text:has-text("Некорректный JSON")');
+  await p.fill('.modal textarea', '{"services":[{"type":"app","data":{"serviceName":"imp-web","source":{"type":"image","image":"nginx:latest"}}},{"type":"redis","data":{"serviceName":"imp-cache"}}]}');
+  await p.click('.modal-foot button:has-text("Развернуть")');
+  await p.waitForSelector('.toast.success:has-text("Развёрнуто")', { timeout: 8000 });
+  await p.goto(U + '#/services'); await p.waitForSelector('tr.row:has-text("imp-web")', { timeout: 8000 });
+  await p.goto(U + '#/templates'); await p.waitForSelector('.tbl a[download]');
+  const href = await p.locator('.tbl a[download]').first().getAttribute('href'); if (!/\/api\/templates\/\d+\/schema/.test(href)) throw new Error('нет ссылки экспорта: ' + href);
+});
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');

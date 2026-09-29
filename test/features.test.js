@@ -176,6 +176,31 @@ describe('роли и доступ по панелям', () => {
     assert.ok(f.users.includes('admin') && f.actions.some((a) => a.startsWith('service.')));
     assert.match((await api('admin', 'GET', '/api/audit?format=csv&ok=0')).data, /error/);
   });
+  test('схема Easypanel: экспорт шаблона и импорт (templates.createFromSchema), валидация', async () => {
+    const tpl = await api('admin', 'POST', '/api/templates', { panelId: idA, type: 'app', project: 'web', name: 'site', templateName: 'Мой Шаблон' });
+    assert.equal(tpl.status, 200);
+    const list = (await api('admin', 'GET', '/api/templates')).data;
+    const id = list.find((x) => x.name === 'Мой Шаблон').id;
+    const dl = await api('admin', 'GET', `/api/templates/${id}/schema`);
+    assert.equal(dl.status, 200);
+    const schema = typeof dl.data === 'string' ? JSON.parse(dl.data) : dl.data;
+    assert.equal(schema.services.length, 1); assert.equal(schema.services[0].type, 'app');
+    assert.match(schema.services[0].data.serviceName, /^[a-z0-9_.-]+$/);
+    assert.ok(schema.services[0].data.source, 'источник попал в схему');
+    const imp = await api('admin', 'POST', `/api/panels/${idA}/templates/import`, { project: 'imp', schema });
+    assert.equal(imp.status, 200); assert.equal(imp.data.services, 1);
+    const ov = (await api('admin', 'GET', '/api/overview?force=1')).data.find((x) => x.id === idA);
+    assert.ok(ov.tree.projects.find((p) => p.name === 'imp')?.services.some((x) => x.name === schema.services[0].data.serviceName), 'сервис создан, проект создан автоматически');
+    assert.equal((await api('admin', 'POST', `/api/panels/${idA}/templates/import`, { project: 'imp', schema })).status, 400, 'повтор — сервис уже есть');
+    assert.equal((await api('admin', 'POST', `/api/panels/${idA}/templates/import`, { project: 'imp2', schema: '{oops' })).status, 400);
+    assert.equal((await api('admin', 'POST', `/api/panels/${idA}/templates/import`, { project: 'imp2', schema: { services: [] } })).status, 400);
+    assert.equal((await api('admin', 'POST', `/api/panels/${idA}/templates/import`, { project: 'imp2', schema: { services: [{ type: 'evil', data: { serviceName: 'x' } }] } })).status, 400);
+    assert.equal((await api('admin', 'POST', `/api/panels/${idA}/templates/import`, { project: 'imp2', schema: { services: [{ type: 'redis', data: {} }] } })).status, 400);
+    assert.equal((await api('ro', 'POST', `/api/panels/${idA}/templates/import`, { project: 'imp3', schema })).status, 403);
+    assert.ok((await api('admin', 'GET', '/api/audit?q=template.import')).data.some((a) => a.action === 'template.import' && a.ok === 1));
+    await api('admin', 'DELETE', `/api/templates/${id}`);
+    await api('admin', 'DELETE', `/api/panels/${idA}/projects/imp`);
+  });
   test('смена роли и панелей через PUT, нельзя разжаловать себя', async () => {
     const id = (await api('admin', 'GET', '/api/users')).data.find((u) => u.username === 'op').id;
     assert.equal((await api('admin', 'PUT', `/api/users/${id}`, { role: 'viewer', panels: [] })).status, 200);

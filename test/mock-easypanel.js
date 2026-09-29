@@ -31,6 +31,11 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     }),
     'projects.listProjects': () => [...projects.keys()].map((name) => ({ name })),
     'projects.createProject': (i) => { projects.set(i.name, []); return null; },
+    'templates.createFromSchema': (i) => {
+      if (!projects.has(i.projectName)) throw Object.assign(new Error('Project not found'), { code: 'NOT_FOUND' });
+      for (const sv of i.schema.services) projects.get(i.projectName).push({ name: sv.data.serviceName, type: sv.type, enabled: true, env: sv.data.env ?? '', domains: [], ports: [], mounts: [], source: sv.data.source, image: sv.data.source?.image });
+      return null;
+    },
     'projects.destroyProject': (i) => { projects.delete(i.name ?? i.projectName); return null; },
     'monitor.getSystemStats': () => statsError ? (() => { throw Object.assign(new Error(''), { code: 'INTERNAL_SERVER_ERROR', noMessage: true }); })() : ({
       uptime: 123456,
