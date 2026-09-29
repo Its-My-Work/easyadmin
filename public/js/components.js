@@ -155,9 +155,9 @@ export function serviceRow(s, { showPanel, openService }) {
   return h('tr', { class: 'row', tabindex: 0, onclick: () => openService(s), onkeydown: (e) => { if (e.key === 'Enter') openService(s); } },
     h('td', { class: 'w-check' }, can('operator') ? cb : null),
     h('td', { class: 'c-name' }, h('div', { class: 'svc-name' }, h('b', null, fav ? h('span', { class: 'fav' }, icon('star', 11)) : null, s.name),
-      showPanel ? h('span', { class: 'muted small svc-proj' }, s.project) : null,
-      s.domain ? h('a', { class: 'muted small svc-domain', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', onclick: (e) => e.stopPropagation() }, s.domain) : null)),
+      showPanel ? h('span', { class: 'muted small svc-proj' }, s.project) : null)),
     showPanel ? h('td', { class: 'hide-sm c-panel' }, panelChip(s.panel)) : null,
+    h('td', { class: 'hide-sm c-domain' }, s.domain ? h('a', { class: 'muted small svc-domain', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', title: s.domain, onclick: (e) => e.stopPropagation() }, s.domain) : h('span', { class: 'muted' }, '—')),
     h('td', { class: 'hide-sm c-type' }, typeChip(s.type)),
     h('td', { class: 'c-status' }, svcBadge(s.enabled, s.health)),
     h('td', { class: 'w-actions' }, quickActions(s)));
