@@ -3,7 +3,7 @@ import { empty, matches, meter, panelChip, serviceFilters, serviceRow, statusBad
 import { openService } from './drawer.js';
 import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, relTime, toast, uptime } from './dom.js';
 import { allServices, can, panelById, refresh, store } from './store.js';
-import { lang, setLang } from './i18n.js';
+import { lang, setLang, t } from './i18n.js';
 import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard, twoFaCard, usersCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
@@ -190,19 +190,43 @@ async function destroyProject(p, pr) {
   try { await del(`/api/panels/${p.id}/projects/${encodeURIComponent(pr.name)}`); toast('Проект удалён', 'success'); refresh(true, { silent: true }); } catch (e) { toast(e.message, 'error'); }
 }
 
-export function newService(p, project) {
-  const projects = p.tree?.projects ?? [];
-  if (!projects.length) return toast('Сначала создайте проект', 'error');
-  const proj = h('select', { class: 'input' }, projects.map((x) => h('option', { value: x.name, selected: x.name === project }, x.name)));
+/**
+ * Создание сервиса. С панелью (p) — со страницы панели; без неё — со страницы «Все сервисы» (панель выбирается в окне).
+ * Проект можно выбрать из существующих или ввести новый — он будет создан автоматически.
+ */
+export function newService(p, project, { preferPanel } = {}) {
+  const reachable = store.panels.filter((x) => ['online', 'degraded'].includes(x.status));
+  if (!p && !reachable.length) return toast('Нет доступных панелей — сначала подключите панель', 'error');
+  const initial = p ?? reachable.find((x) => String(x.id) === String(preferPanel)) ?? reachable[0];
+  const panelSel = p ? null : h('select', { class: 'input', onchange: syncProjects }, reachable.map((x) => h('option', { value: x.id, selected: x.id === initial.id }, x.name)));
+  const curPanel = () => (p ?? panelById(panelSel.value));
+  const proj = h('input', { class: 'input', placeholder: 'my-project', list: 'ns-projects', autocomplete: 'off', value: project ?? initial.tree?.projects[0]?.name ?? '' });
+  const dl = h('datalist', { id: 'ns-projects' });
+  const projHint = h('span', { class: 'hint' });
+  function syncProjects() {
+    const names = (curPanel().tree?.projects ?? []).map((x) => x.name);
+    clear(dl).append(...names.map((n) => h('option', { value: n })));
+    if (!project && !names.includes(proj.value)) proj.value = names[0] ?? '';
+    hint();
+  }
+  function hint() { const v = proj.value.trim(); projHint.textContent = v && !(curPanel().tree?.projects ?? []).some((x) => x.name === v) ? 'Новый проект будет создан автоматически' : ''; }
+  proj.addEventListener('input', hint);
   const type = h('select', { class: 'input', onchange: sync }, [['app', 'Приложение (App)'], ['postgres', 'PostgreSQL'], ['mysql', 'MySQL'], ['mariadb', 'MariaDB'], ['mongo', 'MongoDB'], ['redis', 'Redis'], ['compose', 'Docker Compose']].map(([v, l]) => h('option', { value: v }, l)));
   const name = h('input', { class: 'input', placeholder: 'my-service', autocomplete: 'off' });
   const image = h('input', { class: 'input mono', placeholder: 'nginx:latest (необязательно)' });
   const pass = h('input', { class: 'input', type: 'password', placeholder: 'пусто = сгенерировать', autocomplete: 'new-password' });
   const imgF = field('Docker-образ', image), passF = field('Пароль БД', pass);
   function sync() { imgF.hidden = type.value !== 'app'; passF.hidden = ['app', 'compose'].includes(type.value); }
-  sync();
-  modal({ title: `Новый сервис · ${p.name}`, body: h('div', { class: 'stack' }, field('Проект', proj), field('Тип', type), field('Имя', name), imgF, passF), actions: [{ label: 'Отмена', kind: 'ghost' }, {
-    label: 'Создать', kind: 'primary', onClick: async () => { await post(`/api/panels/${p.id}/services`, { type: type.value, project: proj.value, name: name.value.trim(), image: image.value.trim() || undefined, password: pass.value || undefined }); toast('Сервис создан', 'success'); refresh(true, { silent: true }); } }] });
+  sync(); syncProjects();
+  modal({ title: p ? `Новый сервис · ${p.name}` : 'Новый сервис', body: h('div', { class: 'stack' }, panelSel ? field('Панель', panelSel) : null, h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('Проект')), proj, dl, projHint), field('Тип', type), field('Имя', name), imgF, passF), actions: [{ label: 'Отмена', kind: 'ghost' }, {
+    label: 'Создать', kind: 'primary', onClick: async () => {
+      const panel = curPanel(), pname = proj.value.trim(), sname = name.value.trim();
+      if (!pname) throw new Error('Укажите проект');
+      if (!sname) throw new Error('Укажите имя сервиса');
+      if (!(panel.tree?.projects ?? []).some((x) => x.name === pname)) await post(`/api/panels/${panel.id}/projects`, { name: pname });
+      await post(`/api/panels/${panel.id}/services`, { type: type.value, project: pname, name: sname, image: image.value.trim() || undefined, password: pass.value || undefined });
+      toast('Сервис создан', 'success'); refresh(true, { silent: true });
+    } }] });
 }
 
 function systemMenu(p) {
@@ -231,7 +255,7 @@ export function servicesPage() {
   const count = h('span', { class: 'muted' });
   const filters = serviceFilters(allFilter, draw, { showPanels: true });
   draw();
-  return h('div', { class: 'page' }, pageHead('Все сервисы', count), h('div', { class: 'stack' }, filters, wrap));
+  return h('div', { class: 'page' }, pageHead('Все сервисы', count, can('admin') ? h('button', { class: 'btn primary', onclick: () => newService(null, undefined, { preferPanel: allFilter.panel }) }, icon('plus', 15), 'Новый сервис') : null), h('div', { class: 'stack' }, filters, wrap));
 }
 
 import { toggleSelect } from './components.js';

@@ -5,7 +5,7 @@
  */
 export const EN = [
   /* --- общие --- */
-  ['Закрыть', 'Close'], ['Избранные', 'Favorites'], ['Недавние', 'Recent'], ['Страницы', 'Pages'], ['Команды', 'Commands'], ['↑↓ — выбор · Enter — открыть · Esc — закрыть', '↑↓ — navigate · Enter — open · Esc — close'], ['— ок', '— ok'], ['— {0}', '— {0}'], ['Отмена', 'Cancel'], ['Подтвердить', 'Confirm'], ['Выполнить', 'Run'], ['Применить', 'Apply'], ['Сохранить', 'Save'],
+  ['Закрыть', 'Close'], ['Новый сервис', 'New service'], ['Новый проект будет создан автоматически', 'A new project will be created automatically'], ['Укажите проект', 'Enter a project'], ['Укажите имя сервиса', 'Enter a service name'], ['Нет доступных панелей — сначала подключите панель', 'No available panels — connect a panel first'], ['Избранные', 'Favorites'], ['Недавние', 'Recent'], ['Страницы', 'Pages'], ['Команды', 'Commands'], ['↑↓ — выбор · Enter — открыть · Esc — закрыть', '↑↓ — navigate · Enter — open · Esc — close'], ['— ок', '— ok'], ['— {0}', '— {0}'], ['Отмена', 'Cancel'], ['Подтвердить', 'Confirm'], ['Выполнить', 'Run'], ['Применить', 'Apply'], ['Сохранить', 'Save'],
   ['Создать', 'Create'], ['Удалить', 'Delete'], ['Добавить', 'Add'], ['Изменить', 'Edit'], ['Повторить', 'Retry'], ['Копировать', 'Copy'],
   ['Скопировано', 'Copied'], ['Сохранено', 'Saved'], ['Готово', 'Done'], ['Есть ошибки', 'Completed with errors'], ['ок', 'ok'], ['ошибка', 'error'],
   ['Ошибка {0}', 'Error {0}'], ['Нет связи с сервером EasyAdmin', 'Cannot reach the EasyAdmin server'], ['Ничего не найдено', 'Nothing found'],

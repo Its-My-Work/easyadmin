@@ -96,6 +96,15 @@ await step('drawer nav: вертикальное меню без горизон�
   await p.waitForSelector('.drawer .list-item:has-text("/data2")');
   await p.screenshot({ path: 'v4-drawer.png' }); await p.keyboard.press('Escape');
 });
+await step('новый сервис со страницы «Все сервисы» (с новым проектом)', async () => {
+  await p.goto(U + '#/services'); await p.waitForSelector('.tbl');
+  await p.click('button:has-text("Новый сервис")'); await p.waitForSelector('.modal');
+  await p.selectOption('.modal select >> nth=0', { label: 'Стейджинг' });
+  await p.fill('.modal input[placeholder="my-project"]', 'e2e-new'); await p.waitForSelector('.modal .hint:has-text("будет создан")');
+  await p.selectOption('.modal select >> nth=1', 'redis'); await p.fill('.modal input[placeholder="my-service"]', 'e2e-cache');
+  await p.click('.modal-foot button:has-text("Создать")');
+  await p.waitForSelector('tr.row:has-text("e2e-cache")', { timeout: 10000 });
+});
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
