@@ -191,6 +191,7 @@ const SECRET = /pass|secret|token|key|env|credential|auth|cookie|connection|url|
 export function redact(v, d = 0) {
   if (Array.isArray(v)) return v.slice(0, 3).map((x) => redact(x, d + 1)).concat(v.length > 3 ? [`… +${v.length - 3} more`] : []);
   if (v && typeof v === 'object') return d > 5 ? '{…}' : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, SECRET.test(k) && typeof x !== 'object' ? '***' : redact(x, d + 1)]));
+  if (typeof v === 'string') v = v.replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:)[^\s/@]+@/gi, '$1***@');
   return typeof v === 'string' && v.length > 80 ? `${v.slice(0, 80)}…` : v;
 }
 

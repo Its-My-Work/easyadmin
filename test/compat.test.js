@@ -77,10 +77,10 @@ describe('новая версия панели без monitor.getSystemStats', (
     assert.ok(!diag.discovered.includes('console.log') && !diag.discovered.includes('settings.setPanelDomain') === false || true);
     await t.done();
   });
-  test('если подходящего нет — понятное сообщение, панель «частично», остальное работает', async () => {
+  test('если подходящего нет — понятное сообщение в statsError, панель остаётся «онлайн», остальное работает', async () => {
     const t = await boot({ noStats: true });
     const ov = await t.get('/api/overview?force=1');
-    assert.equal(ov[0].status, 'degraded'); assert.match(ov[0].error, /не поддерживает запрос статистики/);
+    assert.equal(ov[0].status, 'online'); assert.equal(ov[0].error, null); assert.match(ov[0].statsError, /не поддерживает запрос статистики/);
     assert.equal(ov[0].tree.projects[0].services[0].name, 's', 'проекты и сервисы на месте');
     await t.done();
   });
@@ -141,7 +141,7 @@ describe('совместимость с другими формами ответ
     answers['projects.listProjectsAndServices'] = { result: { data: { json: { projects: [{ name: 'p' }], services: [] } } } };
     answers['monitor.getSystemStats'] = { result: { data: { json: { something: 'else' } } } };
     const ov = await (await fetch(base + '/api/overview?force=1', { headers: { Cookie: cookie } })).json();
-    assert.equal(ov[0].status, 'degraded'); assert.match(ov[0].error, /Статистика/);
+    assert.equal(ov[0].status, 'online'); assert.match(ov[0].statsError, /Статистика/);
     answers['monitor.getSystemStats'] = { result: { data: { json: { cpuInfo: { usedPercentage: 5 } } } } };
   });
   test('normalizeTree находит проекты и сервисы в нестандартных формах', () => {

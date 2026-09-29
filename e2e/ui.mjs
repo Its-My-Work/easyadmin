@@ -98,6 +98,29 @@ await step('новый сервис со страницы «Все сервис�
   await p.click('.modal-foot button:has-text("Создать")');
   await p.waitForSelector('tr.row:has-text("e2e-cache")', { timeout: 10000 });
 });
+await step('источник Git с deploy-токеном: создание, активный источник сверху, токен скрыт', async () => {
+  await p.goto(U + '#/services'); await p.waitForSelector('.tbl');
+  await p.click('button:has-text("Новый сервис")'); await p.waitForSelector('.modal');
+  await p.selectOption('.modal select >> nth=0', { label: 'Стейджинг' });
+  await p.fill('.modal input[placeholder="my-project"]', 'e2e-new');
+  await p.fill('.modal input[placeholder="my-service"]', 'e2e-git');
+  await p.click('.modal .seg-btn:text-is("Git")');
+  await p.fill('.modal input[placeholder^="https://github.com/owner"]', 'https://github.com/o/private.git');
+  await p.fill('.modal input[type=password] >> visible=true', 'ghp_SECRET123');
+  await p.click('.modal-foot button:has-text("Создать")');
+  await p.waitForSelector('tr.row:has-text("e2e-git")', { timeout: 10000 });
+  await p.locator('tr.row', { hasText: 'e2e-git' }).first().click(); await p.waitForSelector('.drawer.in');
+  await p.click('.drawer .dtab:has-text("Источник")');
+  await p.waitForSelector('.src-sec.active');
+  const first = await p.locator('.src-sec').first().getAttribute('class');
+  if (!first.includes('active')) throw new Error('активный источник не первый');
+  if ((await p.locator('.src-sec.active h4').innerText()).trim().toLowerCase() !== 'git') throw new Error('активен не Git');
+  if ((await p.locator('.src-sec.active input[type=password]').getAttribute('placeholder')).indexOf('сохранён') < 0) throw new Error('токен не определён как сохранённый');
+  await p.click('.drawer .dtab:has-text("Данные")');
+  const raw = await p.locator('.drawer pre.code').innerText();
+  if (raw.includes('ghp_SECRET123')) throw new Error('токен виден во вкладке «Данные»');
+  await p.click('.drawer .icon[aria-label="Закрыть"], .drawer button[aria-label="Закрыть"]');
+});
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');

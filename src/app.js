@@ -26,10 +26,12 @@ const nameOf = (v, label) => { need(typeof v === 'string' && NAME_RE.test(v), `�
 
 const SECRET_KEY = /pass|secret|token|credential|connection|env|key/i;
 /** Рекурсивно вырезает поля с секретами (для роли viewer). */
+// пароль/токен внутри адреса репозитория: https://user:TOKEN@host/…
+const URL_CREDS = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*:)[^\s/@]+@/gi;
 export function redactSecrets(v) {
   if (Array.isArray(v)) return v.map(redactSecrets);
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).filter(([k]) => !SECRET_KEY.test(k)).map(([k, x]) => [k, redactSecrets(x)]));
-  return v;
+  return typeof v === 'string' ? v.replace(URL_CREDS, '$1***@') : v;
 }
 
 const LEVEL = { viewer: 0, operator: 1, admin: 2 };

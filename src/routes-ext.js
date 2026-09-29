@@ -149,7 +149,7 @@ export function extraRoutes(d) {
   ];
 
   /* ---------------- шаблоны и клонирование ---------------- */
-  const summary = (cfg) => ({ image: cfg.source?.image ?? (cfg.source?.owner ? `${cfg.source.owner}/${cfg.source.repo}` : null), envLines: cfg.env ? cfg.env.split('\n').filter(Boolean).length : 0 });
+  const summary = (cfg) => ({ image: cfg.source?.image ?? (cfg.source?.owner ? `${cfg.source.owner}/${cfg.source.repo}` : cfg.source?.repo ? String(cfg.source.repo).replace(/\/\/[^/@]*@/, '//') : cfg.source?.dockerfile ? 'Dockerfile' : null), envLines: cfg.env ? cfg.env.split('\n').filter(Boolean).length : 0 });
   const openTpl = (r) => ({ ...r, cfg: JSON.parse(decrypt(key, r.config_enc)) });
   const deployTo = async (ctx, cfg, to, deploy) => {
     assertPanel(ctx, to.panelId);

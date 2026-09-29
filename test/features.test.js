@@ -126,6 +126,14 @@ describe('роли и доступ по панелям', () => {
     const ro = (await api('ro', 'GET', `/api/panels/${idA}/service?type=app&project=web&name=site`)).data;
     assert.equal(ro.service.env, undefined);
     assert.equal(ro.service.name, 'site');
+    // токен в адресе Git-репозитория наблюдателю не показываем
+    await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'sourceGit', params: { repo: 'https://u:SECRETTOKEN@github.com/o/r.git', branch: 'main' } });
+    const adm2 = (await api('admin', 'GET', `/api/panels/${idA}/service?type=app&project=web&name=site`)).data;
+    assert.match(adm2.service.source.repo, /SECRETTOKEN/);
+    const ro2 = (await api('ro', 'GET', `/api/panels/${idA}/service?type=app&project=web&name=site`)).data;
+    assert.doesNotMatch(JSON.stringify(ro2), /SECRETTOKEN/);
+    assert.match(ro2.service.source.repo, /u:\*\*\*@github\.com/);
+    await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'sourceImage', params: { image: admin.service.source?.image ?? 'nginx:1.25' } });
   });
   test('смена роли и панелей через PUT, нельзя разжаловать себя', async () => {
     const id = (await api('admin', 'GET', '/api/users')).data.find((u) => u.username === 'op').id;

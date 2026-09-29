@@ -74,7 +74,6 @@ export function createManager({ db, key, config }) {
     if (tree.status === 'fulfilled') {
       try { containers = { status: 'fulfilled', value: await fetchContainers(client, row, normalizeTree(tree.value)) }; } catch (e) { containers = { status: 'rejected', reason: e }; }
     }
-    const failed = [tree, stats].find((r) => r.status === 'rejected'); // контейнеры — best-effort, их ошибка не считается
     let snap;
     if (tree.status === 'rejected') {
       const e = tree.reason;
@@ -84,14 +83,15 @@ export function createManager({ db, key, config }) {
       const rawEmpty = tree.value == null || (Array.isArray(tree.value) ? !tree.value.length : typeof tree.value !== 'object' || !Object.keys(tree.value).length);
       const unrecognized = !norm.projects.length && !rawEmpty && !(tree.value?.projects?.length === 0 && (tree.value?.services ?? []).length === 0);
       snap = {
-        status: stats.status === 'rejected' || unrecognized ? 'degraded' : 'online',
-        error: unrecognized ? 'Панель ответила, но список проектов не распознан. Откройте «Диагностика» на странице панели и пришлите результат разработчику.' : failed ? `Статистика недоступна: ${failed.reason.message}` : null,
+        status: unrecognized ? 'degraded' : 'online', // недоступная статистика — не повод для «Частично»
+        error: unrecognized ? 'Панель ответила, но список проектов не распознан. Откройте «Диагностика» на странице панели и пришлите результат разработчику.' : null,
+        statsError: stats.status === 'rejected' ? stats.reason.message : null,
         tree: applyHealth(norm, containers.status === 'fulfilled' ? containers.value : null),
         stats: stats.status === 'fulfilled' ? normalizeStats(stats.value) : null,
       };
     }
     if (snap.status === 'online' && stats.status === 'fulfilled' && snap.stats && snap.stats.cpu == null && snap.stats.memPct == null && snap.stats.diskPct == null) {
-      snap.status = 'degraded'; snap.error = 'Статистика получена, но формат не распознан (см. «Диагностика»)';
+      snap.statsError = 'Статистика получена, но формат не распознан (см. «Диагностика»)';
     }
     snap.latencyMs = Date.now() - t0;
     snap.fetchedAt = Date.now();
@@ -124,7 +124,7 @@ export function createManager({ db, key, config }) {
 
   function pickSnap(s) {
     if (!s) return {};
-    return { status: s.status, error: s.error, tree: s.tree, stats: s.stats, latencyMs: s.latencyMs, fetchedAt: s.fetchedAt };
+    return { status: s.status, error: s.error, tree: s.tree, stats: s.stats, statsError: s.statsError, latencyMs: s.latencyMs, fetchedAt: s.fetchedAt };
   }
 
   function publicPanel(row) {

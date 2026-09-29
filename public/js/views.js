@@ -88,6 +88,8 @@ export function panelPage(id, sub) {
     down ? h('div', { class: 'callout err' }, icon('alert'), h('div', null, h('b', null, p.status === 'auth_error' ? 'Токен отклонён' : 'Панель недоступна'), h('p', null, p.error || ''), p.tree ? h('p', { class: 'muted' }, 'Показаны последние известные данные.') : null)) : null,
     p.status === 'degraded' ? h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Часть данных недоступна'), h('p', null, p.error || 'Панель ответила не на все запросы.'),
       can('admin') ? h('button', { class: 'btn sm', onclick: () => diagnose(p) }, icon('activity', 13), 'Диагностика') : null)) : null,
+    !st && p.statsError && !down ? h('div', { class: 'callout compact' }, icon('activity', 14), h('div', null, h('b', null, 'Нагрузка сервера недоступна'), h('p', { class: 'muted small' }, `${p.statsError} На работу панели в EasyAdmin это не влияет.`),
+      can('admin') ? h('button', { class: 'btn sm', onclick: () => diagnose(p) }, icon('activity', 13), 'Диагностика') : null)) : null,
     st ? h('div', { class: 'statstrip' },
       meter('CPU', st.cpu, `${st.cpus ?? '?'} ядер · load ${st.load?.[0] ?? '—'}`), meter('RAM', st.memPct, `${Math.round((st.memUsedMb ?? 0) / 102.4) / 10} / ${Math.round((st.memTotalMb ?? 0) / 102.4) / 10} ГБ`),
       meter('Диск', st.diskPct, `${gb(st.diskUsedGb)} / ${gb(st.diskTotalGb)}`), h('div', { class: 'meter' }, h('div', { class: 'meter-top' }, h('span', null, 'Аптайм'), h('b', null, uptime(st.uptime))), h('div', { class: 'meter-extra' }, `Сеть ↓${Math.round(st.netIn ?? 0)} ↑${Math.round(st.netOut ?? 0)} МБ`))) : null,
