@@ -243,3 +243,6 @@ tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
 .src-sec:not(.active) { opacity: .85; }
 
 .quiet *, .quiet { transition: none !important; animation: none !important; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+.seg-btn { flex: 1 1 auto; padding: 6px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-weight: 550; cursor: pointer; }
+.seg-btn:hover { color: var(--text); } .seg-btn.active { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--border2); }

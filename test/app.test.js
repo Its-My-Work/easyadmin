@@ -195,6 +195,24 @@ describe('управление сервисами', () => {
     assert.equal((await api('DELETE', `/api/panels/${idA}/projects/newp`)).status, 200);
     assert.equal(panelA.projects.has('newp'), false);
   });
+  test('создание приложения с разными источниками и способом сборки', async () => {
+    const svc = (n) => panelA.projects.get('srcp').find((x) => x.name === n);
+    await api('POST', `/api/panels/${idA}/projects`, { name: 'srcp' });
+    const mk = (name, source) => api('POST', `/api/panels/${idA}/services`, { type: 'app', project: 'srcp', name, source });
+    assert.equal((await mk('a-git', { type: 'git', repo: 'git@github.com:o/r.git', ref: 'dev', build: { type: 'dockerfile', file: 'docker/Dockerfile' } })).status, 200);
+    assert.deepEqual(svc('a-git').source, { type: 'git', repo: 'git@github.com:o/r.git', ref: 'dev', path: '/' });
+    assert.deepEqual(svc('a-git').build, { type: 'dockerfile', file: 'docker/Dockerfile' });
+    assert.equal((await mk('a-gh', { type: 'github', owner: 'o', repo: 'r', build: { type: 'nixpacks' } })).status, 200);
+    assert.equal(svc('a-gh').source.owner, 'o'); assert.equal(svc('a-gh').build.type, 'nixpacks');
+    assert.equal((await mk('a-df', { type: 'dockerfile', dockerfile: 'FROM alpine' })).status, 200);
+    assert.equal(svc('a-df').source.dockerfile, 'FROM alpine');
+    assert.equal((await mk('a-img', { type: 'image', image: 'ghcr.io/o/i:1', username: 'u', password: 'p' })).status, 200);
+    assert.equal(svc('a-img').source.image, 'ghcr.io/o/i:1');
+    assert.equal((await mk('a-bad', { type: 'ftp' })).status, 400);
+    assert.equal((await mk('a-bad2', { type: 'git' })).status, 400);
+    assert.equal((await mk('a-bad3', { type: 'git', repo: 'x', build: { type: 'evil' } })).status, 400);
+    await api('DELETE', `/api/panels/${idA}/projects/srcp`);
+  });
   test('массовая операция на нескольких панелях с частичной ошибкой', async () => {
     const { data } = await api('POST', '/api/bulk', {
       action: 'restart',

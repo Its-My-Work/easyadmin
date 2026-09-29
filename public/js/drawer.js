@@ -2,6 +2,7 @@ import { del, get, post } from './api.js';
 import { runServiceAction, svcBadge, typeChip } from './components.js';
 import { clear, confirmDialog, field, h, icon, modal, toast } from './dom.js';
 import { can, favorites, isDb, pushRecent, refresh, store, subscribe, svcKey, toggleFavorite } from './store.js';
+import { SOURCES, sourceFields, sourceKind } from './source-form.js';
 import { cloneModal, saveTemplateModal } from './views2.js';
 
 let current = null;
@@ -269,23 +270,24 @@ export function openService(s) {
 
   /* ---- Источник ---- */
   function source(svc) {
-    const src = svc.source || {};
-    const kind = src.type && ['image', 'github', 'git'].includes(src.type) ? src.type
-      : src.image ? 'image' : src.owner ? 'github' : /^(git@|https?:|ssh:)/.test(String(src.repo ?? '')) || src.repo ? 'git' : 'image';
-    const inp = (ph, v, cls = 'input') => h('input', { class: cls, placeholder: ph, value: v ?? '' });
-    const image = inp('nginx:latest', src.image, 'input mono');
-    const owner = inp('owner', src.owner), repo = inp('repo', kind === 'github' ? src.repo : ''), branch = inp('main', kind === 'github' ? (src.ref ?? src.branch) : ''), path = inp('/', kind === 'github' ? src.path : '');
-    const gUrl = inp('git@github.com:owner/repo.git', kind === 'git' ? src.repo : '', 'input mono'), gRef = inp('main', kind === 'git' ? (src.ref ?? src.branch) : ''), gPath = inp('/', kind === 'git' ? src.path : '');
-    const apply = (label, fn, primary) => h('div', null, h('button', { class: `btn ${primary ? 'primary' : ''}`, disabled: ro, onclick: fn }, label));
-    const section = (id, title, body) => h('details', { class: `card flat src-sec ${id === kind ? 'active' : ''}`, open: id === kind },
-      h('summary', null, h('h4', null, title), id === kind ? h('span', { class: 'badge ok' }, h('i', { class: 'dot' }), 'Активен') : h('span', { class: 'muted small' }, 'не используется')),
-      h('div', { class: 'stack' }, body));
-    return h('div', { class: 'stack' },
-      section('image', 'Docker-образ', [field('Образ', image), apply('Применить образ', () => { if (!image.value.trim()) return toast('Укажите образ', 'error'); op('sourceImage', { image: image.value.trim() }, 'Источник обновлён'); }, kind === 'image')]),
-      section('github', 'GitHub', [h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo), field('Ветка', branch), field('Путь сборки', path)),
-        apply('Применить репозиторий', () => { if (!owner.value || !repo.value) return toast('Укажите владельца и репозиторий', 'error'); op('sourceGithub', { owner: owner.value, repo: repo.value, branch: branch.value, path: path.value }, 'Источник обновлён'); }, kind === 'github')]),
-      section('git', 'Git', [field('Адрес репозитория', gUrl), h('div', { class: 'grid-2' }, field('Ветка', gRef), field('Путь сборки', gPath)),
-        apply('Применить Git', () => { if (!gUrl.value.trim()) return toast('Укажите адрес репозитория', 'error'); op('sourceGit', { repo: gUrl.value.trim(), branch: gRef.value, path: gPath.value }, 'Источник обновлён'); }, kind === 'git')]),
+    const src = svc.source || {}, build = svc.build || {};
+    const kind = sourceKind(src);
+    const apply = async (id, form) => {
+      const bad = form.check(); if (bad) return toast(bad, 'error');
+      const v = form.get();
+      const ok = id === 'image' ? await op('sourceImage', { image: v.image, username: v.username, password: v.password }, 'Источник обновлён')
+        : id === 'dockerfile' ? await op('sourceDockerfile', { dockerfile: v.dockerfile }, 'Источник обновлён')
+          : await op(id === 'github' ? 'sourceGithub' : 'sourceGit', { owner: v.owner, repo: v.repo, branch: v.ref, path: v.path }, 'Источник обновлён');
+      if (ok && v.build) await op('build', { buildType: v.build.type, file: v.build.file }, 'Способ сборки сохранён');
+    };
+    const section = ([id, title, hint]) => {
+      const form = sourceFields(id, src, build);
+      const active = id === kind;
+      return h('details', { class: `card flat src-sec ${active ? 'active' : ''}`, open: active },
+        h('summary', null, h('div', null, h('h4', null, title), h('div', { class: 'muted small' }, hint)), active ? h('span', { class: 'badge ok' }, h('i', { class: 'dot' }), 'Активен') : h('span', { class: 'muted small' }, 'не используется')),
+        h('div', { class: 'stack' }, ...form.els, ro ? null : h('div', null, h('button', { class: `btn ${active ? 'primary' : ''}`, onclick: () => apply(id, form) }, active ? 'Сохранить' : 'Переключить на этот источник'))));
+    };
+    return h('div', { class: 'stack' }, ...SOURCES.map(section),
       h('p', { class: 'muted small' }, 'У сервиса один источник: активный раскрыт, остальные свёрнуты. Применение другого источника заменит текущий. После смены источника выполните деплой.'));
   }
 

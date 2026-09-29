@@ -4,6 +4,7 @@ import { openService } from './drawer.js';
 import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, relTime, toast, uptime } from './dom.js';
 import { allServices, can, panelById, refresh, store } from './store.js';
 import { lang, setLang, t } from './i18n.js';
+import { sourcePicker } from './source-form.js';
 import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
@@ -214,9 +215,9 @@ export function newService(p, project, { preferPanel } = {}) {
   proj.addEventListener('input', hint);
   const type = h('select', { class: 'input', onchange: sync }, [['app', 'Приложение (App)'], ['postgres', 'PostgreSQL'], ['mysql', 'MySQL'], ['mariadb', 'MariaDB'], ['mongo', 'MongoDB'], ['redis', 'Redis'], ['compose', 'Docker Compose']].map(([v, l]) => h('option', { value: v }, l)));
   const name = h('input', { class: 'input', placeholder: 'my-service', autocomplete: 'off' });
-  const image = h('input', { class: 'input mono', placeholder: 'nginx:latest (необязательно)' });
+  const picker = sourcePicker();
   const pass = h('input', { class: 'input', type: 'password', placeholder: 'пусто = сгенерировать', autocomplete: 'new-password' });
-  const imgF = field('Docker-образ', image), passF = field('Пароль БД', pass);
+  const imgF = h('div', { class: 'stack' }, h('span', { class: 'field-label' }, t('Источник')), picker.el), passF = field('Пароль БД', pass);
   function sync() { imgF.hidden = type.value !== 'app'; passF.hidden = ['app', 'compose'].includes(type.value); }
   sync(); syncProjects();
   modal({ title: p ? `Новый сервис · ${p.name}` : 'Новый сервис', body: h('div', { class: 'stack' }, panelSel ? field('Панель', panelSel) : null, h('label', { class: 'field' }, h('span', { class: 'field-label' }, t('Проект')), proj, dl, projHint), field('Тип', type), field('Имя', name), imgF, passF), actions: [{ label: 'Отмена', kind: 'ghost' }, {
@@ -224,9 +225,12 @@ export function newService(p, project, { preferPanel } = {}) {
       const panel = curPanel(), pname = proj.value.trim(), sname = name.value.trim();
       if (!pname) throw new Error('Укажите проект');
       if (!sname) throw new Error('Укажите имя сервиса');
+      const isApp = type.value === 'app';
+      if (isApp) { const bad = picker.check(); if (bad) throw new Error(bad); }
       if (!(panel.tree?.projects ?? []).some((x) => x.name === pname)) await post(`/api/panels/${panel.id}/projects`, { name: pname });
-      await post(`/api/panels/${panel.id}/services`, { type: type.value, project: pname, name: sname, image: image.value.trim() || undefined, password: pass.value || undefined });
-      toast('Сервис создан', 'success'); refresh(true, { silent: true });
+      const r = await post(`/api/panels/${panel.id}/services`, { type: type.value, project: pname, name: sname, source: isApp ? picker.get() : undefined, password: pass.value || undefined });
+      if (r.warnings?.length) toast(`Сервис создан, но: ${r.warnings.join('; ')}`, 'error', 9000); else toast('Сервис создан', 'success');
+      refresh(true, { silent: true });
     } }] });
 }
 

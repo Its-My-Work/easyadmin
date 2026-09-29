@@ -73,7 +73,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
   };
   for (const type of ['app', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis', 'compose']) {
     const db = ['postgres', 'mysql', 'mariadb', 'mongo', 'redis'].includes(type);
-    procs[`services.${type}.inspectService`] = (i) => { const s = need(find(i)); return { name: s.name, projectName: i.projectName, type, enabled: s.enabled, env: s.env, notes: s.notes ?? '', source: s.source ?? { type: 'image', image: s.image ?? 'nginx:latest' }, resources: s.resources ?? null }; };
+    procs[`services.${type}.inspectService`] = (i) => { const s = need(find(i)); return { name: s.name, projectName: i.projectName, type, enabled: s.enabled, env: s.env, notes: s.notes ?? '', source: s.source ?? { type: 'image', image: s.image ?? 'nginx:latest' }, resources: s.resources ?? null, build: s.build }; };
     procs[`services.${type}.createService`] = (i) => { if (!projects.has(i.projectName)) throw Object.assign(new Error('Project not found'), { code: 'NOT_FOUND' }); projects.get(i.projectName).push({ name: i.serviceName ?? i.name, type, enabled: true, env: '', domains: [], ports: [], mounts: [], image: i.source?.image }); return null; };
     procs[`services.${type}.destroyService`] = (i) => { const l = projects.get(i.projectName); l.splice(l.indexOf(need(find(i))), 1); return null; };
     procs[`services.${type}.updateEnv`] = (i) => { need(find(i)).env = i.env; return null; };
@@ -86,6 +86,10 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
       procs[`services.${type}.startService`] = (i) => { need(find(i)).enabled = true; return null; };
       procs[`services.${type}.stopService`] = (i) => { need(find(i)).enabled = false; return null; };
       procs[`services.${type}.restartService`] = (i) => { need(find(i)).enabled = true; return null; };
+      procs[`services.${type}.updateSourceGit`] = (i) => { const s = need(find(i)); s.source = { type: 'git', repo: i.repo, ref: i.ref, path: i.path }; return null; };
+      procs[`services.${type}.updateSourceGithub`] = (i) => { const s = need(find(i)); s.source = { type: 'github', owner: i.owner, repo: i.repo, ref: i.ref, path: i.path }; return null; };
+      procs[`services.${type}.updateSourceDockerfile`] = (i) => { const s = need(find(i)); s.source = { type: 'dockerfile', dockerfile: i.dockerfile }; return null; };
+      procs[`services.${type}.updateBuild`] = (i) => { need(find(i)).build = i.build; return null; };
       procs[`services.${type}.updateSourceImage`] = (i) => { const s = need(find(i)); s.image = i.image; s.source = { type: 'image', image: i.image }; return null; };
     }
   }

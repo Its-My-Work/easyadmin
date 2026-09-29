@@ -393,13 +393,21 @@ export async function firstOk(c, proc, variants) {
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
 
 /** Белый список тонких операций; params приходят из UI. */
+export const BUILD_TYPES = ['nixpacks', 'dockerfile', 'heroku_buildpacks', 'paketo_buildpacks'];
+export const SOURCE_KINDS = ['image', 'github', 'git', 'dockerfile'];
+
 export const SERVICE_OPS = {
   env: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateEnv'), { ...r, env: String(p.env ?? '') }),
   resources: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateResources'), {
     ...r, memoryLimit: num(p.memoryLimit), memoryReservation: num(p.memoryReservation),
     cpuLimit: num(p.cpuLimit), cpuReservation: num(p.cpuReservation),
   }),
-  sourceImage: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateSourceImage'), { ...r, image: String(p.image) }),
+  sourceImage: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateSourceImage'), { ...r, image: String(p.image), ...(p.username ? { username: String(p.username), password: String(p.password ?? '') } : {}) }),
+  sourceDockerfile: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateSourceDockerfile'), { ...r, dockerfile: String(p.dockerfile ?? '') }),
+  build: (c, r, { type }, p) => {
+    const bt = BUILD_TYPES.includes(p.buildType) ? p.buildType : 'nixpacks';
+    return c.mutate(svcProc(type, 'updateBuild'), { ...r, build: { type: bt, ...(bt === 'dockerfile' ? { file: String(p.file || 'Dockerfile') } : {}) } });
+  },
   sourceGithub: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateSourceGithub'), {
     ...r, owner: p.owner, repo: p.repo, ref: p.branch || 'main', branch: p.branch || 'main', path: p.path || '/',
   }),
@@ -443,10 +451,31 @@ export function runServiceOp(client, op, { type, project, name }, params = {}) {
   return fn(client, { projectName: project, serviceName: name }, { type }, params);
 }
 
-export function createService(client, { type, project, name, image, password }) {
+/** Применяет источник (и способ сборки) к app: {type:'image'|'github'|'git'|'dockerfile', …, build?:{type,file}}. */
+export async function applySource(client, ref, source) {
+  if (!source || !source.type) return [];
+  if (!SOURCE_KINDS.includes(source.type)) throw new PanelError('Неизвестный тип источника');
+  const steps = [];
+  const step = async (name, fn) => { try { await fn(); steps.push({ step: name, ok: true }); } catch (e) { steps.push({ step: name, ok: false, error: e.message }); } };
+  const r = { type: 'app', ...ref };
+  const op = (o, p) => runServiceOp(client, o, r, p);
+  if (source.type === 'image') await step('источник (образ)', () => op('sourceImage', { image: source.image, username: source.username, password: source.password }));
+  else if (source.type === 'github') await step('источник (GitHub)', () => op('sourceGithub', { owner: source.owner, repo: source.repo, branch: source.ref ?? source.branch, path: source.path }));
+  else if (source.type === 'git') await step('источник (Git)', () => op('sourceGit', { repo: source.repo, branch: source.ref ?? source.branch, path: source.path }));
+  else await step('источник (Dockerfile)', () => op('sourceDockerfile', { dockerfile: source.dockerfile }));
+  if (source.build?.type && ['github', 'git'].includes(source.type)) await step('способ сборки', () => op('build', { buildType: source.build.type, file: source.build.file }));
+  return steps;
+}
+
+export async function createService(client, { type, project, name, image, password, source }) {
   assertType(type);
   const ref = { projectName: project, serviceName: name, name };
-  if (type === 'app') return client.mutate(svcProc('app', 'createService'), { ...ref, ...(image ? { source: { type: 'image', image } } : {}) });
+  if (type === 'app') {
+    const simple = source?.type === 'image' && !source.username;
+    const img = simple ? source.image : image;
+    await client.mutate(svcProc('app', 'createService'), { ...ref, ...(img ? { source: { type: 'image', image: img } } : {}) });
+    return source && !simple ? applySource(client, { project, name }, source) : [];
+  }
   if (type === 'compose') return client.mutate(svcProc('compose', 'createService'), ref);
   return client.mutate(svcProc(type, 'createService'), { ...ref, ...(password ? { password } : {}) });
 }

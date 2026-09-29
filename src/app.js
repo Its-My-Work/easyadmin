@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hashPassword, randomToken, sha256, verifyPassword } from './crypto.js';
 import {
-  ACTIONS, PanelClient, SYSTEM_OPS, createService, inspectService, loginToPanel, normalizeUrl, runAction, runServiceOp,
+  ACTIONS, BUILD_TYPES, SOURCE_KINDS, PanelClient, SYSTEM_OPS, createService, inspectService, loginToPanel, normalizeUrl, runAction, runServiceOp,
 } from './easypanel.js';
 import { HttpError, RawResponse, StreamResponse, compile, parseCookies, readJson, redirect, sendJson, sendRaw, serveStatic } from './http.js';
 import { createOidc } from './oidc.js';
@@ -94,6 +94,18 @@ export function createApp({ config, db, key, fetchImpl }) {
     const row = manager.getRow(Number(id));
     if (!row) throw new HttpError(404, 'Панель не найдена');
     return row;
+  };
+  const cleanSource = (src) => {
+    if (!src || typeof src !== 'object' || !src.type) return undefined;
+    if (!SOURCE_KINDS.includes(src.type)) throw new HttpError(400, 'Неизвестный тип источника');
+    const t = (v, max = 500) => (v == null || v === '' ? undefined : String(v).slice(0, max));
+    const out = { type: src.type };
+    if (src.type === 'image') { out.image = t(src.image); out.username = t(src.username, 200); out.password = t(src.password, 500); if (!out.image) throw new HttpError(400, 'Укажите образ'); }
+    else if (src.type === 'github') { out.owner = t(src.owner, 200); out.repo = t(src.repo, 200); out.ref = t(src.ref ?? src.branch, 200); out.path = t(src.path); if (!out.owner || !out.repo) throw new HttpError(400, 'Укажите владельца и репозиторий'); }
+    else if (src.type === 'git') { out.repo = t(src.repo); out.ref = t(src.ref ?? src.branch, 200); out.path = t(src.path); if (!out.repo) throw new HttpError(400, 'Укажите адрес репозитория'); }
+    else { out.dockerfile = t(src.dockerfile, 100_000); if (!out.dockerfile) throw new HttpError(400, 'Укажите содержимое Dockerfile'); }
+    if (src.build?.type) { if (!BUILD_TYPES.includes(src.build.type)) throw new HttpError(400, 'Неизвестный способ сборки'); out.build = { type: src.build.type, file: t(src.build.file, 200) }; }
+    return out;
   };
   const svcRef = (b) => ({ type: b.type, project: nameOf(b.project, 'project'), name: nameOf(b.name, 'service') });
   const asHttp = (e) => (e instanceof HttpError ? e : new HttpError(502, e.message));
@@ -432,8 +444,9 @@ export function createApp({ config, db, key, fetchImpl }) {
     ['POST', '/api/panels/:id/services', async (ctx) => {
       const row = panelOr404(ctx.params.id); const ref = svcRef(ctx.body);
       try {
-        await mutateAudited(ctx, row, 'service.create', `${ref.project}/${ref.name} (${ref.type})`, () => createService(manager.clientFor(row), { ...ref, image: ctx.body.image, password: ctx.body.password }));
-        return { ok: true };
+        let steps = [];
+        await mutateAudited(ctx, row, 'service.create', `${ref.project}/${ref.name} (${ref.type})`, async () => { steps = (await createService(manager.clientFor(row), { ...ref, image: ctx.body.image, password: ctx.body.password, source: cleanSource(ctx.body.source) })) ?? []; });
+        return { ok: true, steps: Array.isArray(steps) ? steps : [], warnings: (Array.isArray(steps) ? steps : []).filter((x) => !x.ok).map((x) => `${x.step}: ${x.error}`) };
       } catch (e) { throw asHttp(e); }
     }, { admin: true }],
 
