@@ -1,5 +1,5 @@
 import { del, get, post, put } from './api.js';
-import { empty, panelChip, showResults, statusBadge, clearSelection } from './components.js';
+import { empty, panelChip, showResults, statusBadge, clearSelection, typeChip } from './components.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, relTime, toast } from './dom.js';
 import { locale, t } from './i18n.js';
 import { TYPE_LABEL, allServices, can, isDb, panelById, refresh, store } from './store.js';
@@ -75,13 +75,14 @@ export function saveTemplateModal(s) {
     actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Сохранить', kind: 'primary', onClick: async () => { await post('/api/templates', { panelId: s.panelId, type: s.type, project: s.project, name: s.name, templateName: name.value }); toast('Шаблон сохранён', 'success'); } }] });
 }
 
+let tplLoad = null;
 export function templatesPage() {
   const box = h('div');
   const load = () => get('/api/templates').then((list) => {
     clear(box).append(list.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Шаблон', 'Тип', 'Образ / репозиторий', 'Env', 'Источник', ''].map((x) => h('th', null, x)))),
       h('tbody', null, list.map((t) => h('tr', null, h('td', null, h('b', null, t.name)), h('td', null, TYPE_LABEL[t.type] ?? t.type), h('td', { class: 'mono small' }, t.image ?? '—'), h('td', null, t.envLines), h('td', { class: 'muted small' }, t.origin ?? ''),
         h('td', { class: 'w-actions' }, can('admin') ? h('div', { class: 'inline' }, h('button', { class: 'btn sm primary', onclick: () => deployTemplate(t) }, icon('rocket', 13), 'Развернуть'),
-          h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить шаблон?', message: t.name, danger: true, confirmText: 'Удалить' })) { await del(`/api/templates/${t.id}`); load(); } } }, icon('trash', 14))) : null)))))) : empty('Шаблонов пока нет', 'Откройте карточку любого сервиса → «Сохранить как шаблон». Затем его можно развернуть на любой панели.'));
+          h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить шаблон?', message: t.name, danger: true, confirmText: 'Удалить' })) { await del(`/api/templates/${t.id}`); load(); } } }, icon('trash', 14))) : null)))))) : empty('Шаблонов пока нет', 'Нажмите «Создать шаблон» и отметьте действующие сервисы — или откройте карточку сервиса → «Сохранить как шаблон». Затем шаблон можно развернуть на любой панели.'));
   });
   const deployTemplate = (t) => {
     const f = targetFields({ name: t.name.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-') });
@@ -90,8 +91,43 @@ export function templatesPage() {
       showResults(r.ok ? 'Готово' : 'Есть ошибки', r.steps, STEP_LABEL); refresh(true, { silent: true });
     } }] });
   };
+  tplLoad = load; // форма — в модалке и может пережить пересборку страницы
   load();
-  return h('div', { class: 'page' }, pageHead('Шаблоны'), box);
+  return h('div', { class: 'page' }, pageHead('Шаблоны', can('admin') ? h('button', { class: 'btn primary', onclick: () => createTemplateModal(() => tplLoad?.()) }, icon('plus', 15), 'Создать шаблон') : null), box);
+}
+
+/** Создание шаблонов прямо на странице «Шаблоны»: отмечаем действующие сервисы (любых панелей) — по одному шаблону на сервис. */
+function createTemplateModal(onSaved) {
+  const svcs = allServices().filter((s) => s.panel && ['app', 'compose', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis'].includes(s.type));
+  if (!svcs.length) return toast('Нет сервисов, из которых можно создать шаблон', 'error');
+  const boxes = svcs.map((s) => ({ s, cb: h('input', { type: 'checkbox' }) }));
+  const filter = h('input', { class: 'input search', placeholder: 'Фильтр по сервису, проекту, панели…' });
+  const name = h('input', { class: 'input', placeholder: 'название шаблона' });
+  const nameF = field('Название шаблона', name, 'Если отмечен один сервис — можно задать своё название, иначе шаблоны назовутся по сервисам.');
+  const count = h('span', { class: 'muted small' });
+  const rows = boxes.map(({ s, cb }) => h('label', { class: 'pick-row' }, cb, panelChip(s.panel), h('b', null, s.name), h('span', { class: 'muted small' }, s.project), h('span', { class: 'spacer' }), typeChip(s.type)));
+  const sync = () => {
+    const n = boxes.filter((b) => b.cb.checked).length;
+    count.textContent = n ? `Выбрано: ${n}` : 'Отметьте сервисы';
+    nameF.hidden = n !== 1;
+    if (n === 1 && !name.value) name.value = boxes.find((b) => b.cb.checked).s.name;
+  };
+  boxes.forEach(({ cb }) => cb.addEventListener('change', sync));
+  filter.addEventListener('input', () => { const q = filter.value.trim().toLowerCase(); boxes.forEach(({ s }, i) => { rows[i].hidden = !!q && ![s.name, s.project, s.panel.name, s.type].some((x) => String(x).toLowerCase().includes(q)); }); });
+  sync();
+  modal({ title: 'Создать шаблон из сервисов', wide: true, body: h('div', { class: 'stack' }, filter, h('div', { class: 'pick-list' }, ...rows), count, nameF),
+    actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Создать', kind: 'primary', onClick: async () => {
+      const chosen = boxes.filter((b) => b.cb.checked).map((b) => b.s);
+      if (!chosen.length) throw new Error('Отметьте хотя бы один сервис');
+      const results = [];
+      for (const s of chosen) {
+        try { await post('/api/templates', { panelId: s.panelId, type: s.type, project: s.project, name: s.name, templateName: chosen.length === 1 && name.value.trim() ? name.value.trim() : s.name }); results.push({ ok: true, project: s.project, name: s.name }); }
+        catch (e) { results.push({ ok: false, project: s.project, name: s.name, error: e.message }); }
+      }
+      onSaved();
+      const bad = results.filter((r) => !r.ok);
+      if (bad.length) showResults(`Создано ${results.length - bad.length}, с ошибкой ${bad.length}`, results); else toast(`Шаблонов создано: ${results.length}`, 'success');
+    } }] });
 }
 
 /* ======================= массовые изменения ======================= */

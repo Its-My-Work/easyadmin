@@ -129,6 +129,18 @@ await step('источник Git с deploy-токеном: создание, а�
   if (raw.includes('ghp_SECRET123')) throw new Error('токен виден во вкладке «Данные»');
   await p.click('.drawer .icon[aria-label="Закрыть"], .drawer button[aria-label="Закрыть"]');
 });
+await step('шаблоны: создать из действующих сервисов на странице «Шаблоны»', async () => {
+  await p.goto(U + '#/templates'); await p.waitForSelector('.page');
+  const before = await p.locator('.tbl tbody tr').count();
+  await p.click('button:has-text("Создать шаблон")'); await p.waitForSelector('.modal .pick-list');
+  await p.fill('.modal input.search', 'worker');
+  const visible = await p.locator('.modal .pick-row:visible').count(); if (!visible) throw new Error('фильтр скрыл всё');
+  await p.locator('.modal .pick-row:visible').first().locator('input').check();
+  await p.fill('.modal input[placeholder="название шаблона"]', 'Из-страницы-шаблонов');
+  await p.click('.modal-foot button:has-text("Создать")');
+  await p.waitForSelector('tr:has-text("Из-страницы-шаблонов")', { timeout: 8000 });
+  if ((await p.locator('.tbl tbody tr').count()) !== before + 1) throw new Error('число шаблонов не выросло на 1');
+});
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');

@@ -282,3 +282,6 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .svc-tbl .svc-domain { display: block; margin: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .svc-tbl .svc-domain:hover { color: var(--text); text-decoration: underline; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip.clickable { cursor: pointer; border: 1px solid var(--border2); background: var(--panel); font-family: var(--mono, monospace); font-size: 12px; } .chip.clickable:hover { border-color: var(--accent); }
+
+.pick-list { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--panel2); }
+.pick-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; } .pick-row:last-child { border-bottom: 0; } .pick-row:hover { background: var(--panel); } .pick-row[hidden] { display: none; }
