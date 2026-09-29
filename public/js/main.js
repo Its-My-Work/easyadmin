@@ -56,7 +56,7 @@ function buildShell() {
       h('button', { class: 'btn icon ghost', title: 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16))));
   const back = h('div', { class: 'side-back', onclick: () => document.body.classList.remove('nav-open') });
   const top = h('header', { class: 'topbar' },
-    h('button', { class: 'btn icon ghost menu-btn', onclick: () => document.body.classList.toggle('nav-open'), 'aria-label': 'Меню' }, icon('menu', 18)),
+    h('button', { class: 'btn icon ghost menu-btn', title: 'Свернуть / развернуть меню', onclick: toggleMenu, 'aria-label': 'Меню' }, icon('menu', 18)),
     h('button', { class: 'search-trigger', onclick: openPalette }, icon('search', 15), h('span', null, 'Поиск и команды'), h('kbd', null, navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K')),
     h('span', { class: 'spacer' }), updated, refreshBtn);
   clear(root).append(h('div', { class: 'app' }, sidebar, back, h('div', { class: 'content' }, top, view)));
@@ -71,6 +71,14 @@ function route() {
   const [, a, b, c] = hash.split('/');
   return { hash: '#' + hash, a, b, c };
 }
+
+const NARROW = window.matchMedia('(max-width: 900px)');
+function toggleMenu() {
+  if (NARROW.matches) return document.body.classList.toggle('nav-open'); // на узком экране меню выезжает поверх страницы
+  const on = document.body.classList.toggle('nav-collapsed'); // на широком — сворачивается совсем, состояние помним
+  try { localStorage.setItem('ea-nav-collapsed', on ? '1' : '0'); } catch { /* приватный режим */ }
+}
+try { if (localStorage.getItem('ea-nav-collapsed') === '1') document.body.classList.add('nav-collapsed'); } catch { /* нет доступа к хранилищу */ }
 
 function renderChrome() {
   if (!shell) return;

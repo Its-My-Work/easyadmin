@@ -15,6 +15,10 @@ export const BUILDS = [
   ['paketo_buildpacks', 'Paketo Buildpacks', 'Сборка через Paketo buildpacks'],
 ];
 
+const NOFILL = { autocomplete: 'off', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' }; // не даём менеджерам паролей рисовать значки поверх поля
+const secret = (placeholder) => h('input', { class: 'input', type: 'password', placeholder, ...NOFILL });
+/** Сворачиваемый блок необязательных полей (открыт, если что-то уже задано). */
+const more = (title, open, ...children) => h('details', { class: 'more', open }, h('summary', null, title), h('div', { class: 'stack' }, ...children));
 const inp = (ph, v, cls = 'input') => h('input', { class: cls, placeholder: ph, value: v ?? '', autocomplete: 'off' });
 
 /** Разбор адреса репозитория с учётными данными: https://user:token@host/path → { url, user, token }. */
@@ -56,8 +60,8 @@ export function sourceFields(kind, src = {}, build = {}, { panelId } = {}) {
   const same = sourceKind(src) === kind;
   const v = (k) => (same ? src[k] : '');
   if (kind === 'image') {
-    const image = inp('nginx:latest', v('image'), 'input mono'), user = inp('логин реестра (необязательно)', v('username')), pass = h('input', { class: 'input', type: 'password', placeholder: 'пароль / токен', autocomplete: 'new-password' });
-    return { els: [field('Образ', image), h('div', { class: 'grid-2' }, field('Пользователь реестра', user), field('Пароль реестра', pass))],
+    const image = inp('nginx:latest', v('image'), 'input mono'), user = inp('логин реестра', v('username')), pass = secret('пароль / токен');
+    return { els: [field('Образ', image), more('Приватный реестр', !!v('username'), h('div', { class: 'grid-2' }, field('Пользователь', user), field('Пароль или токен', pass)))],
       get: () => ({ type: 'image', image: image.value.trim(), username: user.value.trim() || undefined, password: user.value.trim() ? pass.value : undefined }),
       check: () => (image.value.trim() ? null : 'Укажите образ') };
   }
@@ -65,7 +69,7 @@ export function sourceFields(kind, src = {}, build = {}, { panelId } = {}) {
     const gh = kind === 'github';
     const cred = !gh && same ? splitRepoUrl(src.repo) : { url: v('repo'), user: '', token: '' };
     const owner = inp('owner', v('owner')), repo = inp(gh ? 'repo' : 'https://github.com/owner/repo.git  или  git@github.com:owner/repo.git', gh ? v('repo') : cred.url, gh ? 'input' : 'input mono');
-    const tokUser = inp('x-access-token', cred.user), tok = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: cred.token ? '•••••• сохранён — оставьте пустым, чтобы не менять' : 'токен для приватного репозитория (необязательно)' });
+    const tokUser = inp('x-access-token', cred.user), tok = secret(cred.token ? '•••••• сохранён — оставьте пустым, чтобы не менять' : 'токен доступа');
     const ref = inp('main', v('ref') || v('branch')), path = inp('/', v('path'));
     const bt = h('select', { class: 'input', onchange: syncBuild }, BUILDS.map(([id, label]) => h('option', { value: id, selected: (build?.type ?? 'nixpacks') === id }, label)));
     const file = inp('Dockerfile', build?.file, 'input mono');
@@ -84,16 +88,17 @@ export function sourceFields(kind, src = {}, build = {}, { panelId } = {}) {
       } catch (e) { keyBox.replaceChildren(h('div', { class: 'callout warn compact' }, icon('alert', 14), e.message)); }
     };
     const syncKey = () => {
-      const ssh = isSsh(); tokenRow.hidden = ssh; keyBtn.hidden = !ssh || !panelId;
+      const ssh = isSsh(); tokenRow.hidden = ssh; keyBtn.hidden = !ssh || !panelId; if (ssh) priv.open = true;
       if (!ssh) { keyBox.hidden = true; keyBox.replaceChildren(); }
     };
     const keyBtn = h('button', { type: 'button', class: 'btn sm', hidden: true, onclick: () => { keyBox.hidden = false; showKey(); } }, icon('key', 13), 'Показать SSH-ключ панели (deploy key)');
-    const tokenRow = h('div', { class: 'grid-2' }, field('Deploy-токен', tok, 'Для приватных https-репозиториев: GitHub PAT, GitLab/Bitbucket deploy token'), field('Пользователь токена', tokUser));
+    const tokenRow = h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Deploy-токен', tok), field('Пользователь токена', tokUser)), h('p', { class: 'hint' }, 'Для приватных https-репозиториев: GitHub PAT, deploy token GitLab или Bitbucket.'));
+    const priv = more('Приватный репозиторий', !!cred.token, tokenRow, keyBtn, keyBox);
     repo.addEventListener('input', syncKey);
     function syncBuild() { fFile.hidden = bt.value !== 'dockerfile'; }
     syncBuild(); syncKey();
-    return { els: [...(gh ? [h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo))] : [field('Адрес репозитория', repo), tokenRow, keyBtn, keyBox]),
-      h('div', { class: 'grid-2' }, field('Ветка', ref), field('Путь сборки', path)), h('div', { class: 'grid-2' }, field('Способ сборки', bt), fFile)],
+    return { els: [...(gh ? [h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo))] : [field('Адрес репозитория', repo)]),
+      h('div', { class: 'grid-2' }, field('Ветка', ref), field('Путь сборки', path)), h('div', { class: 'grid-2' }, field('Способ сборки', bt), fFile), ...(gh ? [] : [priv])],
     get: () => ({ type: kind, owner: gh ? owner.value.trim() : undefined, repo: gh ? repo.value.trim() : joinRepoUrl(repo.value.trim(), tokUser.value.trim() || cred.user, tok.value || (repo.value.trim() === cred.url ? cred.token : '')), ref: ref.value.trim() || undefined, path: path.value.trim() || undefined, build: { type: bt.value, file: bt.value === 'dockerfile' ? file.value.trim() || 'Dockerfile' : undefined } }),
     check: () => (gh ? (owner.value.trim() && repo.value.trim() ? null : 'Укажите владельца и репозиторий') : (repo.value.trim() ? null : 'Укажите адрес репозитория')) };
   }

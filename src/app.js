@@ -522,15 +522,29 @@ export function createApp({ config, db, key, fetchImpl }) {
       return { results, okCount: results.filter((r) => r.ok).length, failCount: results.filter((r) => !r.ok).length };
     }, { min: 'operator' }],
 
+    ['GET', '/api/audit/facets', (ctx) => {
+      const rows = db.prepare('SELECT username, action, panel_id panelId FROM audit ORDER BY id DESC LIMIT 5000').all()
+        .filter((r) => !ctx.user.panels || (r.panelId && ctx.user.panels.has(r.panelId)));
+      return { users: [...new Set(rows.map((r) => r.username).filter(Boolean))].sort(), actions: [...new Set(rows.map((r) => r.action))].sort() };
+    }],
+
     ['GET', '/api/audit', (ctx) => {
       const q = ctx.url.searchParams;
       const limit = Math.min(Number(q.get('limit')) || 100, 5000);
       const like = q.get('q') ? `%${q.get('q')}%` : null;
       const pid = Number(q.get('panel')) || null;
+      const user = q.get('user') || null;
+      const okf = q.get('ok') === '1' ? 1 : q.get('ok') === '0' ? 0 : null;
+      const since = Number(q.get('since')) || null, until = Number(q.get('until')) || null;
+      // категории: список префиксов действий через запятую (service., cert. …); без точки — точное совпадение
+      const cats = (q.get('action') || '').split(',').map((x) => x.trim()).filter((x) => /^[a-z0-9_.]+$/i.test(x)).slice(0, 20);
+      const catSql = cats.length ? ` AND (${cats.map(() => 'a.action LIKE ?').join(' OR ')})` : '';
+      const catArgs = cats.map((c) => (c.endsWith('.') ? `${c}%` : c));
       const rows = db.prepare(`SELECT a.id, a.ts, a.username, a.panel_id panelId, COALESCE(p.name, a.panel_name) panelName, p.url panelUrl, p.color panelColor, (a.panel_id IS NOT NULL AND p.id IS NULL) panelDeleted,
         a.action, a.target, a.ok, a.detail FROM audit a LEFT JOIN panels p ON p.id = a.panel_id
-        WHERE (? IS NULL OR a.username LIKE ? OR a.panel_name LIKE ? OR p.name LIKE ? OR p.url LIKE ? OR a.action LIKE ? OR a.target LIKE ?) AND (? IS NULL OR a.panel_id = ?) ORDER BY a.id DESC LIMIT ?`)
-        .all(like, like, like, like, like, like, like, pid, pid, limit).filter((r) => !ctx.user.panels || (r.panelId && ctx.user.panels.has(r.panelId)));
+        WHERE (? IS NULL OR a.username LIKE ? OR a.panel_name LIKE ? OR p.name LIKE ? OR p.url LIKE ? OR a.action LIKE ? OR a.target LIKE ?) AND (? IS NULL OR a.panel_id = ?)
+        AND (? IS NULL OR a.username = ?) AND (? IS NULL OR a.ok = ?) AND (? IS NULL OR a.ts >= ?) AND (? IS NULL OR a.ts <= ?)${catSql} ORDER BY a.id DESC LIMIT ?`)
+        .all(like, like, like, like, like, like, like, pid, pid, user, user, okf, okf, since, since, until, until, ...catArgs, limit).filter((r) => !ctx.user.panels || (r.panelId && ctx.user.panels.has(r.panelId)));
       if (q.get('format') !== 'csv') return rows;
       const esc = (v) => `"${String(v ?? '').replace(/"/g, '""').replace(/^([=+\-@])/, "'$1")}"`;
       const csv = ['time,user,panel,action,target,ok,detail,panel_url', ...rows.map((r) => [new Date(r.ts).toISOString(), r.username, r.panelName, r.action, r.target, r.ok ? 'ok' : 'error', r.detail, r.panelUrl].map(esc).join(','))].join('\n');

@@ -4,7 +4,7 @@ const pad = (n) => String(n).padStart(2, '0');
 
 /** Пора ли запускать задание (сервер работает по локальному времени процесса — переменная TZ). */
 export function isDue(s, now = new Date()) {
-  const last = s.last_run ?? 0;
+  const last = s.last_run ?? s.created_at ?? 0; // до первого запуска отсчёт идёт от создания
   if (s.mode === 'interval') return now.getTime() - last >= (s.interval_min || 60) * 60_000;
   if (s.mode === 'daily') {
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== s.time) return false;
@@ -18,8 +18,14 @@ export function isDue(s, now = new Date()) {
 export function createScheduler({ db, manager, alerts, audit, tickMs = 30_000 }) {
   let timer;
   const row = (id) => db.prepare('SELECT * FROM schedules WHERE id = ?').get(id);
+  const running = new Set();
 
   async function run(s) {
+    running.add(s.id);
+    try { return await runInner(s); } finally { running.delete(s.id); }
+  }
+
+  async function runInner(s) {
     const target = JSON.parse(s.target);
     const ctx = { user: { username: `расписание: ${s.name}` } };
     const errors = [];
@@ -49,5 +55,5 @@ export function createScheduler({ db, manager, alerts, audit, tickMs = 30_000 })
       }
     }
   }
-  return { run, row, tick, start() { timer = setInterval(tick, tickMs); timer.unref(); }, stop() { clearInterval(timer); } };
+  return { run, row, tick, isRunning: (id) => running.has(id), start() { timer = setInterval(tick, tickMs); timer.unref(); }, stop() { clearInterval(timer); } };
 }

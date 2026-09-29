@@ -113,7 +113,8 @@ await step('источник Git с deploy-токеном: создание, а�
   await p.fill('.modal input[placeholder="my-service"]', 'e2e-git');
   await p.click('.modal .seg-btn:text-is("Git")');
   await p.fill('.modal input[placeholder^="https://github.com/owner"]', 'https://github.com/o/private.git');
-  await p.fill('.modal input[type=password] >> visible=true', 'ghp_SECRET123');
+  await p.click('.modal .more summary:has-text("Приватный репозиторий")');
+  await p.fill('.modal .more input[type=password]', 'ghp_SECRET123');
   await p.click('.modal-foot button:has-text("Создать")');
   await p.waitForSelector('tr.row:has-text("e2e-git")', { timeout: 10000 });
   await p.locator('tr.row', { hasText: 'e2e-git' }).first().click(); await p.waitForSelector('.drawer.in');
@@ -169,6 +170,32 @@ await step('пользователи: создать, отключить, уда
   await p.fill('.modal input', 'e2e-user'); await p.click('.modal-foot .btn.danger'); await p.waitForFunction(() => !document.body.textContent.includes('e2e-user'));
 });
 await step('audit search', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); await p.fill('.input.search', 'clone'); await p.waitForTimeout(600); await p.screenshot({ path: 'v2-audit.png' }); });
+await step('журнал: фильтры период/результат/категория/пользователь и сброс', async () => {
+  await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr');
+  const total = await p.locator('.tbl tbody tr').count();
+  await p.click('.audit-bar .seg-btn:text-is("Ошибки")'); await p.waitForTimeout(500);
+  const bad = await p.locator('.tbl tbody tr .badge.err').count(); const rows = await p.locator('.tbl tbody tr').count();
+  if (rows !== bad) throw new Error(`в «Ошибки» есть не ошибки: ${rows}/${bad}`);
+  await p.waitForSelector('.audit-bar button:has-text("Сбросить")');
+  await p.click('.audit-bar .seg-btn:text-is("Все")'); await p.click('.audit-bar .seg-btn:text-is("Час")'); await p.waitForTimeout(500);
+  await p.selectOption('.audit-bar select[aria-label="Категория"]', { label: 'Сертификаты' }); await p.waitForTimeout(500);
+  if (await p.locator('.tbl tbody tr').count() && !(await p.locator('.tbl tbody tr').first().innerText()).includes('сертификат')) throw new Error('категория не применилась');
+  await p.click('.audit-bar button:has-text("Сбросить")'); await p.waitForTimeout(600);
+  if ((await p.locator('.tbl tbody tr').count()) < total) throw new Error('сброс не вернул все записи'); // журнал мог пополниться (расписания пишут в него сами)
+  if (await p.locator('.audit-bar button:has-text("Сбросить")').count()) throw new Error('кнопка сброса осталась после сброса');
+  const users = await p.locator('.audit-bar select[aria-label="Пользователь"] option').allTextContents(); if (!users.includes('admin')) throw new Error('нет пользователей в фильтре');
+});
+await step('форма нового сервиса: поля в ряд выровнены', async () => {
+  await p.goto(U + '#/services'); await p.waitForSelector('.tbl');
+  await p.click('button:has-text("Новый сервис")'); await p.waitForSelector('.modal');
+  await p.click('.modal .seg-btn:text-is("Git")');
+  await p.fill('.modal input[placeholder^="https://github.com/owner"]', 'https://github.com/o/r.git');
+  await p.click('.modal .more summary:has-text("Приватный репозиторий")');
+  const tops = await p.locator('.modal .more .grid-2 .input').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  if (new Set(tops).size !== 1) throw new Error('поля токена не на одном уровне: ' + tops);
+  const boxes = await p.locator('.modal-body, .modal .modal-body').first().evaluate((e) => ({ over: e.scrollHeight > e.clientHeight + 1 })).catch(() => ({ over: false }));
+  await p.keyboard.press('Escape');
+});
 await step('palette favorites', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'cache' }).first().click(); await p.waitForSelector('.drawer.in'); await p.click('.drawer .star'); await p.keyboard.press('Escape');

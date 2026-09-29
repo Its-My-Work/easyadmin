@@ -274,12 +274,12 @@ export function extraRoutes(d) {
     const days = Array.isArray(b.days) ? b.days.map(Number).filter((n) => n >= 0 && n <= 6) : [];
     return { name: str(b.name, 'Укажите название', 80), enabled: b.enabled === false ? 0 : 1, target: JSON.stringify(target), action: b.action, mode: b.mode, time: b.mode === 'daily' ? b.time : null, days: days.join(','), interval_min: b.mode === 'interval' ? Number(b.intervalMin) : null };
   };
-  const pubSchedule = (s) => ({ id: s.id, name: s.name, enabled: !!s.enabled, target: JSON.parse(s.target), action: s.action, mode: s.mode, time: s.time, days: s.days ? s.days.split(',').map(Number) : [], intervalMin: s.interval_min, lastRun: s.last_run, lastStatus: s.last_status });
+  const pubSchedule = (s) => ({ id: s.id, name: s.name, enabled: !!s.enabled, target: JSON.parse(s.target), action: s.action, mode: s.mode, time: s.time, days: s.days ? s.days.split(',').map(Number) : [], intervalMin: s.interval_min, lastRun: s.last_status ? s.last_run : null, lastStatus: s.last_status ?? null, running: !!d.scheduler?.()?.isRunning(s.id) });
   const scheduleRoutes = [
     ['GET', '/api/schedules', () => db.prepare('SELECT * FROM schedules ORDER BY id').all().map(pubSchedule)],
     ['POST', '/api/schedules', (ctx) => {
       const c = cleanSchedule(ctx);
-      db.prepare('INSERT INTO schedules (name, enabled, target, action, mode, time, days, interval_min, last_run, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(c.name, c.enabled, c.target, c.action, c.mode, c.time, c.days, c.interval_min, now(), now());
+      db.prepare('INSERT INTO schedules (name, enabled, target, action, mode, time, days, interval_min, last_run, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(c.name, c.enabled, c.target, c.action, c.mode, c.time, c.days, c.interval_min, null, now());
       audit(ctx, { action: 'schedule.add', target: c.name });
       return { ok: true };
     }, { admin: true }],

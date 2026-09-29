@@ -70,6 +70,9 @@ describe('unit', () => {
     assert.equal(isDue({ mode: 'daily', time: '03:30', days: '', last_run: d.getTime() - 10_000 }, d), false);
     assert.equal(isDue({ mode: 'interval', interval_min: 10, last_run: d.getTime() - 11 * 60_000 }, d), true);
     assert.equal(isDue({ mode: 'interval', interval_min: 10, last_run: d.getTime() - 5 * 60_000 }, d), false);
+    // до первого запуска отсчёт идёт от создания
+    assert.equal(isDue({ mode: 'interval', interval_min: 10, last_run: null, created_at: d.getTime() - 5 * 60_000 }, d), false);
+    assert.equal(isDue({ mode: 'interval', interval_min: 10, last_run: null, created_at: d.getTime() - 11 * 60_000 }, d), true);
   });
   test('applyHealth сопоставляет контейнеры и не выдумывает при чужом формате', () => {
     const tree = () => ({ projects: [{ name: 'p', services: [{ project: 'p', name: 'web', enabled: true }, { project: 'p', name: 'web-api', enabled: true }, { project: 'p', name: 'gone', enabled: true }] }] });
@@ -146,6 +149,31 @@ describe('роли и доступ по панелям', () => {
     assert.equal(r.status, 404);
     assert.match(r.data.error, /SSH/);
     assert.equal((await api('ro', 'GET', `/api/panels/${idA}/ssh-key`)).status, 403);
+  });
+  test('журнал: фильтры по пользователю, результату, периоду, категории и панели; facets', async () => {
+    await api('admin', 'POST', `/api/panels/${idA}/service/action`, { type: 'app', project: 'web', name: 'nope-missing', action: 'stop' }); // ошибка попадает в журнал
+    await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'notes', params: { notes: 'x' } });
+    const all = (await api('admin', 'GET', '/api/audit?limit=500')).data;
+    assert.ok(all.length > 3);
+    const bad = (await api('admin', 'GET', '/api/audit?ok=0')).data;
+    assert.ok(bad.length >= 1 && bad.every((r) => r.ok === 0));
+    const good = (await api('admin', 'GET', '/api/audit?ok=1')).data;
+    assert.ok(good.length >= 1 && good.every((r) => r.ok === 1));
+    assert.equal(bad.length + good.length, all.length);
+    const byUser = (await api('admin', 'GET', '/api/audit?user=admin')).data;
+    assert.ok(byUser.length >= 1 && byUser.every((r) => r.username === 'admin'));
+    assert.equal((await api('admin', 'GET', '/api/audit?user=nobody')).data.length, 0);
+    const svc = (await api('admin', 'GET', '/api/audit?action=service.')).data;
+    assert.ok(svc.length >= 1 && svc.every((r) => r.action.startsWith('service.')));
+    const two = (await api('admin', 'GET', '/api/audit?action=service.,login')).data;
+    assert.ok(two.length >= svc.length);
+    assert.equal((await api('admin', 'GET', `/api/audit?since=${Date.now() + 3_600_000}`)).data.length, 0);
+    assert.equal((await api('admin', 'GET', `/api/audit?until=1000`)).data.length, 0);
+    assert.ok((await api('admin', 'GET', `/api/audit?panel=${idA}`)).data.every((r) => r.panelId === idA));
+    assert.equal((await api('admin', 'GET', '/api/audit?action=%27%3B%20DROP')).data.length, all.length, 'некорректные категории игнорируются');
+    const f = (await api('admin', 'GET', '/api/audit/facets')).data;
+    assert.ok(f.users.includes('admin') && f.actions.some((a) => a.startsWith('service.')));
+    assert.match((await api('admin', 'GET', '/api/audit?format=csv&ok=0')).data, /error/);
   });
   test('смена роли и панелей через PUT, нельзя разжаловать себя', async () => {
     const id = (await api('admin', 'GET', '/api/users')).data.find((u) => u.username === 'op').id;
@@ -265,10 +293,11 @@ describe('расписания и вебхуки', () => {
     assert.equal((await api('admin', 'POST', '/api/schedules', { name: 'Ночной рестарт', action: 'restart', mode: 'daily', time: '03:00', days: [1, 3], target: { items: [{ panelId: idA, type: 'app', project: 'web', name: 'site' }, { panelId: idA, type: 'app', project: 'web', name: 'ghost' }] } })).status, 200);
     const s = (await api('admin', 'GET', '/api/schedules')).data[0];
     assert.deepEqual(s.days, [1, 3]);
+    assert.equal(s.lastRun, null, 'новое расписание ещё не запускалось'); assert.equal(s.lastStatus, null); assert.equal(s.running, false);
     const run = await api('admin', 'POST', `/api/schedules/${s.id}/run`);
     assert.equal(run.data.ok, false); assert.equal(run.data.errors.length, 1);
     const after = (await api('admin', 'GET', '/api/schedules')).data[0];
-    assert.match(after.lastStatus, /Ошибок: 1/);
+    assert.match(after.lastStatus, /Ошибок: 1/); assert.ok(after.lastRun > 0);
     const audit = (await api('admin', 'GET', '/api/audit')).data;
     assert.ok(audit.some((a) => a.action === 'schedule.restart' && a.username.startsWith('расписание')));
   });

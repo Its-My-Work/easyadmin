@@ -44,7 +44,7 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 .search-trigger { display: flex; align-items: center; gap: 10px; width: min(420px, 100%); padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--muted); cursor: pointer; font: inherit; }
 .search-trigger:hover { border-color: var(--border2); } .search-trigger span { flex: 1; text-align: left; }
 kbd { font-size: 11px; padding: 1px 6px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 6px; color: var(--muted); background: var(--panel2); }
-.menu-btn { display: none; }
+.menu-btn { display: inline-flex; }
 .view { padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; }
 .page { display: grid; gap: 18px; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -253,3 +253,26 @@ tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
 .svc-tbl .w-check { width: 44px; } .svc-tbl .c-type { width: 130px; } .svc-tbl .c-panel { width: 210px; } .svc-tbl .c-status { width: 150px; } .svc-tbl .w-actions { width: 132px; }
 .svc-tbl .c-name { overflow: hidden; } .svc-tbl .svc-name { min-width: 0; } .svc-tbl .svc-name > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .svc-tbl .c-panel .panel-chip, .svc-tbl .c-panel .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* формы: ровные ряды и сворачиваемые необязательные блоки */
+.grid-2, .grid-3 { align-items: start; } .grid-2 > .field, .grid-2 > label.field { min-width: 0; }
+.more { border: 1px solid var(--border); border-radius: 10px; padding: 0 14px; background: var(--panel2); }
+.more > summary { cursor: pointer; padding: 10px 0; font-size: 13px; font-weight: 600; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 8px; }
+.more > summary::-webkit-details-marker { display: none; } .more > summary::before { content: '›'; display: inline-block; transition: transform .12s; } .more[open] > summary::before { transform: rotate(90deg); }
+.more[open] > summary { color: var(--text); } .more > .stack { padding: 2px 0 14px; }
+.hint { margin: 0; }
+
+.audit-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; } .audit-bar .input { width: auto; min-width: 150px; } .audit-bar .seg { flex: 0 0 auto; }
+.audit-foot { min-height: 20px; padding: 0 4px; } .audit-detail { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* меню сворачивается и на широком экране */
+.app { transition: grid-template-columns .18s; }
+body.nav-collapsed .app { grid-template-columns: 0 1fr; }
+body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 0; border-right-width: 0; visibility: hidden; }
+@media (max-width: 900px) { body.nav-collapsed .app { grid-template-columns: 1fr; } body.nav-collapsed .sidebar { visibility: visible; padding: 16px 12px; border-right-width: 1px; } }
+
+/* таблицы сервисов: название занимает всё свободное место, остальное — компактно в одну строку */
+.svc-tbl .svc-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; } .svc-tbl .svc-name > b { flex: none; }
+.svc-tbl .svc-proj { flex: none; } .svc-tbl .svc-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; text-align: right; }
+.svc-tbl td { padding-top: 8px; padding-bottom: 8px; } .svc-tbl .c-panel { width: 170px; } .svc-tbl .c-type { width: 116px; } .svc-tbl .c-status { width: 130px; }
+.stats-note { display: flex; align-items: center; gap: 8px; padding: 0 2px; }

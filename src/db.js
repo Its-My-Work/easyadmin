@@ -93,6 +93,7 @@ export function openDb(dataDir) {
   if (!scols.includes('ip')) db.exec('ALTER TABLE sessions ADD COLUMN ip TEXT');
   if (!scols.includes('ua')) db.exec('ALTER TABLE sessions ADD COLUMN ua TEXT');
   if (!scols.includes('last_used')) db.exec('ALTER TABLE sessions ADD COLUMN last_used INTEGER');
+  db.exec('UPDATE schedules SET last_run = NULL WHERE last_status IS NULL AND last_run = created_at'); // раньше время создания хранилось как «последний запуск»
   if (!cols.includes('oidc_sub')) db.exec('ALTER TABLE users ADD COLUMN oidc_sub TEXT');
   if (!cols.includes('email')) db.exec('ALTER TABLE users ADD COLUMN email TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_oidc_sub ON users(oidc_sub) WHERE oidc_sub IS NOT NULL');
