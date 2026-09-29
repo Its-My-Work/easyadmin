@@ -276,6 +276,27 @@ describe('инвентарь', () => {
   });
 });
 
+describe('сертификаты в нестандартных форматах', () => {
+  test('домен и срок ищутся в глубине, объекты не превращаются в [object Object]', async () => {
+    const C = createMockPanel({ token: 'C', certs: [
+      { domain: { host: 'deep.example.com' }, validity: { notAfter: '2030-01-01T00:00:00Z' } },
+      { name: 'unix.example.com', expiresAt: Math.floor(Date.now() / 1000) + 86400 * 20 },
+      { domains: ['a.example.com', 'b.example.com'], info: { expire: 'not a date' } },
+      { weird: { x: 1 } },
+    ] });
+    const url = await C.listen();
+    const pid = (await api('admin', 'POST', '/api/panels', { name: 'Cx', url, token: 'C' })).data.id;
+    const cx = (await api('admin', 'GET', '/api/certs')).data.find((p) => p.panelId === pid);
+    assert.deepEqual(cx.certs.map((c) => c.domain).slice(0, 3), ['deep.example.com', 'unix.example.com', 'a.example.com, b.example.com']);
+    assert.ok(cx.certs.every((c) => !c.domain.includes('[object')));
+    assert.equal(new Date(cx.certs[0].expiresAt).getUTCFullYear(), 2030);
+    const days = (cx.certs[1].expiresAt - Date.now()) / 86400000; assert.ok(days > 19 && days < 21);
+    assert.equal(cx.certs[2].expiresAt, null);
+    assert.match(cx.certs[3].domain, /weird/);
+    await api('admin', 'DELETE', `/api/panels/${pid}`); await C.close();
+  });
+});
+
 describe('экспорт, бэкап, метрики', () => {
   test('audit CSV с экранированием формул', async () => {
     await api('admin', 'POST', `/api/panels/${idA}/service/action`, { type: 'app', project: 'web', name: 'nope', action: 'stop' });

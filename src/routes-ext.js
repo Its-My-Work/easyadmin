@@ -308,14 +308,32 @@ export function extraRoutes(d) {
     imageCache.set(row.id, { at: now(), items });
     return items;
   }
-  const certExpiry = (c) => {
-    const v = c?.expiresAt ?? c?.validTo ?? c?.notAfter ?? c?.expiry ?? c?.expires ?? c?.validUntil;
-    const t = v ? new Date(v).getTime() : NaN;
-    return Number.isFinite(t) ? t : null;
+  /* Формат сертификатов у разных версий панели отличается — ищем домен и срок действия в глубине объекта. */
+  const text = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const findDomain = (c, depth = 0) => {
+    if (text(c)) return text(c);
+    if (Array.isArray(c)) return c.map((x) => findDomain(x, depth + 1)).filter(Boolean).join(', ') || null;
+    if (c && typeof c === 'object' && depth < 3) {
+      for (const k of ['domain', 'domains', 'host', 'hostname', 'name', 'commonName', 'cn', 'subject', 'id']) { const r = findDomain(c[k], depth + 1); if (r) return r; }
+    }
+    return null;
   };
+  const toTime = (v) => {
+    if (typeof v === 'number' && v > 0) return v < 1e12 ? v * 1000 : v;
+    if (typeof v === 'string' && v.trim()) { const t = /^\d+$/.test(v.trim()) ? toTime(Number(v)) : Date.parse(v); return Number.isFinite(t) ? t : null; }
+    return null;
+  };
+  const findExpiry = (c, depth = 0) => {
+    if (!c || typeof c !== 'object' || depth > 3) return null;
+    for (const [k, v] of Object.entries(c)) if (/expir|valid.?(to|until)|not.?after/i.test(k)) { const t = toTime(v); if (t) return t; }
+    for (const v of Object.values(c)) if (v && typeof v === 'object') { const r = findExpiry(v, depth + 1); if (r) return r; }
+    return null;
+  };
+  const certExpiry = findExpiry;
   async function certsOf(row) {
-    const list = await manager.clientFor(row).query('certificates.listCertificates');
-    return (Array.isArray(list) ? list : list?.certificates ?? []).map((c) => ({ domain: c?.domain ?? c?.host ?? c?.name ?? (Array.isArray(c?.domains) ? c.domains.join(', ') : String(c?.id ?? '?')), expiresAt: certExpiry(c), raw: c }));
+    const raw = await manager.clientFor(row).query('certificates.listCertificates');
+    const list = Array.isArray(raw) ? raw : Array.isArray(raw?.certificates) ? raw.certificates : [];
+    return list.map((c) => ({ domain: findDomain(c) ?? (JSON.stringify(c) ?? '?').slice(0, 80), expiresAt: certExpiry(c), raw: c }));
   }
   const inventoryRoutes = [
     ['GET', '/api/images', async (ctx) => {
