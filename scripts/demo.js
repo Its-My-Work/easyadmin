@@ -3,7 +3,9 @@ import crypto from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
+import http from 'node:http';
 import { createMockPanel } from '../test/mock-easypanel.js';
+import { FILES as CATALOG_FILES } from '../test/catalog-fixtures.js';
 
 const soon = (d) => new Date(Date.now() + d * 86400000).toISOString();
 const seeds = [
@@ -18,7 +20,10 @@ for (const [name, seed, stats] of seeds) {
   const m = createMockPanel({ token: 'demo-' + name.length, seed, stats, certs: [{ domain: `${name.length}.shop.example.com`, expiresAt: soon(name.length * 7) }, { domain: 'www.example.com', expiresAt: soon(name.length % 2 ? 4 : 75) }] });
   panels.push({ name, m, url: await m.listen() });
 }
-const config = { ...loadConfig({}), dataDir: ':memory:', port };
+// демо-каталог шаблонов Easypanel из нескольких образцов — чтобы вкладка «Каталог» работала без интернета
+const catalogSrv = http.createServer((req, res) => { const body = CATALOG_FILES[decodeURIComponent(req.url.slice(1))]; if (body === undefined) { res.writeHead(404); return res.end(); } res.writeHead(200); res.end(body); });
+await new Promise((r) => catalogSrv.listen(0, '127.0.0.1', r));
+const config = { ...loadConfig({ EASYADMIN_CATALOG_URL: process.env.EASYADMIN_CATALOG_URL || `http://127.0.0.1:${catalogSrv.address().port}` }), dataDir: ':memory:', port };
 const db = openDb(':memory:');
 const app = createApp({ config, db, key: crypto.randomBytes(32) });
 await new Promise((r) => app.server.listen(port, '0.0.0.0', r));

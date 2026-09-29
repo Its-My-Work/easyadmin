@@ -1,4 +1,5 @@
 import { del, get, post, put } from './api.js';
+import { catalogView } from './catalog.js';
 import { empty, panelChip, showResults, statusBadge, clearSelection, typeChip } from './components.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, relTime, toast } from './dom.js';
 import { locale, t } from './i18n.js';
@@ -76,6 +77,7 @@ export function saveTemplateModal(s) {
 }
 
 let tplLoad = null;
+let tplTab = 'mine';
 export function templatesPage() {
   const box = h('div');
   const load = () => get('/api/templates').then((list) => {
@@ -94,7 +96,17 @@ export function templatesPage() {
   };
   tplLoad = load; // форма — в модалке и может пережить пересборку страницы
   load();
-  return h('div', { class: 'page' }, pageHead('Шаблоны', can('admin') ? h('div', { class: 'inline' }, h('button', { class: 'btn', onclick: importSchemaModal }, icon('upload', 15), 'Импорт схемы Easypanel'), h('button', { class: 'btn primary', onclick: () => createTemplateModal(() => tplLoad?.()) }, icon('plus', 15), 'Создать шаблон')) : null), box);
+  const mine = h('div', null, box);
+  const cat = h('div');
+  const actions = can('admin') ? h('div', { class: 'inline' }, h('button', { class: 'btn', onclick: importSchemaModal }, icon('upload', 15), 'Импорт схемы Easypanel'), h('button', { class: 'btn primary', onclick: () => createTemplateModal(() => tplLoad?.()) }, icon('plus', 15), 'Создать шаблон')) : null;
+  const seg = h('div', { class: 'seg' });
+  const show = () => {
+    clear(seg).append(...[['mine', 'Мои шаблоны'], ['catalog', 'Каталог Easypanel']].map(([id, label]) => h('button', { type: 'button', class: `seg-btn ${tplTab === id ? 'active' : ''}`, onclick: () => { tplTab = id; show(); } }, label)));
+    mine.hidden = tplTab !== 'mine'; cat.hidden = tplTab !== 'catalog'; if (actions) actions.hidden = tplTab !== 'mine';
+    if (tplTab === 'catalog' && !cat.childElementCount) catalogView(cat);
+  };
+  show();
+  return h('div', { class: 'page' }, pageHead('Шаблоны', actions), seg, mine, cat);
 }
 
 /** Разворачивание схемы шаблона Easypanel ({services:[{type,data}]}) — то же, что «Create from JSON» в панели. */

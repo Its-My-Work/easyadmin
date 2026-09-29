@@ -23,6 +23,9 @@ export function loadConfig(env = process.env) {
       adminEmails: (env.OIDC_ADMIN_EMAILS || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean),
       allowedDomains: (env.OIDC_ALLOWED_DOMAINS || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean),
     },
+    // каталог шаблонов Easypanel; можно указать своё зеркало (папка templates с list.json и <slug>/meta.yaml, index.ts)
+    catalogEnabled: !['off', 'false', '0'].includes(String(env.EASYADMIN_CATALOG ?? '').toLowerCase()),
+    catalogUrl: env.EASYADMIN_CATALOG_URL || 'https://raw.githubusercontent.com/easypanel-io/templates/main/templates',
     // Срок сертификата определяем по TLS-рукопожатию с самим доменом (панель его не отдаёт)
     tlsProbe: env.EASYADMIN_TLS_PROBE !== 'false',
     tlsProbePort: int(env.EASYADMIN_TLS_PROBE_PORT, 443),

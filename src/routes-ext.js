@@ -6,6 +6,7 @@ import path from 'node:path';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.js';
 import { ACTIONS, SYSTEM_OPS, discoverProcedures, firstOk, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
 import { EVENT_TYPES } from './alerts.js';
+import { CatalogError, createCatalog } from './catalog.js';
 import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http.js';
 import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
 import { applyConfig, extractConfig, mergeEnv, parseEnvLines } from './templates.js';
@@ -192,6 +193,61 @@ export function extraRoutes(d) {
     return { ok: steps.every((s) => s.ok), steps };
   };
 
+  /** Развернуть схему {services:[{type,data}]} на панели: templates.createFromSchema {projectName, schema} (общая часть импорта и каталога). */
+  async function importSchema(ctx, row, project, schemaIn, action) {
+    let schema = schemaIn;
+    if (typeof schema === 'string') { try { schema = JSON.parse(schema); } catch { throw new HttpError(400, 'Схема — некорректный JSON'); } }
+    need(schema && typeof schema === 'object' && !Array.isArray(schema), 'Схема должна быть объектом вида {"services": [...]}');
+    need(Array.isArray(schema.services) && schema.services.length > 0 && schema.services.length <= 30, 'В схеме должен быть непустой список services (до 30)');
+    for (const svc of schema.services) {
+      need(svc && ['app', 'compose', ...SERVICE_TYPES].includes(svc.type), `Неизвестный тип сервиса в схеме: ${svc?.type ?? '—'}`);
+      need(svc.data && typeof svc.data === 'object' && typeof svc.data.serviceName === 'string', 'У каждого сервиса в схеме должен быть data.serviceName');
+      nameOf(svc.data.serviceName, 'service');
+    }
+    const c = manager.clientFor(row);
+    try {
+      const existing = await treeOf(row);
+      const taken = schema.services.map((x) => x.data.serviceName).filter((n) => existing.some((p) => p.name === project && p.services.some((y) => y.name === n)));
+      need(!taken.length, `В проекте ${project} уже есть сервис: ${taken.join(', ')}`);
+      if (!existing.some((p) => p.name === project)) await c.mutate('projects.createProject', { name: project });
+      await mutateAudited(ctx, row, action, `${project}: ${schema.services.map((x) => `${x.type}/${x.data.serviceName}`).join(', ')}`.slice(0, 200), () => c.mutate('templates.createFromSchema', { projectName: project, schema }));
+      manager.invalidate(row.id);
+      return { ok: true, services: schema.services.length };
+    } catch (e) { throw asHttp(e); }
+  }
+
+  /* ---------------- каталог шаблонов Easypanel ---------------- */
+  const catalog = createCatalog({ base: config.catalogUrl, fetchImpl: d.fetchImpl ?? globalThis.fetch });
+  const catalogOn = () => { if (config.catalogEnabled === false) throw new HttpError(404, 'Каталог отключён (EASYADMIN_CATALOG=off)'); };
+  const catalogErr = (e) => { if (e instanceof CatalogError) throw new HttpError(e.status, e.message); throw e; };
+  const catalogRoutes = [
+    ['GET', '/api/catalog', async (ctx) => {
+      catalogOn();
+      try { const r = await catalog.list({ force: ctx.url.searchParams.get('refresh') === '1' && ctx.user.role === 'admin' }); return { items: r.items, tags: r.tags, fetchedAt: r.at }; } catch (e) { return catalogErr(e); }
+    }],
+    ['GET', '/api/catalog/logo/:slug', async (ctx) => {
+      catalogOn();
+      try {
+        const l = await catalog.logo(ctx.params.slug);
+        return new RawResponse(l.body, l.type, { 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+      } catch (e) { return catalogErr(e); }
+    }],
+    ['GET', '/api/catalog/:slug', async (ctx) => { catalogOn(); try { return await catalog.details(ctx.params.slug); } catch (e) { return catalogErr(e); } }],
+    // предпросмотр схемы для выбранных значений формы (ничего не разворачивает)
+    ['POST', '/api/catalog/:slug/schema', async (ctx) => {
+      catalogOn();
+      try { const r = await catalog.schemaFor(ctx.params.slug, ctx.body.values ?? {}); return { schema: r.schema }; } catch (e) { return catalogErr(e); }
+    }, { admin: true }],
+    ['POST', '/api/panels/:id/catalog/:slug/deploy', async (ctx) => {
+      catalogOn();
+      const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
+      const project = nameOf(ctx.body.project, 'project');
+      let schema;
+      try { schema = (await catalog.schemaFor(ctx.params.slug, ctx.body.values ?? {})).schema; } catch (e) { return catalogErr(e); }
+      return importSchema(ctx, row, project, schema, 'template.catalog');
+    }, { admin: true }],
+  ];
+
   const templateRoutes = [
     ['GET', '/api/templates', () => db.prepare('SELECT * FROM templates ORDER BY id DESC').all().map(openTpl).map((t) => ({ id: t.id, name: t.name, type: t.type, origin: t.origin, createdAt: t.created_at, ...summary(t.cfg) }))],
     ['POST', '/api/templates', async (ctx) => {
@@ -224,26 +280,7 @@ export function extraRoutes(d) {
     // Развернуть схему шаблона Easypanel (как «Create from JSON» в панели): templates.createFromSchema {projectName, schema}
     ['POST', '/api/panels/:id/templates/import', async (ctx) => {
       const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
-      const project = nameOf(ctx.body.project, 'project');
-      let schema = ctx.body.schema;
-      if (typeof schema === 'string') { try { schema = JSON.parse(schema); } catch { throw new HttpError(400, 'Схема — некорректный JSON'); } }
-      need(schema && typeof schema === 'object' && !Array.isArray(schema), 'Схема должна быть объектом вида {"services": [...]}');
-      need(Array.isArray(schema.services) && schema.services.length > 0 && schema.services.length <= 30, 'В схеме должен быть непустой список services (до 30)');
-      for (const svc of schema.services) {
-        need(svc && ['app', 'compose', ...SERVICE_TYPES].includes(svc.type), `Неизвестный тип сервиса в схеме: ${svc?.type ?? '—'}`);
-        need(svc.data && typeof svc.data === 'object' && typeof svc.data.serviceName === 'string', 'У каждого сервиса в схеме должен быть data.serviceName');
-        nameOf(svc.data.serviceName, 'service');
-      }
-      const c = manager.clientFor(row);
-      try {
-        const existing = await treeOf(row);
-        const taken = schema.services.map((x) => x.data.serviceName).filter((n) => existing.some((p) => p.name === project && p.services.some((y) => y.name === n)));
-        need(!taken.length, `В проекте ${project} уже есть сервис: ${taken.join(', ')}`);
-        if (!existing.some((p) => p.name === project)) await c.mutate('projects.createProject', { name: project });
-        await mutateAudited(ctx, row, 'template.import', `${project}: ${schema.services.map((x) => `${x.type}/${x.data.serviceName}`).join(', ')}`.slice(0, 200), () => c.mutate('templates.createFromSchema', { projectName: project, schema }));
-        manager.invalidate(row.id);
-        return { ok: true, services: schema.services.length };
-      } catch (e) { throw asHttp(e); }
+      return importSchema(ctx, row, nameOf(ctx.body.project, 'project'), ctx.body.schema, 'template.import');
     }, { admin: true }],
     ['POST', '/api/clone', async (ctx) => {
       const from = ctx.body.from ?? {}; const r = ref(from); const src = panelOr404(from.panelId); assertPanel(ctx, src.id);
@@ -567,5 +604,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

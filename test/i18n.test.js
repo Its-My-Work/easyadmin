@@ -29,10 +29,30 @@ function literals(src) {
     }
     return { text: buf, next: i };
   };
+  // «/» начинает регулярное выражение, если перед ним оператор, скобка или return/typeof (а не идентификатор/число/закрывающая скобка)
+  const regexAllowed = (at) => {
+    let k = at - 1; while (k >= 0 && /[ \t]/.test(src[k])) k--;
+    if (k < 0 || '(,=:[!&|?{};\n+-*%<>~^'.includes(src[k])) return true;
+    const word = /(\w+)$/.exec(src.slice(Math.max(0, k - 9), k + 1))?.[1];
+    return ['return', 'typeof', 'case', 'in', 'of', 'void', 'delete', 'yield'].includes(word);
+  };
+  const skipRegex = (at) => {
+    let k = at + 1; let cls = false;
+    while (k < n) {
+      const ch = src[k];
+      if (ch === '\\') { k += 2; continue; }
+      if (ch === '\n') break;
+      if (cls) { if (ch === ']') cls = false; } else if (ch === '[') cls = true; else if (ch === '/') { k++; break; }
+      k++;
+    }
+    while (k < n && /[a-z]/.test(src[k])) k++;
+    return k;
+  };
   while (i < n) {
     const c = src[i];
     if (c === '/' && src[i + 1] === '/') { while (i < n && src[i] !== '\n') i++; }
     else if (c === '/' && src[i + 1] === '*') i = src.indexOf('*/', i + 2) + 2;
+    else if (c === '/' && regexAllowed(i)) i = skipRegex(i);
     else if ('\'"`'.includes(c)) { const r = readStr(i, c); i = r.next; if (CY.test(r.text)) out.push(r.text); }
     else i++;
   }

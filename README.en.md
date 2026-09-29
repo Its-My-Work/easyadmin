@@ -76,6 +76,16 @@ Set `EASYADMIN_PUBLIC_URL` (e.g. `https://admin.example.com`) and `OIDC_ISSUER`,
 - An existing local user whose username equals the verified email is linked to the SSO account, keeping their role.
 - `OIDC_ALLOWED_DOMAINS` restricts email domains. An SSO user's password is unusable — sign-in only through the provider (the provider handles 2FA).
 
+## Easypanel template catalog
+
+*Templates → Easypanel catalog* shows the same templates Easypanel offers when creating a service (about 850, with search and tags): a card with description and links, a parameter form, a **schema preview** and one-click deployment to the chosen panel (the project is created automatically).
+
+How it works: EasyAdmin reads the public [easypanel-io/templates](https://github.com/easypanel-io/templates) repository (`list.json`, and each template's `meta.yaml` and `index.ts`), obtains a `{services:[{type,data}]}` schema and hands it to the panel through `templates.createFromSchema` — the same as “Create from JSON”.
+The `generate` function in `index.ts` is TypeScript code from that repository. **It runs on the EasyAdmin server**, therefore: only admins can trigger it; it runs in an empty, isolated `node:vm` context (no `process`, `require`, network or files; `eval`/`Function` are forbidden; random values are passed in as a string from `crypto`; 2 s timeout; capped result size); templates that need third-party modules or cryptography (keys, hashes) are marked as unsupported. `vm` isolation is not an OS-level security boundary, so if you do not trust the source, use your own mirror (`EASYADMIN_CATALOG_URL`, pinned to a revision) or disable the catalog (`EASYADMIN_CATALOG=off`).
+Check the whole catalog: `node scripts/catalog-check.js /path/to/templates` (a local clone of the repository).
+
+Besides the catalog: *Import Easypanel schema* (paste JSON from “Create from JSON” and deploy it to a panel) and export of a saved template as such a schema.
+
 ## Live logs
 
 Logs come over the panel's own WebSocket; EasyAdmin proxies them to the browser via SSE. The exact WebSocket path depends on the Easypanel version and is undocumented, so `/ws/serviceLogs`, `/api/ws/serviceLogs` and `/ws/logs` are tried in turn. If your version uses another path, set `EASYPANEL_LOGS_PATHS`; on failure the tab shows which paths were tried.

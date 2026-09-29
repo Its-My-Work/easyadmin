@@ -155,6 +155,25 @@ await step('шаблоны: импорт схемы Easypanel и экспорт 
   await p.goto(U + '#/templates'); await p.waitForSelector('.tbl a[download]');
   const href = await p.locator('.tbl a[download]').first().getAttribute('href'); if (!/\/api\/templates\/\d+\/schema/.test(href)) throw new Error('нет ссылки экспорта: ' + href);
 });
+await step('каталог Easypanel: поиск, карточка, неподдерживаемый шаблон, развёртывание', async () => {
+  await p.goto(U + '#/templates'); await p.waitForSelector('.page');
+  await p.click('.seg-btn:has-text("Каталог Easypanel")'); await p.waitForSelector('.cat-card');
+  const total = await p.locator('.cat-card').count(); if (total < 5) throw new Error('в каталоге мало карточек: ' + total);
+  await p.fill('.cat-bar input.search', 'uses fs'); await p.waitForTimeout(200);
+  if ((await p.locator('.cat-card').count()) !== 1) throw new Error('поиск не отфильтровал каталог');
+  await p.locator('.cat-card').first().click(); await p.waitForSelector('.modal .callout.warn');
+  if (await p.locator('.modal-foot button:has-text("Развернуть")').count()) throw new Error('у неподдерживаемого шаблона есть кнопка развёртывания');
+  await p.keyboard.press('Escape');
+  await p.fill('.cat-bar input.search', 'demo'); await p.waitForTimeout(200);
+  await p.locator('.cat-card', { hasText: 'Demo' }).first().click(); await p.waitForSelector('.modal .cat-head');
+  await p.fill('.modal input[placeholder="my-project"]', 'cat-e2e');
+  await p.fill('.modal .field:has(.field-label:has-text("App Service Name")) input', 'cat-demo');
+  await p.click('.modal-foot button:has-text("Показать схему")'); await p.waitForSelector('.modal pre.code:has-text("cat-demo-db")');
+  await p.click('.modal:has(pre.code) .modal-foot button:has-text("Закрыть")');
+  await p.click('.modal-foot button:has-text("Развернуть")');
+  await p.waitForSelector('.toast.success:has-text("развёрнуто")', { timeout: 8000 });
+  await p.goto(U + '#/services'); await p.waitForSelector('tr.row:has-text("cat-demo-db")', { timeout: 8000 });
+});
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
