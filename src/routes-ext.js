@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.js';
-import { ACTIONS, SYSTEM_OPS, SERVICE_TYPES, inspectService, runAction, runServiceOp } from './easypanel.js';
+import { ACTIONS, SYSTEM_OPS, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
 import { EVENT_TYPES } from './alerts.js';
 import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http.js';
 import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
@@ -64,6 +64,24 @@ export function extraRoutes(d) {
       const c = alerts.list().find((x) => x.id === Number(ctx.params.id));
       need(c, 'Канал не найден');
       try { await alerts.sendTo(c, { type: 'test', icon: '✅', text: 'EasyAdmin: тестовое уведомление' }); return { ok: true }; } catch (e) { throw new HttpError(502, e.message); }
+    }, { admin: true }],
+  ];
+
+  /* ---------------- диагностика ответов панели ---------------- */
+  const diagRoutes = [
+    ['GET', '/api/panels/:id/diagnose', async (ctx) => {
+      const row = panelOr404(ctx.params.id);
+      const c = manager.clientFor(row);
+      const procs = ['projects.listProjectsAndServices', 'projects.listProjects', 'monitor.getSystemStats', 'monitor.getAdvancedStats', 'projects.getDockerContainers', 'certificates.listCertificates', 'actions.listActions'];
+      const results = await Promise.all(procs.map(async (proc) => {
+        const t0 = now();
+        try {
+          const v = await c.query(proc, proc === 'actions.listActions' ? {} : undefined);
+          const sample = JSON.stringify(redact(v), null, 1) ?? 'undefined';
+          return { proc, ok: true, ms: now() - t0, shape: shapeOf(v), sample: sample.slice(0, 2500), ...(proc === 'projects.listProjectsAndServices' ? { recognized: normalizeTree(v).projects.map((p) => `${p.name} (${p.services.length})`) } : {}) };
+        } catch (e) { return { proc, ok: false, ms: now() - t0, error: e.message, kind: e.kind }; }
+      }));
+      return { panel: row.name, url: row.url, results };
     }, { admin: true }],
   ];
 
@@ -344,5 +362,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...channelRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...channelRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

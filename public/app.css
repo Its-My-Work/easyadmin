@@ -198,3 +198,5 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); c
 .btn.on { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
 .ok-text { color: var(--ok); }
 .sso { display: grid; gap: 12px; } .sso .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; } .sso .or::before, .sso .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+.diag { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; } .diag summary { cursor: pointer; } .diag[open] summary { margin-bottom: 8px; }

@@ -76,7 +76,8 @@ export class PanelClient {
           if (status >= 400) return finish(reject, new PanelError(`HTTP ${status} (${proc}): ${data.slice(0, 160)}`, { status }));
           if (json === undefined) return finish(reject, new PanelError('Ответ не похож на API Easypanel (проверьте адрес)', { status }));
           const payload = json?.result?.data;
-          finish(resolve, payload && typeof payload === 'object' && 'json' in payload ? payload.json : (json?.result ? null : json));
+          // superjson: {result:{data:{json}}}; без superjson: {result:{data}}; void-процедура: {result:{}} → null
+          finish(resolve, payload && typeof payload === 'object' && !Array.isArray(payload) && 'json' in payload ? payload.json : (json?.result ? (payload ?? null) : json));
         });
       });
       req.on('error', (e) => finish(reject, new PanelError(e.code === 'ECONNREFUSED' ? 'Соединение отклонено' : e.message, { kind: 'network' })));
@@ -104,35 +105,82 @@ export const DB_TYPES = ['postgres', 'mysql', 'mariadb', 'mongo', 'redis'];
 
 /** Приводит ответ projects.listProjectsAndServices к { projects: [{name, services: [...]}] }. */
 export function normalizeTree(raw) {
+  raw = unwrap(raw);
   const projects = new Map();
   const ensure = (name) => {
     if (!projects.has(name)) projects.set(name, { name, services: [] });
     return projects.get(name);
   };
-  const projArr = Array.isArray(raw) ? raw : Array.isArray(raw?.projects) ? raw.projects : [];
-  const svcArr = Array.isArray(raw?.services) ? raw.services : [];
   const addSvc = (pname, s) => {
-    const name = s.name ?? s.serviceName;
+    const name = s?.name ?? s?.serviceName;
     if (!name) return;
     const p = ensure(pname);
     if (p.services.some((x) => x.name === name)) return;
     p.services.push({
-      project: pname, name,
-      type: s.type ?? s.kind ?? 'app',
-      enabled: s.enabled !== false,
+      project: pname, name: String(name),
+      type: String(s.type ?? s.kind ?? s.serviceType ?? 'app'),
+      enabled: s.enabled !== false && s.disabled !== true,
       domain: s.domain ?? s.primaryDomain ?? null,
     });
   };
-  for (const p of projArr) {
-    const name = p?.name ?? p?.projectName;
-    if (!name) continue;
-    ensure(name);
-    for (const s of p.services ?? []) addSvc(name, s);
+  const fill = (projArr, svcArr) => {
+    for (const p of projArr) {
+      const name = p?.name ?? p?.projectName;
+      if (!name) continue;
+      ensure(String(name));
+      for (const s of p.services ?? []) addSvc(String(name), s);
+    }
+    for (const s of svcArr) addSvc(String(s?.projectName ?? s?.project ?? s?.projectId ?? '—'), s);
+  };
+  fill(Array.isArray(raw) ? raw : Array.isArray(raw?.projects) ? raw.projects : [], Array.isArray(raw?.services) ? raw.services : []);
+  if (!projects.size) { // другая форма ответа: ищем массивы проектов/сервисов в глубине
+    const { projs, svcs } = scan(raw);
+    fill(projs, svcs);
   }
-  for (const s of svcArr) addSvc(s.projectName ?? s.project ?? '—', s);
   const list = [...projects.values()].sort((a, b) => a.name.localeCompare(b.name));
   list.forEach((p) => p.services.sort((a, b) => a.name.localeCompare(b.name)));
   return { projects: list };
+}
+
+/** Снимает обёртки вида {json: …} / {data: …} / {result: …}. */
+function unwrap(v) {
+  for (let i = 0; i < 3 && v && typeof v === 'object' && !Array.isArray(v); i++) {
+    const keys = Object.keys(v);
+    if (keys.length === 1 && ['json', 'data', 'result'].includes(keys[0])) v = v[keys[0]]; else break;
+  }
+  return v;
+}
+
+/** Поиск массивов объектов с полем name на глубину до 4: с type/projectName — сервисы, иначе — проекты. */
+function scan(v, depth = 0, out = { projs: [], svcs: [] }) {
+  if (depth > 4 || v == null || typeof v !== 'object') return out;
+  if (Array.isArray(v)) {
+    const objs = v.filter((x) => x && typeof x === 'object' && !Array.isArray(x) && (x.name ?? x.serviceName));
+    if (objs.length && objs.length === v.length) {
+      if (objs.some((x) => x.type || x.projectName || x.project)) out.svcs.push(...objs); else out.projs.push(...objs);
+      return out;
+    }
+    v.forEach((x) => scan(x, depth + 1, out));
+    return out;
+  }
+  Object.values(v).forEach((x) => scan(x, depth + 1, out));
+  return out;
+}
+
+/** Краткое описание формы значения (без данных) — для диагностики. */
+export function shapeOf(v, d = 0) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return `[${v.length ? shapeOf(v[0], d + 1) : ''}]×${v.length}`;
+  if (typeof v === 'object') return d > 2 ? '{…}' : `{${Object.entries(v).slice(0, 14).map(([k, x]) => `${k}: ${shapeOf(x, d + 1)}`).join(', ')}}`;
+  return typeof v;
+}
+
+const SECRET = /pass|secret|token|key|env|credential|auth|cookie|connection|url|uri/i;
+/** Копия значения без секретов — безопасно показывать администратору и отправлять в отчёт. */
+export function redact(v, d = 0) {
+  if (Array.isArray(v)) return v.slice(0, 3).map((x) => redact(x, d + 1)).concat(v.length > 3 ? [`… ещё ${v.length - 3}`] : []);
+  if (v && typeof v === 'object') return d > 5 ? '{…}' : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, SECRET.test(k) && typeof x !== 'object' ? '***' : redact(x, d + 1)]));
+  return typeof v === 'string' && v.length > 80 ? `${v.slice(0, 80)}…` : v;
 }
 
 /**

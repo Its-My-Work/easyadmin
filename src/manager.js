@@ -29,10 +29,13 @@ export function createManager({ db, key, config }) {
       const e = tree.reason;
       snap = { status: e.kind === 'auth' ? 'auth_error' : 'offline', error: e.message, tree: cache.get(row.id)?.tree ?? null, stats: null };
     } else {
+      const norm = normalizeTree(tree.value);
+      const rawEmpty = tree.value == null || (Array.isArray(tree.value) ? !tree.value.length : typeof tree.value !== 'object' || !Object.keys(tree.value).length);
+      const unrecognized = !norm.projects.length && !rawEmpty && !(tree.value?.projects?.length === 0 && (tree.value?.services ?? []).length === 0);
       snap = {
-        status: stats.status === 'rejected' ? 'degraded' : 'online',
-        error: failed ? failed.reason.message : null,
-        tree: applyHealth(normalizeTree(tree.value), containers.status === 'fulfilled' ? containers.value : null),
+        status: stats.status === 'rejected' || unrecognized ? 'degraded' : 'online',
+        error: unrecognized ? 'Панель ответила, но список проектов не распознан. Откройте «Диагностика» на странице панели и пришлите результат разработчику.' : failed ? `Статистика недоступна: ${failed.reason.message}` : null,
+        tree: applyHealth(norm, containers.status === 'fulfilled' ? containers.value : null),
         stats: stats.status === 'fulfilled' ? normalizeStats(stats.value) : null,
       };
     }

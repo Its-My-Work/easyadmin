@@ -56,6 +56,7 @@ function panelCard(p) {
   return h('a', { class: `panel-card ${down ? 'down' : ''}`, href: `#/panel/${p.id}`, style: { '--pc': p.color } },
     h('div', { class: 'pc-head' }, h('div', null, h('h3', null, p.name), h('div', { class: 'muted small' }, host(p.url))), statusBadge(p.status)),
     down ? h('div', { class: 'callout err compact' }, icon('alert', 14), p.error || 'Нет данных') : h('div', { class: 'meters' }, meter('CPU', p.stats?.cpu), meter('RAM', p.stats?.memPct), meter('Диск', p.stats?.diskPct)),
+    p.status === 'degraded' && p.error ? h('div', { class: 'callout warn compact' }, icon('alert', 14), p.error) : null,
     h('div', { class: 'pc-foot' }, h('span', null, icon('folder', 13), `${p.tree?.projects.length ?? 0}`), h('span', null, icon('layers', 13), `${svcs.length}`),
       stopped ? h('span', { class: 'warn-text' }, `${stopped} остановлено`) : null, h('span', { class: 'spacer' }), p.latencyMs ? h('span', { class: 'muted' }, `${p.latencyMs} мс`) : null),
     p.tags?.length ? h('div', { class: 'tags' }, p.tags.map((t) => h('span', { class: 'tag' }, t))) : null);
@@ -79,9 +80,12 @@ export function panelPage(id, sub) {
       h('div', { class: 'inline' }, statusBadge(p.status),
         can('admin') ? h('button', { class: 'btn', onclick: () => newProject(p) }, icon('plus', 14), 'Проект') : null,
         can('admin') ? h('button', { class: 'btn primary', onclick: () => newService(p) }, icon('plus', 14), 'Сервис') : null,
+        can('admin') ? h('button', { class: 'btn icon', title: 'Диагностика: что отвечает панель', onclick: () => diagnose(p) }, icon('activity', 16)) : null,
         can('admin') ? h('button', { class: 'btn icon', title: 'Система', onclick: () => systemMenu(p) }, icon('settings', 16)) : null,
         can('admin') ? h('button', { class: 'btn icon', title: 'Настройки панели', onclick: () => panelForm(p) }, icon('edit', 15)) : null)),
     down ? h('div', { class: 'callout err' }, icon('alert'), h('div', null, h('b', null, p.status === 'auth_error' ? 'Токен отклонён' : 'Панель недоступна'), h('p', null, p.error || ''), p.tree ? h('p', { class: 'muted' }, 'Показаны последние известные данные.') : null)) : null,
+    p.status === 'degraded' ? h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Часть данных недоступна'), h('p', null, p.error || 'Панель ответила не на все запросы.'),
+      can('admin') ? h('button', { class: 'btn sm', onclick: () => diagnose(p) }, icon('activity', 13), 'Диагностика') : null)) : null,
     st ? h('div', { class: 'statstrip' },
       meter('CPU', st.cpu, `${st.cpus ?? '?'} ядер · load ${st.load?.[0] ?? '—'}`), meter('RAM', st.memPct, `${Math.round((st.memUsedMb ?? 0) / 102.4) / 10} / ${Math.round((st.memTotalMb ?? 0) / 102.4) / 10} ГБ`),
       meter('Диск', st.diskPct, `${gb(st.diskUsedGb)} / ${gb(st.diskTotalGb)}`), h('div', { class: 'meter' }, h('div', { class: 'meter-top' }, h('span', null, 'Аптайм'), h('b', null, uptime(st.uptime))), h('div', { class: 'meter-extra' }, `Сеть ↓${Math.round(st.netIn ?? 0)} ↑${Math.round(st.netOut ?? 0)} МБ`))) : null,
@@ -155,6 +159,22 @@ function consoleTab(p) {
   };
   return h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Прямой вызов любой tRPC-процедуры панели — на случай функций, которых ещё нет в интерфейсе. Мутации попадают в журнал.'),
     h('div', { class: 'grid-2' }, field('Процедура', proc), field('Тип', kind)), field('Input (JSON)', input), h('div', null, h('button', { class: 'btn primary', onclick: run }, icon('terminal', 14), 'Выполнить')), out);
+}
+
+/** Показывает, что именно ответила панель на ключевые запросы (без секретов) — для настройки совместимости. */
+export async function diagnose(p) {
+  const body = h('div', { class: 'stack' }, h('div', { class: 'skeleton', style: { height: '120px' } }));
+  const m = modal({ title: `Диагностика · ${p.name}`, wide: true, body, actions: [{ label: 'Копировать отчёт', close: false, onClick: () => { navigator.clipboard?.writeText(body.dataset.report ?? ''); toast('Отчёт скопирован', 'success'); return false; } }, { label: 'Закрыть', kind: 'primary' }] });
+  try {
+    const r = await get(`/api/panels/${p.id}/diagnose`);
+    body.dataset.report = JSON.stringify(r, null, 2);
+    clear(body).append(h('p', { class: 'muted small' }, 'Значения секретов скрыты. Отчёт можно отправить разработчику целиком.'),
+      ...r.results.map((x) => h('details', { class: 'diag', open: x.proc === 'projects.listProjectsAndServices' || !x.ok },
+        h('summary', null, h('span', { class: `badge ${x.ok ? 'ok' : 'err'}` }, x.ok ? 'ок' : 'ошибка'), h('b', null, ` ${x.proc}`), h('span', { class: 'muted small' }, `  ${x.ms} мс`)),
+        x.ok ? h('div', { class: 'stack-sm' }, h('div', { class: 'mono small' }, x.shape), x.recognized ? h('div', { class: 'small' }, `Распознано проектов: ${x.recognized.length}${x.recognized.length ? ' — ' + x.recognized.join(', ') : ''}`) : null, h('pre', { class: 'code' }, x.sample))
+          : h('div', { class: 'callout err compact' }, icon('alert', 14), x.error))));
+  } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
+  return m;
 }
 
 /* ---------- формы: проект / сервис / система ---------- */
