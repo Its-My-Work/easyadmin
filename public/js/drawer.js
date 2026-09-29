@@ -3,7 +3,7 @@ import { runServiceAction, svcBadge, typeChip } from './components.js';
 import { clear, confirmDialog, field, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
 import { can, favorites, isDb, pushRecent, refresh, store, subscribe, svcKey, toggleFavorite } from './store.js';
-import { BUILDS, SOURCES, sourceFields, sourceKind, splitRepoUrl } from './source-form.js';
+import { BUILDS, SOURCES, sourceFields, repoLabel, sourceKind, splitRepoUrl } from './source-form.js';
 import { cloneModal, saveTemplateModal } from './views2.js';
 
 let current = null;
@@ -156,7 +156,7 @@ export function openService(s) {
       h('div', { class: 'card flat' },
         kv('Панель', s.panel.name), kv('Проект', s.project), kv('Тип', s.type),
         kv('Источник', src ? t(SOURCES.find(([id]) => id === sourceKind(src))?.[1] ?? '') : undefined), kv('Образ', pick(src, 'image')),
-        kv('Репозиторий', sourceKind(src || {}) === 'github' ? `${src.owner}/${src.repo}@${src.ref || src.branch || ''}` : sourceKind(src || {}) === 'git' ? `${splitRepoUrl(src.repo).url}@${src.ref || src.branch || ''}${splitRepoUrl(src.repo).token ? ' 🔑' : ''}` : undefined),
+        kv('Репозиторий', ['github', 'git'].includes(sourceKind(src || {})) ? `${repoLabel(src)}${splitRepoUrl(src.repo).token ? ' 🔑' : ''}` : undefined),
         kv('Сборка', svc.build?.type ? `${(BUILDS.find(([id]) => id === svc.build.type) ?? [, svc.build.type])[1]}${svc.build.file ? ` (${svc.build.file})` : ''}` : undefined),
         kv('Доменов', domainsList.length), kv('Томов', asList(d.mounts).length), kv('Портов', asList(d.ports).length)),
       domainsList.length ? h('div', { class: 'stack-sm' }, h('h4', null, 'Домены'), domainsList.map((x) => h('a', { class: 'link-row', href: `${x.https === false ? 'http' : 'https'}://${x.host}`, target: '_blank', rel: 'noopener' }, icon('globe', 14), x.host, icon('external', 12)))) : null,
@@ -284,7 +284,7 @@ export function openService(s) {
       if (ok && v.build) await op('build', { buildType: v.build.type, file: v.build.file }, 'Способ сборки сохранён');
     };
     const section = ([id, title, hint]) => {
-      const form = sourceFields(id, src, build);
+      const form = sourceFields(id, src, build, { panelId: s.panelId });
       const active = id === kind;
       return h('details', { class: `card flat src-sec ${active ? 'active' : ''}`, open: active },
         h('summary', null, h('div', null, h('h4', null, title), h('div', { class: 'muted small' }, hint)), active ? h('span', { class: 'badge ok' }, h('i', { class: 'dot' }), 'Активен') : h('span', { class: 'muted small' }, 'не используется')),

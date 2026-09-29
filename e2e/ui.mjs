@@ -56,6 +56,13 @@ await step('schedule create + run', async () => {
   await p.click('button:has-text("Запустить сейчас")'); await p.waitForSelector('.toast.success:has-text("Выполнено")'); await p.waitForTimeout(500);
   await p.screenshot({ path: 'v2-schedules.png' });
 });
+await step('расписание появляется сразу, даже если страница пересобралась под открытой формой', async () => {
+  await p.goto(U + '#/schedules'); await p.click('button:has-text("Новое расписание")'); await p.waitForSelector('.modal .checklist');
+  await p.evaluate(() => window.dispatchEvent(new CustomEvent('ea:rerender'))); // как фоновое обновление данных
+  await p.fill('.modal input[placeholder="Ночной рестарт"]', 'Пересборка');
+  await p.locator('.modal .checklist label', { hasText: 'worker' }).first().locator('input').check();
+  await p.click('.modal-foot button:has-text("Создать")'); await p.waitForSelector('.list-item:has-text("Пересборка")', { timeout: 5000 });
+});
 await step('inventory images + certs', async () => {
   await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row', { timeout: 15000 }); await p.screenshot({ path: 'v2-images.png' });
   await p.click('.seg button:has-text("Сертификаты")'); await p.waitForSelector('.badge:has-text("дн.")'); await p.screenshot({ path: 'v2-certs.png' });

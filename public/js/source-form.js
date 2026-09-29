@@ -1,4 +1,5 @@
-import { field, h } from './dom.js';
+import { get } from './api.js';
+import { field, h, icon, toast } from './dom.js';
 
 /** Источники приложения Easypanel и способы сборки — общие для создания сервиса и вкладки «Источник». */
 export const SOURCES = [
@@ -32,6 +33,15 @@ export function joinRepoUrl(url, user, token) {
   return `${m[1]}${encodeURIComponent(user || 'x-access-token')}:${encodeURIComponent(token)}@${m[2]}`;
 }
 
+/** «владелец/репозиторий@ветка» для отображения (адрес без токена). */
+export function repoLabel(src = {}) {
+  const ref = src.ref ?? src.branch ?? '';
+  if (src.owner) return `${src.owner}/${src.repo}@${ref}`;
+  const { url } = splitRepoUrl(src.repo);
+  const parts = url.replace(/\.git$/i, '').split(/[/:]/).filter(Boolean);
+  return `${parts.length >= 2 ? `${parts.at(-2)}/${parts.at(-1)}` : url}@${ref}`;
+}
+
 /** Определяет активный тип источника по данным панели. */
 export function sourceKind(src = {}) {
   if (['image', 'github', 'git', 'dockerfile'].includes(src.type)) return src.type;
@@ -42,7 +52,7 @@ export function sourceKind(src = {}) {
 }
 
 /** Поля одного источника: возвращает { els, get() } — get() отдаёт объект для API. */
-export function sourceFields(kind, src = {}, build = {}) {
+export function sourceFields(kind, src = {}, build = {}, { panelId } = {}) {
   const same = sourceKind(src) === kind;
   const v = (k) => (same ? src[k] : '');
   if (kind === 'image') {
@@ -60,9 +70,29 @@ export function sourceFields(kind, src = {}, build = {}) {
     const bt = h('select', { class: 'input', onchange: syncBuild }, BUILDS.map(([id, label]) => h('option', { value: id, selected: (build?.type ?? 'nixpacks') === id }, label)));
     const file = inp('Dockerfile', build?.file, 'input mono');
     const fFile = field('Файл Dockerfile', file);
+    // deploy-ключ панели: для ssh-адресов (git@…) — показываем публичный ключ, который нужно добавить в репозиторий
+    const keyBox = h('div', { class: 'stack-sm', hidden: true });
+    const isSsh = () => !gh && /^(git@|ssh:\/\/)/i.test(repo.value.trim());
+    const showKey = async () => {
+      keyBox.replaceChildren(h('span', { class: 'muted small' }, 'Запрашиваем ключ у панели…'));
+      try {
+        const id = typeof panelId === 'function' ? panelId() : panelId;
+        const r = await get(`/api/panels/${id}/ssh-key`);
+        keyBox.replaceChildren(h('div', { class: 'muted small' }, 'Публичный SSH-ключ панели — добавьте его в GitHub → репозиторий → Settings → Deploy keys:'),
+          h('textarea', { class: 'input mono', rows: 3, readonly: true, onclick: (e) => e.target.select() }, r.key),
+          h('button', { type: 'button', class: 'btn sm', onclick: async () => { try { await navigator.clipboard.writeText(r.key); toast('Ключ скопирован', 'success'); } catch { toast('Выделите ключ и скопируйте вручную', 'error'); } } }, icon('copy', 13), 'Копировать'));
+      } catch (e) { keyBox.replaceChildren(h('div', { class: 'callout warn compact' }, icon('alert', 14), e.message)); }
+    };
+    const syncKey = () => {
+      const ssh = isSsh(); tokenRow.hidden = ssh; keyBtn.hidden = !ssh || !panelId;
+      if (!ssh) { keyBox.hidden = true; keyBox.replaceChildren(); }
+    };
+    const keyBtn = h('button', { type: 'button', class: 'btn sm', hidden: true, onclick: () => { keyBox.hidden = false; showKey(); } }, icon('key', 13), 'Показать SSH-ключ панели (deploy key)');
+    const tokenRow = h('div', { class: 'grid-2' }, field('Deploy-токен', tok, 'Для приватных https-репозиториев: GitHub PAT, GitLab/Bitbucket deploy token'), field('Пользователь токена', tokUser));
+    repo.addEventListener('input', syncKey);
     function syncBuild() { fFile.hidden = bt.value !== 'dockerfile'; }
-    syncBuild();
-    return { els: [...(gh ? [h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo))] : [field('Адрес репозитория', repo), h('div', { class: 'grid-2' }, field('Deploy-токен', tok, 'Для приватных https-репозиториев: GitHub PAT, GitLab/Bitbucket deploy token'), field('Пользователь токена', tokUser))]),
+    syncBuild(); syncKey();
+    return { els: [...(gh ? [h('div', { class: 'grid-2' }, field('Владелец', owner), field('Репозиторий', repo))] : [field('Адрес репозитория', repo), tokenRow, keyBtn, keyBox]),
       h('div', { class: 'grid-2' }, field('Ветка', ref), field('Путь сборки', path)), h('div', { class: 'grid-2' }, field('Способ сборки', bt), fFile)],
     get: () => ({ type: kind, owner: gh ? owner.value.trim() : undefined, repo: gh ? repo.value.trim() : joinRepoUrl(repo.value.trim(), tokUser.value.trim() || cred.user, tok.value || (repo.value.trim() === cred.url ? cred.token : '')), ref: ref.value.trim() || undefined, path: path.value.trim() || undefined, build: { type: bt.value, file: bt.value === 'dockerfile' ? file.value.trim() || 'Dockerfile' : undefined } }),
     check: () => (gh ? (owner.value.trim() && repo.value.trim() ? null : 'Укажите владельца и репозиторий') : (repo.value.trim() ? null : 'Укажите адрес репозитория')) };
@@ -72,14 +102,14 @@ export function sourceFields(kind, src = {}, build = {}) {
 }
 
 /** Выбор источника с переключателем — для диалога создания сервиса (первый вариант — «Позже», источник необязателен). */
-export function sourcePicker() {
+export function sourcePicker(panelId) {
   const box = h('div', { class: 'stack' });
   const desc = h('div', { class: 'muted small' });
   const opts = [['none', 'Позже', 'Источник можно задать после создания — на вкладке «Источник»'], ...SOURCES];
   let kind = 'none', cur = null;
   const seg = h('div', { class: 'seg' });
   const draw = () => {
-    seg.replaceChildren(...opts.map(([id, label]) => h('button', { type: 'button', class: `seg-btn ${id === kind ? 'active' : ''}`, onclick: () => { kind = id; cur = id === 'none' ? null : sourceFields(id); draw(); } }, label)));
+    seg.replaceChildren(...opts.map(([id, label]) => h('button', { type: 'button', class: `seg-btn ${id === kind ? 'active' : ''}`, onclick: () => { kind = id; cur = id === 'none' ? null : sourceFields(id, {}, {}, { panelId }); draw(); } }, label)));
     desc.textContent = opts.find(([id]) => id === kind)[2];
     box.replaceChildren(seg, desc, ...(cur?.els ?? []));
   };

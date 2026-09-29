@@ -217,7 +217,7 @@ export function newService(p, project, { preferPanel } = {}) {
   proj.addEventListener('input', hint);
   const type = h('select', { class: 'input', onchange: sync }, [['app', 'Приложение (App)'], ['postgres', 'PostgreSQL'], ['mysql', 'MySQL'], ['mariadb', 'MariaDB'], ['mongo', 'MongoDB'], ['redis', 'Redis'], ['compose', 'Docker Compose']].map(([v, l]) => h('option', { value: v }, l)));
   const name = h('input', { class: 'input', placeholder: 'my-service', autocomplete: 'off' });
-  const picker = sourcePicker();
+  const picker = sourcePicker(() => curPanel().id);
   const pass = h('input', { class: 'input', type: 'password', placeholder: 'пусто = сгенерировать', autocomplete: 'new-password' });
   const imgF = h('div', { class: 'stack' }, h('span', { class: 'field-label' }, t('Источник')), picker.el), passF = field('Пароль БД', pass);
   function sync() { imgF.hidden = type.value !== 'app'; passF.hidden = ['app', 'compose'].includes(type.value); }

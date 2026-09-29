@@ -135,6 +135,18 @@ describe('роли и доступ по панелям', () => {
     assert.match(ro2.service.source.repo, /u:\*\*\*@github\.com/);
     await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'sourceImage', params: { image: admin.service.source?.image ?? 'nginx:1.25' } });
   });
+  test('источники в инвентаре: git показывается как владелец/репозиторий@ветка без токена; SSH-ключ панели', async () => {
+    await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'sourceGit', params: { repo: 'https://u:TOPSECRET@github.com/Its-My-Work/Hh.git', branch: 'feature/x' } });
+    const items = (await api('admin', 'GET', '/api/images?force=1')).data;
+    const it = items.find((i) => i.panelId === idA && i.name === 'site');
+    assert.equal(it.repo, 'Its-My-Work/Hh@feature/x');
+    assert.doesNotMatch(JSON.stringify(items), /TOPSECRET/);
+    await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'sourceImage', params: { image: 'nginx:1.25' } });
+    const r = await api('admin', 'GET', `/api/panels/${idA}/ssh-key`);
+    assert.equal(r.status, 404);
+    assert.match(r.data.error, /SSH/);
+    assert.equal((await api('ro', 'GET', `/api/panels/${idA}/ssh-key`)).status, 403);
+  });
   test('смена роли и панелей через PUT, нельзя разжаловать себя', async () => {
     const id = (await api('admin', 'GET', '/api/users')).data.find((u) => u.username === 'op').id;
     assert.equal((await api('admin', 'PUT', `/api/users/${id}`, { role: 'viewer', panels: [] })).status, 200);

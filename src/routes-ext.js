@@ -69,6 +69,27 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
+  /* ---------------- публичный SSH-ключ панели (deploy key для git@… репозиториев) ---------------- */
+  const SSH_CANDIDATES = ['settings.getPublicKey', 'settings.getSshPublicKey', 'settings.getPublicSshKey', 'settings.getGitPublicKey', 'settings.getSshKey', 'settings.getDeployKey', 'settings.getGitSshKey', 'git.getPublicKey', 'git.getSshKey', 'ssh.getPublicKey'];
+  const findKey = (v, d = 0) => {
+    if (typeof v === 'string') return /ssh-(?:ed25519|rsa|dss)|ecdsa-sha2-/.test(v) ? v.trim() : null;
+    if (v && typeof v === 'object' && d < 3) for (const x of Object.values(v)) { const r = findKey(x, d + 1); if (r) return r; }
+    return null;
+  };
+  const sshRoutes = [
+    ['GET', '/api/panels/:id/ssh-key', async (ctx) => {
+      const row = panelOr404(ctx.params.id);
+      const c = manager.clientFor(row);
+      const found = await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => []);
+      const extra = found.filter((n) => /ssh|public.?key|deploy.?key|git.?key/i.test(n) && !SSH_CANDIDATES.includes(n));
+      const tried = [];
+      for (const proc of [...SSH_CANDIDATES, ...extra]) {
+        try { const key = findKey(await c.query(proc)); if (key) return { key, proc }; tried.push(proc); } catch { /* нет такой процедуры */ }
+      }
+      throw new HttpError(404, `Не удалось получить SSH-ключ через API панели.${extra.length ? ` В интерфейсе панели найдено: ${extra.join(', ')}.` : ''} Возьмите ключ в самой панели (Settings → Git / SSH key) и добавьте его в GitHub → Settings → Deploy keys.`);
+    }, { admin: true }],
+  ];
+
   /* ---------------- настройки (язык уведомлений) ---------------- */
   const settingsRoutes = [
     ['GET', '/api/settings', () => ({ notifyLang: alerts.getLang() }), { admin: true }],
@@ -315,6 +336,20 @@ export function extraRoutes(d) {
     await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } }));
     return out;
   }
+  /** «владелец/репозиторий@ветка» для любого источника; адрес — без токена. */
+  function repoInfo(src) {
+    if (!src) return { repo: null };
+    const ref = src.ref ?? src.branch ?? '';
+    if (src.owner) return { repo: `${src.owner}/${src.repo}@${ref}`, repoUrl: `https://github.com/${src.owner}/${src.repo}` };
+    if (src.repo) {
+      const url = String(src.repo).replace(/\/\/[^/@]*@/, '//');
+      const parts = url.replace(/\.git$/i, '').split(/[/:]/).filter(Boolean);
+      const short = parts.length >= 2 ? `${parts.at(-2)}/${parts.at(-1)}` : url;
+      return { repo: `${short}@${ref}`, repoUrl: url };
+    }
+    if (src.dockerfile) return { repo: 'Dockerfile' };
+    return { repo: null };
+  }
   async function imagesOf(row, force) {
     const hit = imageCache.get(row.id);
     if (!force && hit && now() - hit.at < 300_000) return hit.items;
@@ -323,7 +358,7 @@ export function extraRoutes(d) {
     const items = await mapLimit(svcs, 5, async (s) => {
       try {
         const src = (await inspectService(c, { type: 'app', project: s.project, name: s.name })).service?.source;
-        return { project: s.project, name: s.name, type: src?.type ?? 'unknown', image: src?.image ?? null, repo: src?.owner ? `${src.owner}/${src.repo}@${src.ref ?? src.branch ?? ''}` : null };
+        return { project: s.project, name: s.name, type: src?.type ?? 'unknown', image: src?.image ?? null, ...repoInfo(src) };
       } catch (e) { return { project: s.project, name: s.name, type: 'error', error: e.message }; }
     });
     imageCache.set(row.id, { at: now(), items });
@@ -486,5 +521,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

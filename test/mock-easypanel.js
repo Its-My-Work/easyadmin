@@ -5,7 +5,7 @@ import http from 'node:http';
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
  * seed: { projects: { name: [{name, type, enabled}] } }
  */
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null } = {}) {
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -54,6 +54,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
     'actions.listActions': () => [],
     'certificates.listCertificates': () => certs,
+    ...(sshKey ? { 'settings.getSshPublicKey': () => ({ publicKey: sshKey }) } : {}),
     'certificates.removeCertificate': (i) => {
       const d = typeof i.domain === 'string' ? i.domain : i.domain?.main ?? i.main ?? i.name;
       const k = certs.findIndex((c) => (typeof c.domain === 'string' ? c.domain : c.domain?.main) === d);

@@ -139,10 +139,12 @@ export function cleanAllModal() {
 }
 
 /* ======================= расписания ======================= */
-const DAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const DAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']; // индекс = getDay(): 0 — воскресенье
+const WEEK = [1, 2, 3, 4, 5, 6, 0]; // порядок показа: неделя начинается с понедельника
 const ACTION_RU = { deploy: 'Деплой', restart: 'Перезапуск', start: 'Запуск', stop: 'Остановка', cleanupImages: 'Очистка образов', prune: 'Docker prune' };
-const when = (s) => (s.mode === 'interval' ? `каждые ${s.intervalMin >= 60 && s.intervalMin % 60 === 0 ? `${s.intervalMin / 60} ч` : `${s.intervalMin} мин`}` : `в ${s.time}${s.days.length ? ` (${s.days.map((d) => DAYS[d]).join(', ')})` : ' ежедневно'}`);
+const when = (s) => (s.mode === 'interval' ? `каждые ${s.intervalMin >= 60 && s.intervalMin % 60 === 0 ? `${s.intervalMin / 60} ч` : `${s.intervalMin} мин`}` : `в ${s.time}${s.days.length ? ` (${[...s.days].sort((a, b) => WEEK.indexOf(a) - WEEK.indexOf(b)).map((d) => DAYS[d]).join(', ')})` : ' ежедневно'}`);
 
+let schedLoad = null;
 export function schedulesPage() {
   const box = h('div');
   const load = () => get('/api/schedules').then((list) => {
@@ -156,8 +158,9 @@ export function schedulesPage() {
           h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить расписание?', message: s.name, danger: true, confirmText: 'Удалить' })) { await del(`/api/schedules/${s.id}`); load(); } } }, icon('trash', 14))) : null);
     }))) : empty('Расписаний пока нет', 'Например: ночной перезапуск сервисов или еженедельная очистка Docker на всех панелях.'));
   });
+  schedLoad = load; // форма живёт в модалке и может пережить пересборку страницы — обновляем актуальный список
   load();
-  return h('div', { class: 'page' }, pageHead('Расписания', can('admin') ? h('button', { class: 'btn primary', onclick: () => scheduleForm(load) }, icon('plus', 15), 'Новое расписание') : null),
+  return h('div', { class: 'page' }, pageHead('Расписания', can('admin') ? h('button', { class: 'btn primary', onclick: () => scheduleForm(() => schedLoad?.()) }, icon('plus', 15), 'Новое расписание') : null),
     h('p', { class: 'muted' }, 'Время указывается по часовому поясу сервера EasyAdmin. Ошибки заданий приходят в уведомления.'), box);
 }
 
@@ -181,7 +184,7 @@ function scheduleForm(onSaved) {
   }
   const mode = h('select', { class: 'input', onchange: () => { dailyBox.hidden = mode.value !== 'daily'; intBox.hidden = mode.value !== 'interval'; } }, h('option', { value: 'daily' }, 'Раз в день'), h('option', { value: 'interval' }, 'Через интервал'));
   const time = h('input', { class: 'input', type: 'time', value: '03:00' });
-  const dayBoxes = DAYS.map((d, i) => ({ i, cb: h('input', { type: 'checkbox' }), d }));
+  const dayBoxes = WEEK.map((i) => ({ i, cb: h('input', { type: 'checkbox' }), d: DAYS[i] }));
   const dailyBox = h('div', { class: 'stack' }, field('Время (по времени сервера)', time), h('div', null, h('div', { class: 'field-label' }, 'Дни недели (пусто = ежедневно)'), h('div', { class: 'days' }, dayBoxes.map(({ cb, d }) => h('label', null, cb, d)))));
   const interval = h('input', { class: 'input', type: 'number', min: 5, value: 60 });
   const intBox = h('div', { hidden: true }, field('Интервал, минут (от 5)', interval));
@@ -223,7 +226,7 @@ async function imagesView(body, force = false) {
       const f = q.value.toLowerCase();
       const rows = ok.filter((i) => !f || [i.project, i.name, i.image, i.repo, i.panelName].some((x) => x && x.toLowerCase().includes(f)));
       clear(table).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Сервис', 'Панель', 'Источник'].map((x) => h('th', null, x)))),
-        h('tbody', null, rows.map((i) => h('tr', null, h('td', null, h('b', null, i.name), h('span', { class: 'muted small' }, `  ${i.project}`)), h('td', null, panelChip({ name: i.panelName, color: i.color })), h('td', { class: 'mono small' }, i.image ?? i.repo ?? h('span', { class: 'muted' }, i.type))))))) : empty('Ничего не найдено'));
+        h('tbody', null, rows.map((i) => h('tr', null, h('td', null, h('b', null, i.name), h('span', { class: 'muted small' }, `  ${i.project}`)), h('td', null, panelChip({ name: i.panelName, color: i.color })), h('td', { class: 'mono small', title: i.repoUrl ?? '' }, i.image ?? i.repo ?? h('span', { class: 'muted' }, i.type))))))) : empty('Ничего не найдено'));
     };
     q.addEventListener('input', drawT); drawT();
     clear(body).append(
