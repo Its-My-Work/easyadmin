@@ -75,14 +75,16 @@ function route() {
 function renderChrome() {
   if (!shell) return;
   const r = route();
-  clear(shell.nav).append(...NAV.filter(([, , , need]) => !need || can(need)).map(([href, ic, label]) => h('a', { class: `nav-item ${(href === '#/' ? r.hash === '#/' : r.hash.startsWith(href)) ? 'active' : ''}`, href, onclick: () => document.body.classList.remove('nav-open') }, icon(ic, 17), label)));
-  clear(shell.panelsList).append(...(store.panels.length ? store.panels.map((p) => {
+  const chromeSig = JSON.stringify([r.hash, r.a, r.b, store.user?.role, store.panels.map((p) => [p.id, p.name, p.status, (p.tree?.projects ?? []).flatMap((x) => x.services).filter((x) => !x.enabled).length])]);
+  const rebuild = chromeSig !== shell.chromeSig; shell.chromeSig = chromeSig;
+  if (rebuild) clear(shell.nav).append(...NAV.filter(([, , , need]) => !need || can(need)).map(([href, ic, label]) => h('a', { class: `nav-item ${(href === '#/' ? r.hash === '#/' : r.hash.startsWith(href)) ? 'active' : ''}`, href, onclick: () => document.body.classList.remove('nav-open') }, icon(ic, 17), label)));
+  if (rebuild) clear(shell.panelsList).append(...(store.panels.length ? store.panels.map((p) => {
     const stopped = (p.tree?.projects ?? []).flatMap((x) => x.services).filter((s) => !s.enabled).length;
     return h('a', { class: `nav-panel ${r.a === 'panel' && Number(r.b) === p.id ? 'active' : ''}`, href: `#/panel/${p.id}`, onclick: () => document.body.classList.remove('nav-open') },
       h('i', { class: `dot ${dotClass(p.status)}` }), h('span', { class: 'np-name' }, p.name), stopped ? h('span', { class: 'count warn', title: 'Остановлено сервисов' }, stopped) : null);
   }) : [h('div', { class: 'muted small pad' }, 'Пока пусто')]));
   shell.updated.textContent = store.loadedAt ? `Обновлено ${relTime(store.loadedAt)}` : '';
-  shell.refreshBtn.classList.toggle('spin', store.loading);
+  shell.refreshBtn.classList.toggle('spin', store.loading && !store.quiet);
 }
 
 function renderView() {
@@ -101,10 +103,12 @@ function renderView() {
   else if (r.a === 'users') node = usersPage();
   else node = dashboard();
   const scroll = shell.view.scrollTop;
-  clear(shell.view);
-  if (store.error && store.loadedAt) shell.view.append(h('div', { class: 'callout err banner' }, icon('alert'), `Не удалось обновить данные: ${store.error}`));
-  shell.view.append(node);
+  // фоновое обновление: без анимаций и с одной атомарной заменой содержимого — никакого «моргания»
+  const quiet = store.quiet && r.hash === lastHash;
+  if (quiet) shell.view.classList.add('quiet');
+  shell.view.replaceChildren(...(store.error && store.loadedAt ? [h('div', { class: 'callout err banner' }, icon('alert'), `Не удалось обновить данные: ${store.error}`)] : []), node);
   shell.view.scrollTop = scroll;
+  if (quiet) requestAnimationFrame(() => requestAnimationFrame(() => shell.view.classList.remove('quiet')));
 }
 
 let lastSig = '', lastHash = '';

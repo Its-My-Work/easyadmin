@@ -16,7 +16,7 @@ export const notify = () => listeners.forEach((fn) => fn());
 let last = '';
 export async function refresh(force = false, { silent = false } = {}) {
   if (store.loading) return;
-  store.loading = true; if (!silent) notify();
+  store.loading = true; store.quiet = silent; if (!silent) notify();
   try {
     const data = await get(`/api/overview${force ? '?force=1' : ''}`);
     store.error = null;
@@ -24,7 +24,7 @@ export async function refresh(force = false, { silent = false } = {}) {
     store.loadedAt = Date.now();
     if (sig !== last) { last = sig; store.panels = data; }
   } catch (e) { store.error = e.message; }
-  finally { store.loading = false; notify(); }
+  finally { store.loading = false; notify(); store.quiet = false; }
 }
 
 export const panelById = (id) => store.panels.find((p) => p.id === Number(id));

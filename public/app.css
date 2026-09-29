@@ -241,3 +241,5 @@ tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
 .src-sec > summary h4 { margin: 0; }
 .src-sec[open] > summary { margin-bottom: 12px; }
 .src-sec:not(.active) { opacity: .85; }
+
+.quiet *, .quiet { transition: none !important; animation: none !important; }
