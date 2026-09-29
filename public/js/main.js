@@ -1,4 +1,5 @@
-import { lang, setLang } from './i18n.js';
+import { lang, setLang, t } from './i18n.js';
+import { GROUP_LABEL, highlight, orderItems } from './palette-order.js';
 import { api, get, post } from './api.js';
 import { renderBulkBar } from './components.js';
 import { closeDrawer, openService } from './drawer.js';
@@ -117,42 +118,50 @@ function openPalette() {
   if (document.getElementById('palette')) return;
   const input = h('input', { class: 'input', placeholder: 'Найти сервис, панель или команду…', autocomplete: 'off' });
   const list = h('div', { class: 'pal-list', role: 'listbox' });
-  let items = [], idx = 0;
+  let rows = [], idx = 0;
   const close = () => { pal.remove(); document.removeEventListener('keydown', onKey, true); };
-  const commands = [
-    { title: 'Обзор', hint: 'Страница', ic: 'grid', run: () => (location.hash = '#/') },
-    { title: 'Все сервисы', hint: 'Страница', ic: 'layers', run: () => (location.hash = '#/services') },
-    { title: 'Журнал действий', hint: 'Страница', ic: 'activity', run: () => (location.hash = '#/audit') },
-    { title: 'Настройки', hint: 'Страница', ic: 'settings', run: () => (location.hash = '#/settings') },
-    ...(can('admin') ? [{ title: 'Добавить панель', hint: 'Команда', ic: 'plus', run: () => panelForm() }] : []),
-    { title: 'Инвентарь: образы и сертификаты', hint: 'Страница', ic: 'box', run: () => (location.hash = '#/inventory') },
-    { title: 'Шаблоны', hint: 'Страница', ic: 'copy', run: () => (location.hash = '#/templates') },
-    { title: 'Расписания', hint: 'Страница', ic: 'clock', run: () => (location.hash = '#/schedules') },
-    { title: 'Обновить данные', hint: 'Команда', ic: 'refresh', run: () => refresh(true) },
-    ...store.panels.map((p) => ({ title: p.name, hint: 'Панель', ic: 'server', extra: p.url, color: p.color, run: () => (location.hash = `#/panel/${p.id}`) })),
-    ...allServices().map((s) => ({ title: s.name, hint: `${s.panel.name} · ${s.project}`, ic: favorites().has(svcKey(s)) ? 'star' : 'box', extra: s.domain || '', color: favorites().has(svcKey(s)) ? null : s.panel.color, rank: favorites().has(svcKey(s)) ? 2 : recents().includes(svcKey(s)) ? 1 : 0, run: () => openService(s) })),
+  const go = (hash) => () => { location.hash = hash; };
+  const fav = favorites(), rec = recents();
+  // порядок страниц — как в боковом меню
+  const pages = [['Обзор', 'grid', '#/'], ['Все сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ['Настройки', 'settings', '#/settings']];
+  const items = [
+    ...pages.map(([title, ic, hash], order) => ({ title, shown: t(title), hint: 'Страница', ic, group: 'page', order, run: go(hash) })),
+    ...(can('admin') ? [{ title: 'Добавить панель', shown: t('Добавить панель'), hint: 'Команда', ic: 'plus', group: 'cmd', order: 0, run: () => panelForm() }] : []),
+    { title: 'Обновить данные', shown: t('Обновить данные'), hint: 'Команда', ic: 'refresh', group: 'cmd', order: 1, run: () => refresh(true) },
+    ...store.panels.map((p, order) => ({ title: p.name, hint: 'Панель', extra: p.url, ic: 'server', color: p.color, group: 'panel', order, run: go(`#/panel/${p.id}`) })),
+    ...allServices().map((s) => {
+      const k = svcKey(s), ri = rec.indexOf(k);
+      return { title: s.name, hint: `${s.panel.name} · ${s.project}`, extra: s.domain || '', ic: fav.has(k) ? 'star' : 'box', color: fav.has(k) ? null : s.panel.color,
+        group: fav.has(k) ? 'fav' : ri >= 0 ? 'recent' : 'service', recentIndex: ri, sortKey: `${s.name} ${s.panel.name} ${s.project}`, run: () => openService(s) };
+    }),
   ];
   const draw = () => {
-    const q = input.value.trim().toLowerCase();
-    items = commands.filter((c) => !q || `${c.title} ${c.hint} ${c.extra || ''}`.toLowerCase().includes(q));
-    if (!q) items = [...items.filter((c) => c.rank), ...items.filter((c) => !c.rank)];
-    else items.sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
-    items = items.slice(0, 30);
-    idx = Math.min(idx, Math.max(0, items.length - 1));
-    clear(list).append(...(items.length ? items.map((c, i) => h('div', { class: `pal-item ${i === idx ? 'on' : ''}`, role: 'option', onmousemove: () => { idx = i; mark(); }, onclick: () => pick(i) },
-      c.color ? h('i', { class: 'swatch', style: { background: c.color } }) : icon(c.ic, 15), h('span', { class: 'pal-title' }, c.title), h('span', { class: 'muted small' }, c.hint))) : [h('div', { class: 'muted pad' }, 'Ничего не найдено')]));
+    const q = input.value.trim();
+    rows = orderItems(items, q);
+    idx = Math.min(idx, Math.max(0, rows.length - 1));
+    clear(list);
+    if (!rows.length) { list.append(h('div', { class: 'muted pad' }, 'Ничего не найдено')); return; }
+    rows.forEach(({ section, item: c }, i) => {
+      if (section && !q) list.append(h('div', { class: 'pal-group' }, GROUP_LABEL[section]));
+      list.append(h('div', { class: `pal-item ${i === idx ? 'on' : ''}`, role: 'option', 'data-i': i, onmousemove: () => { idx = i; mark(); }, onclick: () => pick(i) },
+        c.color ? h('i', { class: 'swatch', style: { background: c.color } }) : icon(c.ic, 15),
+        h('span', { class: 'pal-title' }, ...highlight(t(c.title), q).map((p) => (p.match ? h('mark', null, p.text) : p.text)), c.extra && c.group === 'service' ? h('span', { class: 'muted small pal-extra' }, c.extra) : null),
+        h('span', { class: 'muted small' }, c.hint)));
+    });
   };
-  const mark = () => [...list.children].forEach((el, i) => { el.classList.toggle('on', i === idx); if (i === idx) el.scrollIntoView({ block: 'nearest' }); });
-  const pick = (i) => { const c = items[i]; close(); c?.run(); };
+  const mark = () => list.querySelectorAll('.pal-item').forEach((el) => { const on = Number(el.dataset.i) === idx; el.classList.toggle('on', on); if (on) el.scrollIntoView({ block: 'nearest' }); });
+  const pick = (i) => { const c = rows[i]?.item; close(); c?.run(); };
   const onKey = (e) => {
     if (e.key === 'Escape') { e.stopPropagation(); close(); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); mark(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, rows.length - 1); mark(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); mark(); }
+    else if (e.key === 'Home' && e.ctrlKey) { e.preventDefault(); idx = 0; mark(); }
     else if (e.key === 'Enter') { e.preventDefault(); pick(idx); }
   };
   input.addEventListener('input', () => { idx = 0; draw(); });
   document.addEventListener('keydown', onKey, true);
-  const pal = h('div', { class: 'backdrop top', id: 'palette', onmousedown: (e) => { if (e.target === pal) close(); } }, h('div', { class: 'palette' }, h('div', { class: 'pal-input' }, icon('search', 16), input, h('kbd', null, 'Esc')), list));
+  const pal = h('div', { class: 'backdrop top', id: 'palette', onmousedown: (e) => { if (e.target === pal) close(); } }, h('div', { class: 'palette' }, h('div', { class: 'pal-input' }, icon('search', 16), input, h('kbd', null, 'Esc')), list,
+    h('div', { class: 'pal-foot muted small' }, '↑↓ — выбор · Enter — открыть · Esc — закрыть')));
   document.getElementById('overlay-root').append(pal);
   draw(); input.focus();
 }

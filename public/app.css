@@ -202,3 +202,5 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); c
 .diag { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; } .diag summary { cursor: pointer; } .diag[open] summary { margin-bottom: 8px; }
 
 .lang-btn { font-weight: 700; letter-spacing: .04em; } .lang-corner { position: fixed; top: 14px; right: 14px; z-index: 5; }
+
+.pal-group { padding: 10px 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; } .pal-item mark { background: transparent; color: var(--accent); font-weight: 750; } .pal-extra { margin-left: 8px; } .pal-foot { padding: 8px 14px; border-top: 1px solid var(--border); }
