@@ -17,7 +17,7 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const B = (name, label, hint) => ({ name, type: 'bool', label, hint });
 
-/** Реестр одиночных настроек. bulk: можно применить сразу к нескольким панелям; danger: нужно подтверждение. */
+/** Реестр одиночных настроек. danger: нужно подтверждение; needs: функция лицензии, без которой настройка закрыта. */
 export const SETTINGS = [
   { key: 'panelDomain', section: 'address', title: 'Домен панели', danger: true, hint: 'Адрес, по которому открывается Easypanel. Неверный домен может закрыть доступ к панели — проверьте, что DNS указывает на сервер.',
     fields: [{ name: 'customPanelDomain', type: 'domain', label: 'Свой домен', placeholder: 'panel.example.com', hint: 'Пусто — только сгенерированный домен.' }, B('serveOnIp', 'Открывать панель по IP-адресу сервера', 'Запасной вход, если домен перестанет работать.')],
@@ -27,17 +27,17 @@ export const SETTINGS = [
     fields: [{ name: 'customServiceDomain', type: 'domain', label: 'Свой домен', placeholder: 'apps.example.com', hint: 'Пусто — сгенерированный домен.' }],
     get: 'settings.getServiceDomain', read: (r) => ({ customServiceDomain: r?.customServiceDomain ?? '', _info: { defaultServiceDomain: r?.defaultServiceDomain ?? null } }),
     set: 'settings.setServiceDomain', build: (v) => ({ customServiceDomain: v.customServiceDomain || '' }) },
-  { key: 'letsEncryptEmail', section: 'address', title: 'E-mail для Let’s Encrypt', bulk: true, hint: 'На этот адрес приходят уведомления об истекающих сертификатах.',
+  { key: 'letsEncryptEmail', section: 'address', title: 'E-mail для Let’s Encrypt', hint: 'На этот адрес приходят уведомления об истекающих сертификатах.',
     fields: [{ name: 'email', type: 'email', label: 'E-mail', required: true, placeholder: 'admin@example.com' }],
     get: 'settings.getLetsEncryptEmail', read: (r) => ({ email: typeof r === 'string' ? r : '' }),
     set: 'settings.setLetsEncryptEmail', build: (v) => ({ letsEncryptEmail: v.email }) },
-  { key: 'telemetry', section: 'general', title: 'Телеметрия', bulk: true, hint: 'Анонимная статистика, которую Easypanel отправляет разработчикам.',
+  { key: 'telemetry', section: 'general', title: 'Телеметрия', hint: 'Анонимная статистика, которую Easypanel отправляет разработчикам.',
     fields: [B('disabled', 'Отключить телеметрию')],
     get: 'settings.getTelemetryDisabled', read: (r) => ({ disabled: !!r }), set: 'settings.setTelemetryDisabled', build: (v) => ({ disabled: !!v.disabled }) },
-  { key: 'dailyCleanup', section: 'general', title: 'Ночная очистка Docker', bulk: true, hint: 'Каждую ночь в 02:00 удаляются неиспользуемые образы и данные Docker.',
+  { key: 'dailyCleanup', section: 'general', title: 'Ночная очистка Docker', hint: 'Каждую ночь в 02:00 удаляются неиспользуемые образы и данные Docker.',
     fields: [B('enabled', 'Очищать Docker автоматически каждую ночь')],
     get: 'settings.getDailyDockerCleanup', read: (r) => ({ enabled: !!r }), set: 'settings.setDailyDockerCleanup', build: (v) => ({ dailyDockerCleanup: !!v.enabled }) },
-  { key: 'googleAnalytics', section: 'general', title: 'Google Analytics', bulk: true, hint: 'Идентификатор для интерфейса панели. Обычно не нужен.',
+  { key: 'googleAnalytics', section: 'general', title: 'Google Analytics', hint: 'Идентификатор для интерфейса панели. Обычно не нужен.',
     fields: [{ name: 'measurementId', type: 'text', label: 'Measurement ID', placeholder: 'G-XXXXXXXXXX', max: 40 }],
     get: 'settings.getGoogleAnalyticsMeasurementId', read: (r) => ({ measurementId: r ?? '' }), set: 'settings.setGoogleAnalyticsMeasurementId', build: (v) => ({ measurementId: v.measurementId ?? '' }) },
   { key: 'githubToken', section: 'general', title: 'Токен GitHub', hint: 'Нужен панели для доступа к приватным репозиториям. Сохранённый токен не показывается; панель проверяет новый при сохранении.',
@@ -47,15 +47,15 @@ export const SETTINGS = [
     fields: [{ name: 'serverName', type: 'text', label: 'Название сервера', max: 60 }, { name: 'serverColor', type: 'color', label: 'Цвет' }, B('hideIp', 'Скрыть IP-адрес сервера'), B('hideNotes', 'Скрыть заметки')],
     get: 'branding.getBasicSettings', read: (r) => ({ serverName: r?.serverName ?? '', serverColor: r?.serverColor ?? '', hideIp: !!r?.hideIp, hideNotes: !!r?.hideNotes }),
     set: 'branding.setBasicSettings', build: (v) => ({ serverName: v.serverName ?? '', serverColor: v.serverColor ?? '', hideIp: !!v.hideIp, hideNotes: !!v.hideNotes }) },
-  { key: 'brandingLinks', section: 'branding', title: 'Ссылки в интерфейсе', needs: 'branding', bulk: true, hint: 'Какие ссылки Easypanel скрыть.',
+  { key: 'brandingLinks', section: 'branding', title: 'Ссылки в интерфейсе', needs: 'branding', hint: 'Какие ссылки Easypanel скрыть.',
     fields: [B('hideDocumentationLink', 'Документация'), B('hideChangelogLink', 'Список изменений'), B('hideDiscordLink', 'Discord'), B('hideFeedbackLink', 'Обратная связь'), B('hideOtherLinks', 'Прочие ссылки')],
     get: 'branding.getLinksSettings', read: (r) => ({ hideDocumentationLink: !!r?.hideDocumentationLink, hideChangelogLink: !!r?.hideChangelogLink, hideDiscordLink: !!r?.hideDiscordLink, hideFeedbackLink: !!r?.hideFeedbackLink, hideOtherLinks: !!r?.hideOtherLinks }),
     set: 'branding.setLinksSettings', build: (v) => ({ hideDocumentationLink: !!v.hideDocumentationLink, hideChangelogLink: !!v.hideChangelogLink, hideDiscordLink: !!v.hideDiscordLink, hideFeedbackLink: !!v.hideFeedbackLink, hideOtherLinks: !!v.hideOtherLinks }) },
-  { key: 'errorPages', section: 'branding', title: 'Страницы ошибок', needs: 'branding', bulk: true, hint: 'Оформление страниц ошибок, которые видят посетители ваших сервисов.',
+  { key: 'errorPages', section: 'branding', title: 'Страницы ошибок', needs: 'branding', hint: 'Оформление страниц ошибок, которые видят посетители ваших сервисов.',
     fields: [B('hideLogo', 'Скрыть логотип'), B('hideLinks', 'Скрыть ссылки'), { name: 'customCss', type: 'textarea', label: 'Свой CSS', max: 20000, mono: true }],
     get: 'branding.getErrorPageSettings', read: (r) => ({ hideLogo: !!r?.hideLogo, hideLinks: !!r?.hideLinks, customCss: r?.customCss ?? '' }),
     set: 'branding.setErrorPageSettings', build: (v) => ({ hideLogo: !!v.hideLogo, hideLinks: !!v.hideLinks, customCss: v.customCss ?? '' }) },
-  { key: 'customCode', section: 'branding', title: 'Свой код в интерфейсе', needs: 'branding', danger: true, bulk: true, hint: 'HTML/JS, который подставляется в интерфейс панели. Выполняется в браузере каждого, кто открывает панель.',
+  { key: 'customCode', section: 'branding', title: 'Свой код в интерфейсе', needs: 'branding', danger: true, hint: 'HTML/JS, который подставляется в интерфейс панели. Выполняется в браузере каждого, кто открывает панель.',
     fields: [{ name: 'customCode', type: 'textarea', label: 'Код', max: 50000, mono: true }],
     get: 'branding.getCustomCodeSettings', read: (r) => ({ customCode: r?.customCode ?? '' }), set: 'branding.setCustomCodeSettings', build: (v) => ({ customCode: v.customCode ?? '' }) },
   { key: 'metrics', section: 'monitoring', title: 'Расширенные метрики', needs: 'advancedMonitoring', allowOff: true, hint: 'Prometheus собирает историю нагрузки сервисов. Включение запускает дополнительные контейнеры.', danger: true,
@@ -143,7 +143,7 @@ export function psettingsRoutes(d) {
 
   return [
     /* ---------- реестр и значения ---------- */
-    ['GET', '/api/psettings/schema', () => ({ sections: SECTIONS, settings: SETTINGS.map(({ key: k, section, title, hint, danger, bulk, fields, needs, allowOff }) => ({ key: k, section, title, hint, danger: !!danger, bulk: !!bulk, fields, needs: needs ?? null, allowOff: !!allowOff })) }), { admin: true }],
+    ['GET', '/api/psettings/schema', () => ({ sections: SECTIONS, settings: SETTINGS.map(({ key: k, section, title, hint, danger, fields, needs, allowOff }) => ({ key: k, section, title, hint, danger: !!danger, fields, needs: needs ?? null, allowOff: !!allowOff })) }), { admin: true }],
     ['GET', '/api/panels/:id/psettings', async (ctx) => {
       const { c } = access(ctx);
       const only = ctx.url.searchParams.get('section');
@@ -309,40 +309,5 @@ export function psettingsRoutes(d) {
     }, { admin: true }],
     ['GET', '/api/panels/:id/pactions/:aid', async (ctx) => { const { c } = access(ctx); return await call(() => c.query('actions.getAction', { id: id(ctx.params.aid) })); }, { admin: true }],
     ['POST', '/api/panels/:id/pactions/:aid/kill', async (ctx) => { const { row, c } = access(ctx); const aid = id(ctx.params.aid); await write(ctx, row, 'panel.action.kill', aid, () => c.mutate('actions.killAction', { id: aid })); return { ok: true }; }, { admin: true }],
-
-    /* ---------- сравнение панелей и массовое применение ---------- */
-    ['GET', '/api/psettings/compare', async (ctx) => {
-      const rows = db.prepare('SELECT * FROM panels ORDER BY position, id').all().filter((p) => canPanel(ctx.user, p.id));
-      const keys = SETTINGS.filter((s) => s.bulk || ['panelDomain', 'serviceDomain'].includes(s.key)).map((s) => s.key);
-      const panels = await Promise.all(rows.map(async (row) => {
-        const c = manager.clientFor(row); const values = {}; const errors = {};
-        await Promise.all(keys.map(async (k) => { try { values[k] = await readSetting(c, settingByKey(k)); } catch (e) { errors[k] = e.message; } }));
-        const ver = await c.query('update.getStatus').then((v) => v?.version ?? null, () => null);
-        const ent = await lic.entitlementsOf(row, c).catch(() => null);
-        const locks = Object.fromEntries(keys.filter((k) => settingByKey(k).needs && ent && !ent.features[settingByKey(k).needs]).map((k) => [k, true]));
-        return { id: row.id, name: row.name, status: row.status, version: ver, values, errors, locks, tier: ent?.tier ?? null };
-      }));
-      return { keys, panels };
-    }, { admin: true }],
-    ['POST', '/api/psettings/apply', async (ctx) => {
-      const b = ctx.body ?? {}; const def = settingByKey(b.key);
-      need(def?.bulk, 'Эту настройку нельзя применить сразу к нескольким панелям');
-      const value = cleanValue(def, b.value);
-      need(Array.isArray(b.panelIds) && b.panelIds.length > 0 && b.panelIds.length <= 50, 'Выберите панели (до 50)');
-      const results = [];
-      for (const pid of [...new Set(b.panelIds.map(Number))]) {
-        const row = manager.getRow(pid);
-        if (!row) { results.push({ panelId: pid, name: '—', ok: false, error: 'Панель не найдена' }); continue; }
-        if (!canPanel(ctx.user, row.id)) { results.push({ panelId: pid, name: row.name, ok: false, error: 'Нет доступа к этой панели' }); continue; }
-        try {
-          const c = manager.clientFor(row);
-          if (def.needs) { const e = await lic.entitlementsOf(row, c); if (!e.features[def.needs]) { results.push({ panelId: pid, name: row.name, ok: false, skipped: true, error: 'Пропущено: нужна лицензия Easypanel' }); continue; } }
-          const before = await readSetting(c, def).catch(() => null);
-          await write(ctx, row, `psettings.${def.key}`, row.name, () => c.mutate(def.set, def.build(value)), `массовое применение · ${diffText(def, before, value)}`);
-          results.push({ panelId: pid, name: row.name, ok: true });
-        } catch (e) { results.push({ panelId: pid, name: row.name, ok: false, error: e.message }); }
-      }
-      return { results, ok: results.every((r) => r.ok) };
-    }, { admin: true }],
   ];
 }

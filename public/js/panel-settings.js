@@ -30,7 +30,7 @@ export function settingsTab(p) {
     cache.get(p.id) && (cache.get(p.id).at = Date.now());
   };
   const root = h('div', { class: 'stack pset' },
-    h('div', { class: 'section-head' }, h('div', { class: 'muted small' }, 'Настройки самой Easypanel. Изменения применяются сразу и записываются в журнал.'), h('a', { class: 'btn sm ghost', href: '#/psettings' }, icon('layers', 13), 'Сравнить панели')),
+    h('div', { class: 'section-head' }, h('div', { class: 'muted small' }, 'Настройки самой Easypanel. Изменения применяются сразу и записываются в журнал.')),
     nav, body);
   cache.set(p.id, { root, at: Date.now(), entry });
   // лицензия нужна, чтобы сразу показать закрытые настройки неактивными; если панель её не отдаёт — ничего не блокируем

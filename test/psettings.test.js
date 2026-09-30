@@ -237,28 +237,3 @@ describe('настройки панели: билдеры, пользовате�
     assert.equal((await api('admin', 'GET', `/api/panels/${id}/pactions/..%2F..`)).status, 400);
   });
 });
-
-describe('настройки панелей: сравнение и массовое применение', () => {
-  test('сравнение показывает значения каждой панели и версию; применение — по панелям с отчётом, частичный отказ не прерывает остальные', async () => {
-    const a = await addPanel('CMP-A'); const b = await addPanel('CMP-B', { psettings: { reject: ['settings.setLetsEncryptEmail'] } });
-    b.m.ps.le = 'other@example.com'; b.m.ps.telemetry = true;
-    const cmp = (await api('admin', 'GET', '/api/psettings/compare')).data;
-    const pa = cmp.panels.find((p) => p.name === 'CMP-A'); const pb = cmp.panels.find((p) => p.name === 'CMP-B');
-    assert.ok(cmp.keys.includes('letsEncryptEmail') && cmp.keys.includes('panelDomain') && !cmp.keys.includes('githubToken'));
-    assert.equal(pa.values.letsEncryptEmail.email, 'ops@example.com'); assert.equal(pb.values.letsEncryptEmail.email, 'other@example.com'); assert.equal(pb.values.telemetry.disabled, true); assert.equal(pa.version, '2.36.0');
-    assert.equal((await api('op', 'GET', '/api/psettings/compare')).status, 403);
-
-    const apply = (body) => api('admin', 'POST', '/api/psettings/apply', body);
-    assert.equal((await apply({ key: 'githubToken', value: { token: 'x' }, panelIds: [a.id] })).status, 400, 'секреты массово не рассылаем');
-    assert.equal((await apply({ key: 'panelDomain', value: { customPanelDomain: 'x.example.com', serveOnIp: true }, panelIds: [a.id] })).status, 400, 'домен у каждой панели свой');
-    assert.equal((await apply({ key: 'telemetry', value: { disabled: true }, panelIds: [] })).status, 400);
-    const r = await apply({ key: 'letsEncryptEmail', value: { email: 'fleet@example.com' }, panelIds: [a.id, b.id, 99999] });
-    assert.equal(r.status, 200); assert.equal(r.data.ok, false);
-    assert.deepEqual(r.data.results.map((x) => [x.name, x.ok]), [['CMP-A', true], ['CMP-B', false], ['—', false]]);
-    assert.equal(a.m.ps.le, 'fleet@example.com'); assert.equal(b.m.ps.le, 'other@example.com');
-    const ok = await apply({ key: 'telemetry', value: { disabled: true }, panelIds: [a.id, b.id] });
-    assert.equal(ok.data.ok, true); assert.equal(a.m.ps.telemetry, true);
-    const log = await auditOf('psettings.telemetry');
-    assert.ok(log.filter((x) => x.ok === 1 && /массовое применение/.test(x.detail)).length >= 2, 'по записи в журнале на каждую панель');
-  });
-});

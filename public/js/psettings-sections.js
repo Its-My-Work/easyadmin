@@ -68,8 +68,7 @@ export function overview(p, entry, go) {
         kv('Версия Docker', s.dockerVersion ? h('span', null, s.dockerVersion, ' ', s.dockerUpdate?.available ? badge(`→ ${s.dockerUpdate.latest}`, 'warn') : null) : '—'),
         kv('IP-адрес сервера', s.serverIp), kv('Пользователи Easypanel', n(s.users)), kv('Билдеры Docker', n(s.builders)), kv('Узлы кластера', n(s.nodes)), kv('Сертификаты', n(s.certificates))),
       card('Быстрые переходы', null, h('div', { class: 'chips' },
-        [['address', 'Домен панели'], ['users', 'Пользователи'], ['system', 'Очистка Docker'], ['traefik', 'Traefik'], ['monitoring', 'Метрики и логи']].map(([id, l]) => h('button', { class: 'chip-btn', onclick: () => go(id) }, l)),
-        h('a', { class: 'chip-btn', href: '#/psettings' }, 'Сравнить панели'))),
+        [['address', 'Домен панели'], ['users', 'Пользователи'], ['system', 'Очистка Docker'], ['traefik', 'Traefik'], ['monitoring', 'Метрики и логи']].map(([id, l]) => h('button', { class: 'chip-btn', onclick: () => go(id) }, l)))),
     ];
   });
 }

@@ -192,7 +192,7 @@ await step('вкладки «Логи» и «Консоль»: логи идут
   if (!(await p.locator('.term-big').innerText()).includes('hi-e2e-console')) throw new Error('вывод консоли пропал при переключении вкладок');
   await p.keyboard.press('Escape');
 });
-await step('настройки панели Easypanel: разделы, сохранение, сравнение панелей', async () => {
+await step('настройки панели Easypanel: разделы и сохранение', async () => {
   await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.psf-nav');
   await p.waitForSelector('.psf:has-text("Состояние панели")', { timeout: 8000 });
   await p.click('.psf-nav .chip-btn:has-text("Общее")'); await p.waitForSelector('.psf:has-text("Телеметрия")');
@@ -202,7 +202,6 @@ await step('настройки панели Easypanel: разделы, сохр�
   await p.locator('.psf:has-text("Домен панели") input[type=text]').first().fill('panel.example.com'); await p.locator('.psf:has-text("Домен панели") .btn.primary').click();
   await p.waitForSelector('.modal input[placeholder]'); await p.keyboard.press('Escape'); // опасная настройка требует подтверждения
   await p.click('.psf-nav .chip-btn:has-text("Пользователи")'); await p.waitForSelector('.psf:has-text("Пользователи Easypanel") .list-item');
-  await p.goto(U + '#/psettings'); await p.waitForSelector('.cmp-tbl');
 });
 await step('консоль сервера: пункт меню, подключение, команда, вывод, отключение', async () => {
   await p.goto(U + '#/'); await p.waitForSelector('.panel-card');

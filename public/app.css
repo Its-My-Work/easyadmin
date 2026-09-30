@@ -334,8 +334,6 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .psf-check { display: grid; grid-template-columns: auto 1fr; align-items: start; column-gap: 8px; row-gap: 2px; } .psf-check .hint { grid-column: 2; } .psf-color { width: 42px; height: 36px; padding: 2px; border: 1px solid var(--border2); border-radius: 8px; background: transparent; }
 .psf-code { min-height: 180px; line-height: 1.5; } .psf-qr { width: 180px; height: 180px; image-rendering: pixelated; background: #fff; padding: 8px; border-radius: 10px; } .psf-user { min-width: 0; display: grid; gap: 4px; } .psf-user b { overflow-wrap: anywhere; }
 .badge.warn { background: rgba(251, 191, 36, .13); color: var(--warn); } .ml { margin-left: 8px; }
-.cmp-wrap { overflow-x: auto; } .cmp-tbl { min-width: 560px; } .cmp-tbl th a { color: inherit; } .cmp-tbl td:first-child, .cmp-tbl th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; min-width: 150px; }
-.cmp-tbl tr.cmp-diff td { background: rgba(251, 191, 36, .06); } .cmp-tbl tr.cmp-diff td:first-child { background: color-mix(in srgb, var(--panel) 92%, var(--warn)); }
 @media (max-width: 900px) { .psf { padding: 14px; } .psf-foot .btn { flex: 1 1 auto; } }
 .psf-logo { width: 56px; height: 36px; object-fit: contain; border-radius: 8px; background: #fff; padding: 4px; border: 1px solid var(--border2); flex: none; } .psf-logo.dark { background: #0c0f1a; } .psf-logo.empty { display: inline-block; background: var(--panel2); border-style: dashed; }
 .psf-logorow { flex-wrap: nowrap; min-width: 0; }

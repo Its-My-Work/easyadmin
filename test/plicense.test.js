@@ -148,17 +148,3 @@ describe('активация лицензии из EasyAdmin', () => {
     assert.equal((await api('admin', 'DELETE', `/api/panels/${id2}/plicense/portal`)).data.tier, 'free'); assert.equal((await api('admin', 'DELETE', `/api/panels/${id2}/plicense/nope`)).status, 400);
   });
 });
-
-describe('сравнение панелей и лицензия', () => {
-  test('у панелей без лицензии настройки помечены замком, массовое применение их пропускает с пояснением', async () => {
-    const free = await addPanel('CMP-FREE', { license: 'free' }); const full = await addPanel('CMP-FULL', { license: 'full' });
-    const cmp = (await api('admin', 'GET', '/api/psettings/compare')).data;
-    const pf = cmp.panels.find((p) => p.name === 'CMP-FREE'); const pu = cmp.panels.find((p) => p.name === 'CMP-FULL');
-    assert.equal(pf.locks.customCode, true); assert.equal(pf.locks.brandingLinks, true); assert.equal(pf.locks.letsEncryptEmail, undefined); assert.deepEqual(pu.locks, {}); assert.equal(pf.tier, 'free'); assert.equal(pu.tier, 'portal');
-    const r = await api('admin', 'POST', '/api/psettings/apply', { key: 'brandingLinks', value: { hideDocumentationLink: true, hideChangelogLink: false, hideDiscordLink: false, hideFeedbackLink: false, hideOtherLinks: false }, panelIds: [free.id, full.id] });
-    assert.equal(r.status, 200); assert.equal(r.data.ok, false);
-    assert.deepEqual(r.data.results.map((x) => [x.name, x.ok, !!x.skipped]), [['CMP-FREE', false, true], ['CMP-FULL', true, false]]);
-    assert.match(r.data.results[0].error, /лицензия/); assert.equal(full.m.ps.links.hideDocumentationLink, true); assert.equal(free.m.ps.links.hideDocumentationLink, null);
-    const ok = await api('admin', 'POST', '/api/psettings/apply', { key: 'telemetry', value: { disabled: true }, panelIds: [free.id, full.id] }); assert.equal(ok.data.ok, true, 'бесплатные настройки применяются везде');
-  });
-});
