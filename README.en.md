@@ -86,6 +86,12 @@ Check the whole catalog: `node scripts/catalog-check.js /path/to/templates` (a l
 
 Besides the catalog: *Import Easypanel schema* (paste JSON from “Create from JSON” and deploy it to a panel) and export of a saved template as such a schema.
 
+## Service console and panel settings
+
+**Service console** (service card → *Console*, admins only): a terminal inside the container. Command input with history (↑↓), Ctrl+C, quick commands, output download. The Easypanel terminal runs over a WebSocket whose path and message format depend on the panel version and are not documented, so EasyAdmin finds them itself: it tries known paths and those found in the panel UI (*Connection settings → Find the path*) and detects the input format with a probe command `echo __EA$((a+b))__`. If detection fails, set the path and format manually — on failure all attempts and the first panel messages are shown. Up to three consoles per user; they close after 10 minutes without input and after an hour. The log records opening/closing a session and the *number* of commands, never the commands themselves (they may contain passwords). Disable with `EASYADMIN_CONSOLE=off`; custom paths via `EASYPANEL_CONSOLE_PATHS`.
+
+**Panel settings** (panel page → *Settings*, admins only): `settings.*`, `branding.*`, `users.*` and other procedures are taken from the panel's own UI (Easypanel has no public list). Reading is safe and secrets are masked (they can be revealed); writing sends JSON to the procedure as is — the panel validates the format and returns the reason on error; for paired `get…`/`set…` procedures the current values are prefilled, dangerous actions (restart, delete, reset) require typing the name. The *API console* remains for arbitrary calls.
+
 ## Live logs
 
 Logs come over the panel's own WebSocket; EasyAdmin proxies them to the browser via SSE. The exact WebSocket path depends on the Easypanel version and is undocumented, so `/ws/serviceLogs`, `/api/ws/serviceLogs` and `/ws/logs` are tried in turn. If your version uses another path, set `EASYPANEL_LOGS_PATHS`; on failure the tab shows which paths were tried.

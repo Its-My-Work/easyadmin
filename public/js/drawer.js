@@ -16,7 +16,7 @@ export function closeDrawer() {
 }
 const onKey = (e) => {
   if (document.querySelector('#overlay-root .backdrop')) return;
-  if (e.key === 'Escape') return closeDrawer();
+  if (e.key === 'Escape') { if (document.activeElement?.classList?.contains('term-input')) return; return closeDrawer(); } // в терминале Esc не закрывает панель
   // 1–9 переключают разделы (не мешаем вводу текста)
   if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '')) current?.switchIndex?.(Number(e.key) - 1);
 };
@@ -44,7 +44,7 @@ const domainOf = (x, fallbackPort = '') => {
 const portOf = (x) => ({ id: x.id ?? x._id, published: x.published ?? x.publishedPort ?? x.external ?? x.hostPort ?? '', target: x.target ?? x.targetPort ?? x.internal ?? x.containerPort ?? '', protocol: String(x.protocol ?? 'tcp').toLowerCase() });
 const mountOf = (x) => ({ id: x.id ?? x._id, type: x.type ?? 'volume', name: x.name ?? x.volume ?? '', hostPath: x.hostPath ?? x.source ?? '', mountPath: x.mountPath ?? x.target ?? x.path ?? '', content: x.content ?? '' });
 
-const NAV_ICON = { overview: 'grid', env: 'edit', logs: 'terminal', domains: 'globe', storage: 'database', resources: 'activity', source: 'box', automation: 'link', raw: 'layers', danger: 'trash' };
+const NAV_ICON = { overview: 'grid', env: 'edit', logs: 'terminal', console: 'terminal', domains: 'globe', storage: 'database', resources: 'activity', source: 'box', automation: 'link', raw: 'layers', danger: 'trash' };
 
 /** Открывает боковую панель сервиса. */
 export function openService(s) {
@@ -89,7 +89,7 @@ export function openService(s) {
   current.unsub = subscribe(renderHead);
 
   const tabs = [
-    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', 'Логи']]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
+    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', 'Логи']]), ...(can('admin') ? [['console', 'Консоль']] : []), ['domains', 'Домены'], ['storage', 'Порты и тома'],
     ['resources', 'Ресурсы'], ...(s.type === 'app' && !ro ? [['source', 'Источник']] : []),
     ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
   ];
@@ -137,7 +137,7 @@ export function openService(s) {
     const svc = d.service || {};
     clear(body);
     if (d.warnings?.length) body.append(h('div', { class: 'callout warn' }, icon('alert'), h('div', null, d.warnings.join('; '))));
-    const views = { overview, env, logs, domains, storage, resources, source, raw, danger, automation };
+    const views = { overview, env, logs, console: consoleTab, domains, storage, resources, source, raw, danger, automation };
     body.append(views[state.tab](svc, d));
   }
 
@@ -334,6 +334,78 @@ export function openService(s) {
     state.onLeave = () => es?.close();
     connect();
     return h('div', { class: 'stack' }, h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr, re), h('div', { class: 'inline' }, status, h('span', { class: 'spacer' }), count), view);
+  }
+
+  /* ---- Консоль: терминал в контейнере (WebSocket панели ↔ SSE/POST EasyAdmin) ---- */
+  function consoleTab() {
+    const FORMATS = [['auto', 'Определить автоматически'], ['raw', 'Обычный текст'], ['json-input', 'JSON {type:"input",data}'], ['json-stdin', 'JSON {type:"stdin",data}'], ['json-data', 'JSON {data}'], ['json-input-key', 'JSON {input}'], ['json-command', 'JSON {command}']];
+    const MAX = 200_000;
+    const term = h('pre', { class: 'term', tabindex: 0 });
+    const status = h('span', { class: 'muted small' }, 'Не подключено');
+    const pathIn = h('input', { class: 'input mono', placeholder: '/ws/… (необязательно: путь WebSocket терминала)', autocomplete: 'off' });
+    const fmtSel = h('select', { class: 'input' }, FORMATS.map(([v, l]) => h('option', { value: v }, l)));
+    const input = h('input', { class: 'input mono term-input', placeholder: 'команда и Enter · ↑↓ — история', autocomplete: 'off', spellcheck: 'false', disabled: true, 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
+    const info = h('div', { class: 'stack-sm' });
+    let cid = null, es = null, text = '', hist = [], hi = -1, follow = true;
+    const cleanText = (t) => t.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07]*\x07/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+    const paint = () => { term.textContent = text; if (follow) term.scrollTop = term.scrollHeight; };
+    term.addEventListener('scroll', () => { follow = term.scrollTop + term.clientHeight >= term.scrollHeight - 24; });
+    const setState = (on, msg, cls = 'muted') => { input.disabled = !on; connectBtn.hidden = on; disconnectBtn.hidden = !on; ctrlC.disabled = !on; quick.disabled = !on; status.textContent = msg; status.className = `small ${cls}`; if (on) input.focus(); };
+    const stop = async (remote = true) => {
+      es?.close(); es = null;
+      if (cid && remote) { const id = cid; cid = null; try { await del(`/api/console/${id}`); } catch { /* уже закрыт */ } }
+      cid = null;
+    };
+    const send = async (data) => { if (!cid) return; try { await post(`/api/console/${cid}/input`, { data }); } catch (e) { toast(e.message, 'error'); if (/не найден|закрыт/.test(e.message)) setState(false, 'Сеанс закрыт', 'danger-text'); } };
+    const connect = async () => {
+      await stop(); text = ''; paint(); clear(info);
+      setState(false, 'Подключение…', 'muted'); connectBtn.disabled = true;
+      try {
+        const r = await post(`/api/panels/${s.panelId}/console`, { ...ref, path: pathIn.value.trim() || undefined, framing: fmtSel.value });
+        cid = r.id;
+        setState(true, `● Подключено · ${r.path} · ${r.detected ? r.framing : 'формат не определён, используется обычный текст'}`, r.detected ? 'ok-text' : 'warn-text');
+        if (!r.detected) info.append(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('div', null, 'Соединение есть, но формат ввода определить не удалось — панель не ответила на пробную команду. Выберите формат вручную в «Параметрах» и переподключитесь, либо введите команду и посмотрите, отвечает ли терминал.', r.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, r.transcript.join('\n'))) : null)));
+        es = new EventSource(`/api/console/${cid}/stream`);
+        es.addEventListener('out', (e) => { text = (text + cleanText(JSON.parse(e.data).text)).slice(-MAX); paint(); });
+        es.addEventListener('status', (e) => { const st = JSON.parse(e.data); if (st.state === 'closed' || st.state === 'error') { setState(false, st.message || 'Соединение закрыто', 'danger-text'); es?.close(); es = null; cid = null; } });
+        es.onerror = () => { if (es && es.readyState === 2) { setState(false, 'Соединение потеряно', 'danger-text'); es = null; cid = null; } };
+      } catch (e) {
+        setState(false, 'Не удалось подключиться', 'danger-text');
+        const att = e.data?.attempts ?? [];
+        info.append(h('div', { class: 'callout err compact' }, icon('alert', 14), h('div', null, h('b', null, e.message), att.length ? h('ul', { class: 'result-list' }, att.map((a) => h('li', { class: 'err mono small' }, a))) : null,
+          h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket, точный путь зависит от версии панели. Нажмите «Найти путь» или укажите его в «Параметрах».'))));
+      } finally { connectBtn.disabled = false; }
+    };
+    const discover = async () => {
+      try {
+        const r = await get(`/api/panels/${s.panelId}/console/paths`);
+        const list = r.related.length ? r.related : r.found;
+        info.replaceChildren(h('div', { class: 'callout compact' }, icon('activity', 14), h('div', null,
+          list.length ? h('div', null, h('b', null, 'Найдено в интерфейсе панели — нажмите, чтобы подставить:'), h('div', { class: 'chips' }, list.map((x) => h('button', { type: 'button', class: 'chip clickable', onclick: () => { pathIn.value = x; } }, x)))) : h('b', null, 'В интерфейсе панели пути WebSocket не найдены'),
+          h('p', { class: 'muted small' }, `Пробуются также: ${r.known.join(', ')}`))));
+      } catch (e) { toast(e.message, 'error'); }
+    };
+    const connectBtn = h('button', { class: 'btn primary', onclick: connect }, icon('terminal', 14), 'Подключиться');
+    const disconnectBtn = h('button', { class: 'btn', hidden: true, onclick: async () => { await stop(); setState(false, 'Отключено'); } }, icon('x', 14), 'Отключиться');
+    const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => send('\x03') }, 'Ctrl+C');
+    const QUICK = ['ls -la', 'pwd', 'env | sort', 'ps aux', 'df -h', 'free -m', 'cat /etc/os-release', 'uname -a'];
+    const quick = h('select', { class: 'input term-quick', disabled: true, onchange: (e) => { if (e.target.value) { input.value = e.target.value; input.focus(); } e.target.value = ''; } }, h('option', { value: '' }, 'Быстрые команды…'), QUICK.map((c) => h('option', { value: c }, c)));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { const v = input.value; if (v.trim()) { hist.push(v); hi = hist.length; } input.value = ''; send(`${v}\n`); }
+      else if (e.key === 'ArrowUp') { if (hist.length) { hi = Math.max(0, hi - 1); input.value = hist[hi]; e.preventDefault(); } }
+      else if (e.key === 'ArrowDown') { if (hist.length) { hi = Math.min(hist.length, hi + 1); input.value = hist[hi] ?? ''; e.preventDefault(); } }
+      else if (e.ctrlKey && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) { send('\x03'); e.preventDefault(); }
+      else if (e.ctrlKey && e.key.toLowerCase() === 'd') { send('\x04'); e.preventDefault(); }
+    });
+    state.onLeave = () => { stop(); };
+    return h('div', { class: 'stack' },
+      h('div', { class: 'callout compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Команды выполняются внутри контейнера этого сервиса. В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.')),
+      h('div', { class: 'inline' }, connectBtn, disconnectBtn, ctrlC, quick, h('button', { class: 'btn sm ghost', onclick: () => { text = ''; paint(); } }, icon('trash', 13), 'Очистить'),
+        h('button', { class: 'btn sm ghost', title: 'Скачать вывод', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: `${s.name}-console.txt` }); a.click(); URL.revokeObjectURL(a.href); } }, icon('download', 13)),
+        h('span', { class: 'spacer' }), status),
+      h('details', { class: 'more' }, h('summary', null, 'Параметры подключения'),
+        h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel)), h('button', { class: 'btn sm', type: 'button', onclick: discover }, icon('search', 13), 'Найти путь в интерфейсе панели'))),
+      info, term, input);
   }
 
   function automation() {

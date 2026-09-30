@@ -15,6 +15,8 @@ export function loadConfig(env = process.env) {
     pollIntervalMs: int(env.EASYADMIN_POLL_MS, 60_000),
     lang: env.EASYADMIN_LANG === 'en' ? 'en' : 'ru',
     publicUrl: env.EASYADMIN_PUBLIC_URL || '',
+    consolePaths: (env.EASYPANEL_CONSOLE_PATHS || '/ws/serviceConsole,/api/ws/serviceConsole,/ws/console,/ws/serviceTerminal,/ws/terminal,/ws/serviceExec,/ws/exec').split(',').map((x) => x.trim()).filter(Boolean),
+    consoleEnabled: !['off', 'false', '0'].includes(String(env.EASYADMIN_CONSOLE ?? '').toLowerCase()),
     logsPaths: (env.EASYPANEL_LOGS_PATHS || '/ws/serviceLogs,/api/ws/serviceLogs,/ws/logs').split(',').map((x) => x.trim()).filter(Boolean),
     oidc: {
       issuer: env.OIDC_ISSUER || '', clientId: env.OIDC_CLIENT_ID || '', clientSecret: env.OIDC_CLIENT_SECRET || '',

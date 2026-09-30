@@ -5,6 +5,7 @@ import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, re
 import { allServices, can, panelById, refresh, store } from './store.js';
 import { lang, setLang, t } from './i18n.js';
 import { sourcePicker } from './source-form.js';
+import { settingsTab } from './panel-settings.js';
 import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
@@ -74,7 +75,7 @@ export function panelPage(id, sub) {
   const tab = sub || 'services';
   const st = p.stats;
   const down = !['online', 'degraded'].includes(p.status);
-  const tabs = [['services', 'Сервисы'], ['activity', 'Активность'], ...(can('admin') ? [['console', 'Консоль API']] : [])];
+  const tabs = [['services', 'Сервисы'], ['activity', 'Активность'], ...(can('admin') ? [['settings', 'Настройки'], ['console', 'Консоль API']] : [])];
   const content = h('div');
   const page = h('div', { class: 'page', style: { '--pc': p.color } },
     h('div', { class: 'page-head' },
@@ -97,6 +98,7 @@ export function panelPage(id, sub) {
     content);
   if (tab === 'services') content.append(servicesTab(p));
   else if (tab === 'activity') content.append(activityTab(p));
+  else if (tab === 'settings') content.append(settingsTab(p));
   else content.append(consoleTab(p));
   return page;
 }

@@ -70,6 +70,16 @@ await step('templates catalog', async () => {
   await p.fill('.cat-bar input.search', 'uses fs'); await p.locator('.cat-card').first().click(); await p.waitForSelector('.modal .callout.warn'); await scan('catalog unsupported'); await esc();
   await p.click('.seg-btn:has-text("My templates")'); await p.click('button:has-text("Import Easypanel schema")'); await p.waitForSelector('.modal textarea'); await scan('import schema'); await esc();
 });
+await step('service console + panel settings', async () => {
+  await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
+  await p.locator('tr.row', { hasText: 'worker' }).first().click(); await p.waitForSelector('.drawer.in');
+  await p.click('.drawer .dtab:has-text("Console")'); await scan('console idle');
+  await p.click('.drawer summary:has-text("Connection settings")'); await scan('console settings');
+  await p.click('.drawer button:has-text("Connect")'); await p.waitForSelector('.drawer :text("Connected")', { timeout: 12000 }); await scan('console connected');
+  await p.click('.drawer button:has-text("Disconnect")'); await p.keyboard.press('Escape');
+  await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.set-group'); await scan('panel settings');
+  await p.fill('.page input.search', 'systemPrune'); await p.click('.set-group .list-item:has-text("systemPrune") button:has-text("Change")'); await p.waitForSelector('.modal textarea'); await scan('settings edit'); await esc();
+});
 await step('schedules', async () => { await p.goto(U + '#/schedules'); await p.waitForTimeout(300); await scan('schedules empty'); await p.click('button:has-text("New schedule")'); await p.waitForSelector('.modal'); await scan('schedule modal'); await p.selectOption('.modal select >> nth=0', 'system'); await scan('schedule system'); await p.selectOption('.modal select >> nth=2', 'interval').catch(() => {}); await scan('schedule interval'); await p.click('.modal-foot button:has-text("Create")'); await p.waitForTimeout(400); await scan('schedule error'); await esc(); });
 await step('inventory', async () => { await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row, .tbl', { timeout: 15000 }); await scan('images'); await p.click('.seg button:has-text("Certificates")'); await p.waitForSelector('.badge', { timeout: 8000 }); await scan('certs'); await p.locator('button:has-text("Reissue")').first().click(); await p.waitForSelector('.modal'); await scan('reissue confirm'); await esc(); });
 await step('audit', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); });

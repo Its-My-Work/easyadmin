@@ -17,7 +17,7 @@ const seeds = [
 const port = Number(process.env.PORT || 3100);
 const panels = [];
 for (const [name, seed, stats] of seeds) {
-  const m = createMockPanel({ token: 'demo-' + name.length, seed, stats, certs: [{ domain: `${name.length}.shop.example.com`, expiresAt: soon(name.length * 7) }, { domain: 'www.example.com', expiresAt: soon(name.length % 2 ? 4 : 75) }] });
+  const m = createMockPanel({ consolePath: '/ws/serviceConsole', consoleFraming: 'json-input', token: 'demo-' + name.length, seed, stats, certs: [{ domain: `${name.length}.shop.example.com`, expiresAt: soon(name.length * 7) }, { domain: 'www.example.com', expiresAt: soon(name.length % 2 ? 4 : 75) }] });
   panels.push({ name, m, url: await m.listen() });
 }
 // демо-каталог шаблонов Easypanel из нескольких образцов — чтобы вкладка «Каталог» работала без интернета

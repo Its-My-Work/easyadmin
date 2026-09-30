@@ -5,6 +5,7 @@ import { hashPassword, randomToken, sha256, verifyPassword } from './crypto.js';
 import {
   ACTIONS, BUILD_TYPES, SOURCE_KINDS, PanelClient, SYSTEM_OPS, createService, inspectService, loginToPanel, normalizeUrl, runAction, runServiceOp,
 } from './easypanel.js';
+import { createConsoleHub } from './console.js';
 import { HttpError, RawResponse, StreamResponse, compile, parseCookies, readJson, redirect, sendJson, sendRaw, serveStatic } from './http.js';
 import { createOidc } from './oidc.js';
 import { translate } from '../public/js/i18n-dict.js';
@@ -139,6 +140,7 @@ export function createApp({ config, db, key, fetchImpl }) {
   }
 
   const scheduler = createScheduler({ db, manager, alerts, audit });
+  const consoleHub = createConsoleHub();
   manager.onSnapshot = (row, snap) => {
     alerts.evaluate(row, snap);
     if (snap.stats && (!history.get(row.id) || now() - history.get(row.id) > 55_000)) {
@@ -551,7 +553,7 @@ export function createApp({ config, db, key, fetchImpl }) {
       return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
 
-    ...extraRoutes({ db, key, config, fetchImpl, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
+    ...extraRoutes({ db, key, config, fetchImpl, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
   ]);
 
   const decryptOf = (row) => manager.clientFor(row).token;
@@ -619,6 +621,6 @@ export function createApp({ config, db, key, fetchImpl }) {
     };
     prune(); maintenance = setInterval(prune, 6 * 3600_000); maintenance.unref();
   };
-  const stop = () => { manager.stop(); scheduler.stop(); clearInterval(maintenance); };
+  const stop = () => { manager.stop(); scheduler.stop(); consoleHub.closeAll(); clearInterval(maintenance); };
   return { server, manager, alerts, scheduler, start, stop };
 }

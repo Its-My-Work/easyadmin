@@ -285,7 +285,8 @@ export function fuzzyStats(v) {
  * Имена процедур из интерфейса самой панели: разбираем её JS-бандлы (как делает сам фронтенд).
  * Нужно, когда в новой версии панели процедуры переименованы. Возвращает уникальные имена «роутер.процедура».
  */
-export async function discoverProcedures(baseUrl, { insecure = false, timeoutMs = 10_000 } = {}) {
+/** Читает собственные JS-файлы панели: имена tRPC-процедур и пути WebSocket (/ws/…). */
+export async function discoverBundle(baseUrl, { insecure = false, timeoutMs = 10_000 } = {}) {
   const agent = insecure && baseUrl.startsWith('https:') ? new https.Agent({ rejectUnauthorized: false }) : undefined;
   const get = (url, max = 8 * 1024 * 1024) => new Promise((resolve) => {
     const u = new URL(url); const mod = u.protocol === 'https:' ? https : http;
@@ -300,14 +301,20 @@ export async function discoverProcedures(baseUrl, { insecure = false, timeoutMs 
   const base = baseUrl.replace(/\/+$/, '/');
   const html = await get(base, 1024 * 1024);
   const scripts = [...new Set([...html.matchAll(/(?:src|href)=[\x22\x27]([^\x22\x27]+\.js[^\x22\x27]*)[\x22\x27]/g)].map((m) => m[1]))].slice(0, 10);
-  const names = new Set();
+  const names = new Set(); const wsPaths = new Set();
   const VERB = /^(get|list|create|update|delete|remove|set|enable|disable|start|stop|restart|deploy|destroy|inspect|run|check|refresh|expose|kill|use|load|send|generate|revoke|activate|deactivate|rename|can|add|subscribe)[A-Z0-9]/;
   for (const src of scripts) {
     let url; try { url = new URL(src, base); } catch { continue; }
     if (url.origin !== new URL(base).origin) continue; // только собственные файлы панели
-    for (const m of (await get(url.toString())).matchAll(/[\x22\x27\x60]([a-z][A-Za-z0-9]{2,30})\.([a-z][A-Za-z0-9]{2,50})[\x22\x27\x60]/g)) if (VERB.test(m[2])) names.add(`${m[1]}.${m[2]}`);
+    const text = await get(url.toString());
+    for (const m of text.matchAll(/[\x22\x27\x60]([a-z][A-Za-z0-9]{2,30})\.([a-z][A-Za-z0-9]{2,50})[\x22\x27\x60]/g)) if (VERB.test(m[2])) names.add(`${m[1]}.${m[2]}`);
+    for (const m of text.matchAll(/[\x22\x27\x60](\/(?:api\/)?ws\/[A-Za-z0-9_\/-]{2,60})[\x22\x27\x60]/g)) wsPaths.add(m[1]);
   }
-  return [...names].sort();
+  return { procedures: [...names].sort(), wsPaths: [...wsPaths].sort() };
+}
+
+export async function discoverProcedures(baseUrl, opts) {
+  return (await discoverBundle(baseUrl, opts)).procedures;
 }
 
 /* ------------------------------------------------------------------ */

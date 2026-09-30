@@ -4,9 +4,10 @@ import https from 'node:https';
 import tls from 'node:tls';
 import path from 'node:path';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.js';
-import { ACTIONS, SYSTEM_OPS, discoverProcedures, firstOk, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
+import { ACTIONS, SYSTEM_OPS, discoverBundle, discoverProcedures, firstOk, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
 import { EVENT_TYPES } from './alerts.js';
 import { CatalogError, createCatalog } from './catalog.js';
+import { ConsoleError, consoleCandidates } from './console.js';
 import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http.js';
 import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
 import { applyConfig, extractConfig, mergeEnv, parseEnvLines } from './templates.js';
@@ -165,6 +166,75 @@ export function extraRoutes(d) {
         ws.on('close', () => { send('status', { state: 'closed' }); clearInterval(hb); res.end(); });
       });
     }, { min: 'operator' }],
+  ];
+
+  /* ---------------- консоль сервиса (терминал в контейнере через WebSocket панели) ---------------- */
+  const hub = d.consoleHub;
+  const consoleOn = () => { if (config.consoleEnabled === false) throw new HttpError(404, 'Консоль отключена (EASYADMIN_CONSOLE=off)'); };
+  const consoleErr = (e) => { if (e instanceof ConsoleError) throw new HttpError(e.status, e.message, e.extra); throw e; };
+  const consoleRoutes = [
+    // пути WebSocket, найденные в интерфейсе панели, — для диагностики и ручного выбора
+    ['GET', '/api/panels/:id/console/paths', async (ctx) => {
+      consoleOn();
+      const row = panelOr404(ctx.params.id);
+      const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
+      return { known: config.consolePaths, found: wsPaths, related: wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x)) };
+    }, { admin: true }],
+    ['POST', '/api/panels/:id/console', async (ctx) => {
+      consoleOn();
+      const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
+      const r = ref({ type: ctx.body.type, project: ctx.body.project, name: ctx.body.name });
+      const c = manager.clientFor(row);
+      let paths = [];
+      if (ctx.body.path) { need(/^\/[A-Za-z0-9_\/-]{1,80}$/.test(String(ctx.body.path)), 'Некорректный путь WebSocket'); paths = [String(ctx.body.path)]; }
+      else {
+        const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
+        paths = [...new Set([...config.consolePaths, ...wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x))])];
+      }
+      const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths });
+      try {
+        const s = await hub.open({ userId: ctx.user.id, urls, headers: { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin }, insecure: !!row.insecure_tls, framing: ctx.body.framing });
+        audit(ctx, { action: 'console.open', panel: row, target: `${r.project}/${r.name}`, detail: `${s.path} · ${s.framing}` });
+        return s;
+      } catch (e) {
+        audit(ctx, { action: 'console.open', panel: row, target: `${r.project}/${r.name}`, ok: false, detail: e.message });
+        return consoleErr(e);
+      }
+    }, { admin: true }],
+    ['GET', '/api/console/:cid/stream', (ctx) => {
+      consoleOn();
+      let unsub = null;
+      try { hub.info(ctx.params.cid, ctx.user.id); } catch (e) { return consoleErr(e); }
+      return new StreamResponse(async (req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...SECURITY_HEADERS });
+        const send = (event, data) => { if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
+        const hb = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15_000);
+        req.on('close', () => { clearInterval(hb); unsub?.(); });
+        try { unsub = hub.subscribe(ctx.params.cid, ctx.user.id, (event, data) => { send(event, data); if (event === 'status' && data.state === 'closed') { clearInterval(hb); res.end(); } }); } catch (e) { send('status', { state: 'closed', message: e.message }); clearInterval(hb); res.end(); }
+      });
+    }, { admin: true }],
+    ['POST', '/api/console/:cid/input', (ctx) => { consoleOn(); try { hub.input(ctx.params.cid, ctx.user.id, ctx.body.data); return { ok: true }; } catch (e) { return consoleErr(e); } }, { admin: true }],
+    ['POST', '/api/console/:cid/framing', (ctx) => { consoleOn(); try { return { framing: hub.setFraming(ctx.params.cid, ctx.user.id, ctx.body.framing) }; } catch (e) { return consoleErr(e); } }, { admin: true }],
+    ['DELETE', '/api/console/:cid', (ctx) => {
+      consoleOn();
+      try { const info = hub.close(ctx.params.cid, ctx.user.id); audit(ctx, { action: 'console.close', target: info.path, detail: `команд: ${info.commands}` }); return { ok: true }; } catch (e) { return consoleErr(e); }
+    }, { admin: true }],
+  ];
+
+  /* ---------------- настройки панели: процедуры, найденные в интерфейсе панели ---------------- */
+  const SETTINGS_NS = ['settings', 'branding', 'users', 'git', 'github', 'docker', 'traefik', 'cluster', 'notifications', 'backups', 'system', 'auth'];
+  const SETTINGS_SEED = ['settings.systemPrune', 'settings.cleanupDockerImages', 'settings.restartEasypanel', 'branding.getBasicSettings', 'users.listUsers', 'users.generateApiToken', 'users.revokeApiToken'];
+  const settingsRoutes2 = [
+    ['GET', '/api/panels/:id/settings/procedures', async (ctx) => {
+      const row = panelOr404(ctx.params.id);
+      const found = await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => []);
+      const names = [...new Set([...SETTINGS_SEED, ...found])].filter((n) => SETTINGS_NS.includes(n.split('.')[0]));
+      const READ = /^(get|list|inspect|read|is|has|check|find)[A-Z]/;
+      const DANGER = /^(delete|remove|reset|reboot|restart|prune|cleanup|destroy|revoke|disable|stop|shutdown|kill|clear|purge)/i;
+      const items = names.map((n) => { const [ns, proc] = n.split('.'); return { name: n, ns, kind: READ.test(proc) ? 'read' : 'write', danger: DANGER.test(proc), getter: READ.test(proc) ? null : names.find((g) => g.startsWith(`${ns}.get`) && g.slice(`${ns}.get`.length) === proc.replace(/^(set|update|save|change|enable|disable)/, '')) ?? null }; })
+        .sort((a, b) => a.ns.localeCompare(b.ns) || (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'read' ? -1 : 1));
+      return { items, discovered: found.length };
+    }, { admin: true }],
   ];
 
   /* ---------------- история нагрузки ---------------- */
@@ -604,5 +674,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...consoleRoutes, ...settingsRoutes2, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

@@ -5,7 +5,7 @@ import https from 'node:https';
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
-/** Минимальный WebSocket-клиент (только приём текста): рукопожатие, разбор кадров, ping/pong, close. */
+/** Минимальный WebSocket-клиент: рукопожатие, разбор кадров, ping/pong, close; приём и отправка текста. */
 export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutMs = 10_000 } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
@@ -29,7 +29,10 @@ export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutM
       const send = (opcode, payload = Buffer.alloc(0)) => {
         if (socket.destroyed) return;
         const mask = crypto.randomBytes(4); const len = payload.length;
-        const header = len < 126 ? Buffer.from([0x80 | opcode, 0x80 | len]) : Buffer.concat([Buffer.from([0x80 | opcode, 0x80 | 126]), Buffer.from([len >> 8, len & 255])]);
+        let header;
+        if (len < 126) header = Buffer.from([0x80 | opcode, 0x80 | len]);
+        else if (len < 65536) header = Buffer.concat([Buffer.from([0x80 | opcode, 0x80 | 126]), Buffer.from([len >> 8, len & 255])]);
+        else { const ext = Buffer.alloc(8); ext.writeBigUInt64BE(BigInt(len)); header = Buffer.concat([Buffer.from([0x80 | opcode, 0x80 | 127]), ext]); }
         const masked = Buffer.from(payload); for (let i = 0; i < masked.length; i++) masked[i] ^= mask[i % 4];
         socket.write(Buffer.concat([header, mask, masked]));
       };
@@ -58,6 +61,7 @@ export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutM
       socket.on('data', (d) => { buf = Buffer.concat([buf, d]); parse(); });
       socket.on('close', finish);
       socket.on('error', (e) => { ee.emit('error', e); finish(); });
+      ee.send = (text) => send(1, Buffer.from(String(text), 'utf8')); // текстовый кадр (для консоли)
       ee.close = () => { try { send(8); } catch { /* уже закрыт */ } socket.destroy(); finish(); };
       resolve(ee);
       if (head?.length) setImmediate(() => { buf = Buffer.concat([buf, head]); parse(); }); // кадры, пришедшие вместе с 101, — после того как вызывающий подпишется
@@ -100,6 +104,21 @@ function pickText(v, depth = 0) {
 /** Раскрывает «литеральные» эскейпы (\r\n, \", \uXXXX), если текст пришёл экранированным без разбора JSON. */
 function unescapeLoose(s) {
   return s.replace(/\\(u[0-9a-fA-F]{4}|[nrt"\\/])/g, (_, c) => ({ n: '\n', r: '\r', t: '\t', '"': '"', '\\': '\\', '/': '/' })[c] ?? String.fromCharCode(parseInt(c.slice(1), 16)));
+}
+
+/** Текст вывода терминала из сообщения WebSocket: чистый текст остаётся как есть, JSON разбирается (с сохранением переводов строк). */
+export function outputText(raw) {
+  let text = String(raw);
+  for (let i = 0; i < 3; i++) {
+    const t = text.trim();
+    if (!/^[\[{"]/.test(t)) break;
+    const parsed = tryJson(t);
+    if (parsed === undefined) break;
+    const next = pickText(parsed);
+    if (next == null || next === text) break;
+    text = next;
+  }
+  return text;
 }
 
 /**

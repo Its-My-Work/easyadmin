@@ -82,14 +82,14 @@ await step('drawer nav: вертикальное меню без горизон�
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
   const overflow = await p.evaluate(() => { const n = document.querySelector('.dnav'); return n.scrollWidth > n.clientWidth + 1; });
   if (overflow) throw new Error('у меню есть горизонтальная прокрутка');
-  await p.keyboard.press('4'); await p.waitForSelector('.dtab.active:has-text("Домены")');
+  await p.keyboard.press('5'); await p.waitForSelector('.dtab.active:has-text("Домены")');
   await p.click('.drawer .section-head button'); await p.waitForSelector('.modal');
   await p.fill('.modal input[placeholder="app.example.com"]', 'edit.example.com'); await p.click('.modal-foot button:has-text("Сохранить")');
   await p.waitForSelector('.drawer .list-item:has-text("edit.example.com")');
   await p.click('.drawer .list-item:has-text("edit.example.com") button[title="Изменить"]'); await p.waitForSelector('.modal');
   await p.fill('.modal input[placeholder="app.example.com"]', 'renamed.example.com'); await p.click('.modal-foot button:has-text("Сохранить")');
   await p.waitForSelector('.drawer .list-item:has-text("renamed.example.com")');
-  await p.keyboard.press('5'); await p.waitForSelector('.dtab.active:has-text("Порты и тома")');
+  await p.keyboard.press('6'); await p.waitForSelector('.dtab.active:has-text("Порты и тома")');
   await p.locator('.drawer .section-head button').nth(1).click(); await p.waitForSelector('.modal'); await p.fill('.modal input[placeholder="/var/lib/data"]', '/data1'); await p.fill('.modal input[placeholder="data"]', 'vol1'); await p.click('.modal-foot button:has-text("Сохранить")');
   await p.waitForSelector('.drawer .list-item:has-text("/data1")');
   await p.click('.drawer .list-item:has-text("/data1") button[title="Изменить"]'); await p.waitForSelector('.modal'); await p.fill('.modal input[placeholder="/var/lib/data"]', '/data2'); await p.click('.modal-foot button:has-text("Сохранить")');
@@ -173,6 +173,29 @@ await step('каталог Easypanel: поиск, карточка, неподд
   await p.click('.modal-foot button:has-text("Развернуть")');
   await p.waitForSelector('.toast.success:has-text("развёрнуто")', { timeout: 8000 });
   await p.goto(U + '#/services'); await p.waitForSelector('tr.row:has-text("cat-demo-db")', { timeout: 8000 });
+});
+await step('консоль сервиса: подключение, команда, вывод, отключение', async () => {
+  await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
+  await p.locator('tr.row', { hasText: 'worker' }).first().click(); await p.waitForSelector('.drawer.in');
+  await p.click('.drawer .dtab:has-text("Консоль")');
+  await p.click('.drawer button:has-text("Подключиться")');
+  await p.waitForSelector('.drawer :text("Подключено")', { timeout: 12000 });
+  await p.fill('.term-input', 'echo hi-e2e-console'); await p.press('.term-input', 'Enter');
+  await p.waitForFunction(() => (document.querySelector('.term')?.textContent.match(/hi-e2e-console/g) ?? []).length >= 2, null, { timeout: 6000 });
+  await p.selectOption('.term-quick', 'pwd'); if ((await p.inputValue('.term-input')) !== 'pwd') throw new Error('быстрая команда не подставилась');
+  await p.fill('.term-input', 'ls 123'); await p.press('.term-input', 'Enter'); await p.waitForFunction(() => document.querySelector('.term')?.textContent.includes('ls 123: not found'), null, { timeout: 6000 }); // цифры не переключают вкладки
+  if (!(await p.locator('.drawer .dtab.active').innerText()).includes('Консоль')) throw new Error('ввод цифр переключил вкладку');
+  await p.click('.drawer button:has-text("Отключиться")'); await p.waitForSelector('.drawer :text("Отключено")');
+  await p.keyboard.press('Escape');
+});
+await step('настройки панели: список процедур, чтение со скрытыми секретами', async () => {
+  await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.set-group');
+  await p.fill('.page input.search', 'branding'); await p.waitForSelector('.set-group .list-item:has-text("getBasicSettings")');
+  await p.click('.set-group .list-item:has-text("getBasicSettings") button:has-text("Прочитать")'); await p.waitForSelector('.modal pre.code');
+  const masked = await p.locator('.modal pre.code').innerText(); if (masked.includes('super-secret-value') || !masked.includes('••••••')) throw new Error('секрет не скрыт: ' + masked);
+  await p.check('.modal label.check input'); const open = await p.locator('.modal pre.code').innerText(); if (!open.includes('super-secret-value')) throw new Error('секрет не показан');
+  await p.keyboard.press('Escape');
+  await p.fill('.page input.search', 'systemPrune'); await p.click('.set-group .list-item:has-text("systemPrune") button:has-text("Изменить")'); await p.waitForSelector('.modal textarea'); await p.keyboard.press('Escape');
 });
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
