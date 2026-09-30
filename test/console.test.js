@@ -71,8 +71,6 @@ describe('консоль сервиса', () => {
 
   test('путь терминала находится в интерфейсе панели, если он нестандартный; ручной путь проверяется', async () => {
     const id = await addPanel('P-found', { newStats: true, consolePath: '/ws/custom-terminal', consoleFraming: 'raw' });
-    const paths = await api('admin', 'GET', `/api/panels/${id}/console/paths`);
-    assert.ok(paths.data.related.includes('/ws/custom-terminal'));
     const o = await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site' });
     assert.equal(o.status, 200); assert.equal(o.data.path, '/ws/custom-terminal');
     await api('admin', 'DELETE', `/api/console/${o.data.id}`);
@@ -94,7 +92,6 @@ describe('консоль сервиса', () => {
   test('права и лимиты: только админ, чужой сеанс недоступен, не более трёх консолей, ввод ограничен', async () => {
     const id = await addPanel('P-lim', { consolePath: '/ws/serviceConsole', consoleFraming: 'raw' });
     assert.equal((await api('op', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site' })).status, 403);
-    assert.equal((await api('op', 'GET', `/api/panels/${id}/console/paths`)).status, 403);
     const sessions = [];
     for (let i = 0; i < 3; i++) { const o = await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site', framing: 'raw' }); assert.equal(o.status, 200); sessions.push(o.data.id); }
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site', framing: 'raw' })).status, 429);
@@ -114,7 +111,6 @@ describe('консоль сервиса', () => {
     cfg.consoleEnabled = false;
     try {
       assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site' })).status, 404);
-      assert.equal((await api('admin', 'GET', `/api/panels/${id}/console/paths`)).status, 404);
     } finally { cfg.consoleEnabled = true; }
   });
 
@@ -131,8 +127,6 @@ describe('консоль сервиса', () => {
     await api('admin', 'DELETE', `/api/console/${o.data.id}`);
     const audit = (await api('admin', 'GET', '/api/audit?q=console.open')).data;
     assert.ok(audit.some((a) => a.action === 'console.open' && a.target === 'сервер' && a.ok === 1));
-    const paths = await api('admin', 'GET', `/api/panels/${id}/console/paths?server=1`);
-    assert.ok(paths.data.known.includes('/ws/serverConsole'));
     // для сервиса путь /ws/serverConsole не подходит (другие пути по умолчанию) — сервис и хост не путаются
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site' })).status, 502);
     // без server и без сервиса — ошибка проверки, а не обращение к панели
@@ -181,19 +175,6 @@ describe('консоль сервиса', () => {
     } finally { hub.closeAll(); srv.close(); srv.closeAllConnections(); }
   });
 
-  test('диагностика терминала: ответ панели на Upgrade по каждому пути и фрагменты её JS с new WebSocket(…); токены не попадают', async () => {
-    const id = await addPanel('P-rep', { newStats: true, consolePath: '/ws/custom-terminal', consoleFraming: 'raw' });
-    const r = await api('admin', 'GET', `/api/panels/${id}/console/report?server=1`);
-    assert.equal(r.status, 200);
-    const by = Object.fromEntries(r.data.probes.map((p) => [p.path, p]));
-    assert.equal(by['/ws/custom-terminal'].status, 101); assert.equal(by['/ws/custom-terminal'].upgraded, true); assert.match(by['/ws/custom-terminal'].firstBytes, /connected/);
-    assert.ok(Object.values(by).some((p) => p.status === 404 || p.error), 'неверные пути видны с причиной');
-    assert.ok(r.data.snippets.some((x) => x.includes('new WebSocket')), 'фрагмент JS панели');
-    assert.ok(!JSON.stringify(r.data).includes('token=T'), 'токен не в отчёте');
-    assert.equal((await api('op', 'GET', `/api/panels/${id}/console/report?server=1`)).status, 403);
-    assert.equal((await api('admin', 'GET', `/api/panels/${id}/console/report`)).status, 400, 'без server нужен сервис');
-  });
-
   test('автоопределение никогда не шлёт голый текст (он роняет процесс панели); raw — только по явному выбору', async () => {
     const id = await addPanel('P-rawonly', { consolePath: '/ws/serviceConsole', consoleFraming: 'raw' });
     const auto = await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site' });
@@ -240,8 +221,6 @@ describe('консоль сервиса', () => {
     const list = await api('admin', 'GET', `/api/panels/${id}/console/containers?type=app&project=web&name=site`);
     assert.deepEqual(list.data.containers, [{ id: 'cid-web-site', name: 'web_site.1.abc' }]);
     assert.equal((await api('op', 'GET', `/api/panels/${id}/console/containers?type=app&project=web&name=site`)).status, 403);
-    const paths = await api('admin', 'GET', `/api/panels/${id}/console/paths`);
-    assert.ok(!paths.data.related.includes('/ws/hostShell') && paths.data.related.includes('/ws/containerShell'), 'для сервиса не предлагается путь хоста');
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site', path: '/ws/hostShell' })).status, 400, 'ручной путь хоста для сервиса запрещён');
     assert.ok(!m.connects.includes('/ws/hostShell'));
     // чужой контейнер указать нельзя, у остановленного сервиса запущенных контейнеров нет

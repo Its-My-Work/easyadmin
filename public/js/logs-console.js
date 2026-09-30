@@ -1,6 +1,5 @@
 import { get } from './api.js';
 import { clear, field, h, icon, toast } from './dom.js';
-import { showConsoleReport } from './console-report.js';
 import { createTerminal } from './term-core.js';
 
 /**
@@ -73,7 +72,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
     stick();
   };
   const errorCallout = (st) => h('div', { class: 'callout err compact' }, icon('alert', 14), h('div', null, h('b', null, st.message), st.attempts?.length ? h('ul', { class: 'result-list' }, st.attempts.map((a) => h('li', { class: 'err mono small' }, a))) : null,
-    h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket, точный путь зависит от версии панели. Нажмите «Найти путь» или укажите его в «Параметрах».')));
+    h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket, точный путь зависит от версии панели. При необходимости путь и формат можно указать в «Параметрах».')));
   const term = createTerminal({ panelId: () => s.panelId, onOut: termOut, onState: (st) => {
     if (st.state === 'connecting') { clear(info); setTerm(false, 'Терминал: подключение…'); termBtn.disabled = true; return; }
     termBtn.disabled = false;
@@ -92,15 +91,6 @@ export function logsConsole({ s, ref, base, state, admin }) {
     push({ k: 'cmd', text: cmd }); pendingEcho = cmd;
     follow = true; stick();
     await send(`${cmd}\n`);
-  };
-  const discover = async () => {
-    try {
-      const r = await get(`/api/panels/${s.panelId}/console/paths`);
-      const list = r.related.length ? r.related : r.found;
-      info.replaceChildren(h('div', { class: 'callout compact' }, icon('activity', 14), h('div', null,
-        list.length ? h('div', null, h('b', null, 'Найдено в интерфейсе панели — нажмите, чтобы подставить:'), h('div', { class: 'chips' }, list.map((x) => h('button', { type: 'button', class: 'chip clickable', onclick: () => { pathIn.value = x; } }, x)))) : h('b', null, 'В интерфейсе панели пути WebSocket не найдены'),
-        h('p', { class: 'muted small' }, `Пробуются также: ${r.known.join(', ')}`))));
-    } catch (e) { toast(e.message, 'error'); }
   };
 
   /* ---- элементы ---- */
@@ -131,7 +121,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
   const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => send('\x03') }, 'Ctrl+C');
   const quick = h('select', { class: 'input term-quick', disabled: true, onchange: (e) => { if (e.target.value) { input.value = e.target.value; input.focus(); } e.target.value = ''; } }, h('option', { value: '' }, 'Быстрые команды…'), QUICK.map((c) => h('option', { value: c }, c)));
   const details = h('details', { class: 'more' }, h('summary', null, 'Параметры подключения'),
-    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel)), h('div', { class: 'inline' }, h('button', { class: 'btn sm', type: 'button', onclick: discover }, icon('search', 13), 'Найти путь в интерфейсе панели'), h('button', { class: 'btn sm', type: 'button', onclick: () => showConsoleReport(`/api/panels/${s.panelId}/console/report?${new URLSearchParams(ref)}`) }, icon('activity', 13), 'Собрать диагностику'))));
+    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel))));
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { const v = input.value; if (!v.trim()) return; hist.push(v); hi = hist.length; input.value = ''; run(v); }
     else if (e.key === 'ArrowUp') { if (hist.length) { hi = Math.max(0, hi - 1); input.value = hist[hi]; e.preventDefault(); } }

@@ -199,8 +199,6 @@ await step('консоль сервера: пункт меню, подключе
   await p.waitForSelector('.page :text("Подключено")', { timeout: 12000 });
   await p.waitForFunction(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo host-e2e') && t.split('\n').some((l) => l.trim() === 'host-e2e'); }, null, { timeout: 6000 });
   await p.waitForTimeout(300);
-  await p.click('.page summary:has-text("Параметры подключения")'); await p.click('.page button:has-text("Собрать диагностику")'); await p.waitForSelector('.modal pre.code:has-text("probes")', { timeout: 15000 });
-  const rep = await p.locator('.modal pre.code').innerText(); if (!rep.includes('"status": 101')) throw new Error('в диагностике нет успешного подключения: ' + rep.slice(0, 300)); await p.keyboard.press('Escape');
   await p.click('.nav-item:has-text("Обзор")'); await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.term-big');
   if (!(await p.locator('.term-big').innerText()).includes('host-e2e')) throw new Error('вывод консоли пропал после перехода по страницам');
   await p.click('.page button:has-text("Отключить терминал")'); await p.waitForSelector('.page :text("Терминал отключён")');

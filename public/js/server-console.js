@@ -1,6 +1,5 @@
 import { get } from './api.js';
 import { clear, field, h, icon, toast } from './dom.js';
-import { showConsoleReport } from './console-report.js';
 import { createTerminal } from './term-core.js';
 import { store } from './store.js';
 
@@ -46,7 +45,7 @@ function apply() {
     S.warn.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, S.warn.transcript.join('\n'))) : null)));
   if (S.err) {
     ui.info.append(h('div', { class: 'callout err compact' }, icon('alert', 14), h('div', null, h('b', null, S.err.message), S.err.attempts?.length ? h('ul', { class: 'result-list' }, S.err.attempts.map((a) => h('li', { class: 'err mono small' }, a))) : null,
-      h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket, точный путь зависит от версии панели. Нажмите «Найти путь» или укажите его в «Параметрах».'))));
+      h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket, точный путь зависит от версии панели. При необходимости путь и формат можно указать в «Параметрах».'))));
     ui.details.open = true;
   }
 }
@@ -71,17 +70,8 @@ export function consolePage() {
   const send = async (data) => { const r = await term.send(data); if (typeof r === 'string') toast(r, 'error'); return r === true; };
   const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => send('\x03') }, 'Ctrl+C');
   const quick = h('select', { class: 'input term-quick', disabled: true, onchange: (e) => { if (e.target.value) { input.value = e.target.value; input.focus(); } e.target.value = ''; } }, h('option', { value: '' }, 'Быстрые команды…'), QUICK.map((c) => h('option', { value: c }, c)));
-  const discover = async () => {
-    try {
-      const r = await get(`/api/panels/${S.panelId}/console/paths?server=1`);
-      const list = r.related.length ? r.related : r.found;
-      clear(info).append(h('div', { class: 'callout compact' }, icon('activity', 14), h('div', null,
-        list.length ? h('div', null, h('b', null, 'Найдено в интерфейсе панели — нажмите, чтобы подставить:'), h('div', { class: 'chips' }, list.map((x) => h('button', { type: 'button', class: 'chip clickable', onclick: () => { pathIn.value = x; S.path = x; } }, x)))) : h('b', null, 'В интерфейсе панели пути WebSocket не найдены'),
-        h('p', { class: 'muted small' }, `Пробуются также: ${r.known.join(', ')}`))));
-    } catch (e) { toast(e.message, 'error'); }
-  };
   const details = h('details', { class: 'more' }, h('summary', null, 'Параметры подключения'),
-    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel)), h('div', { class: 'inline' }, h('button', { class: 'btn sm', type: 'button', onclick: discover }, icon('search', 13), 'Найти путь в интерфейсе панели'), h('button', { class: 'btn sm', type: 'button', onclick: () => showConsoleReport(`/api/panels/${S.panelId}/console/report?server=1`) }, icon('activity', 13), 'Собрать диагностику'))));
+    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel))));
   const run = async (cmd) => {
     if (!term.connected) await term.connect({ server: true, path: S.path.trim() || undefined, framing: S.fmt });
     if (!term.connected) return;
