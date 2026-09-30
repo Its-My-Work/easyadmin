@@ -496,4 +496,8 @@ export const SYSTEM_OPS = {
   cleanupImages: (c) => c.mutate('settings.cleanupDockerImages'),
   restartPanel: (c) => c.mutate('settings.restartEasypanel'),
   reboot: (c) => c.mutate('server.reboot'),
+  cleanupBuilder: (c) => c.mutate('settings.cleanupDockerBuilder'),
+  refreshServerIp: (c) => c.mutate('settings.refreshServerIp'),
+  restartTraefik: (c) => c.mutate('traefik.restart'),
+  updatePanel: (c) => c.mutate('update.update'),
 };

@@ -11,6 +11,7 @@ import { ConsoleError, consoleCandidates } from './console.js';
 import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http.js';
 import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
 import { applyConfig, extractConfig, mergeEnv, parseEnvLines } from './templates.js';
+import { psettingsRoutes } from './panel-settings.js';
 
 const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
 
@@ -708,5 +709,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...consoleRoutes, ...settingsRoutes2, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...consoleRoutes, ...psettingsRoutes(d), ...settingsRoutes2, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

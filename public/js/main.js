@@ -8,6 +8,7 @@ import { STATUS, store, notify, refresh, subscribe, allServices, can, favorites,
 import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './views2.js';
 import { avatar, profilePage, usersPage } from './pages-users.js';
 import { consolePage } from './server-console.js';
+import { comparePage } from './psettings-compare.js';
 import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead } from './views.js';
 
 const root = document.getElementById('root');
@@ -64,7 +65,7 @@ function buildShell() {
   shell = { nav, panelsList, view, updated, refreshBtn };
 }
 
-const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/console', 'terminal', 'Консоль', 'admin'], ['#/users', 'users', 'Пользователи', 'admin'], ['#/settings', 'settings', 'Настройки', 'admin']];
+const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/psettings', 'settings', 'Сравнение панелей', 'admin'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/console', 'terminal', 'Консоль', 'admin'], ['#/users', 'users', 'Пользователи', 'admin'], ['#/settings', 'settings', 'Настройки', 'admin']];
 const dotClass = (s) => (s === 'online' ? 'ok' : s === 'degraded' ? 'warn' : s === 'unknown' ? 'muted' : 'err');
 
 function route() {
@@ -105,6 +106,7 @@ function renderView() {
   else if (r.a === 'panel') node = panelPage(r.b, r.c);
   else if (r.a === 'services') node = servicesPage();
   else if (r.a === 'inventory') node = inventoryPage();
+  else if (r.a === 'psettings') node = can('admin') ? comparePage() : dashboard();
   else if (r.a === 'templates') node = templatesPage();
   else if (r.a === 'schedules') node = schedulesPage();
   else if (r.a === 'audit') node = auditPage();
@@ -142,7 +144,7 @@ function openPalette() {
   const go = (hash) => () => { location.hash = hash; };
   const fav = favorites(), rec = recents();
   // порядок страниц — как в боковом меню
-  const pages = [['Обзор', 'grid', '#/'], ['Все сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ['Профиль', 'users', '#/profile'], ...(can('admin') ? [['Консоль сервера', 'terminal', '#/console'], ['Пользователи', 'users', '#/users'], ['Настройки', 'settings', '#/settings']] : [])];
+  const pages = [['Обзор', 'grid', '#/'], ['Все сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ['Профиль', 'users', '#/profile'], ...(can('admin') ? [['Сравнение панелей', 'settings', '#/psettings'], ['Консоль сервера', 'terminal', '#/console'], ['Пользователи', 'users', '#/users'], ['Настройки', 'settings', '#/settings']] : [])];
   const items = [
     ...pages.map(([title, ic, hash], order) => ({ title, shown: t(title), hint: 'Страница', ic, group: 'page', order, run: go(hash) })),
     ...(can('admin') ? [{ title: 'Добавить панель', shown: t('Добавить панель'), hint: 'Команда', ic: 'plus', group: 'cmd', order: 0, run: () => panelForm() }] : []),

@@ -327,3 +327,13 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 /* compose: подпись контейнера в логах и у команд терминала */
 .ltag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1.5; }
 .ltag.h0 { color: hsl(0 75% 72%); background: hsl(0 75% 72% / .14); } .ltag.h1 { color: hsl(40 75% 72%); background: hsl(40 75% 72% / .14); } .ltag.h2 { color: hsl(90 75% 72%); background: hsl(90 75% 72% / .14); } .ltag.h3 { color: hsl(150 75% 72%); background: hsl(150 75% 72% / .14); } .ltag.h4 { color: hsl(190 75% 72%); background: hsl(190 75% 72% / .14); } .ltag.h5 { color: hsl(225 75% 72%); background: hsl(225 75% 72% / .14); } .ltag.h6 { color: hsl(275 75% 72%); background: hsl(275 75% 72% / .14); } .ltag.h7 { color: hsl(320 75% 72%); background: hsl(320 75% 72% / .14); } 
+/* настройки панели Easypanel: разделы, карточки форм, сравнение панелей */
+.psf-nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; } .psf-nav::-webkit-scrollbar { display: none; } .psf-nav .chip-btn { white-space: nowrap; flex: none; }
+.chip-btn.on { background: var(--accent-soft, rgba(99, 102, 241, .16)); color: var(--text); border-color: var(--accent); }
+.psf { display: grid; gap: 10px; } .psf .card-head { margin-bottom: 0; } .psf-hint { margin: 0; } .psf-fields { margin-top: 2px; } .psf-foot { margin-top: 4px; flex-wrap: wrap; gap: 8px; }
+.psf-check { display: grid; grid-template-columns: auto 1fr; align-items: start; column-gap: 8px; row-gap: 2px; } .psf-check .hint { grid-column: 2; } .psf-color { width: 42px; height: 36px; padding: 2px; border: 1px solid var(--border2); border-radius: 8px; background: transparent; }
+.psf-code { min-height: 180px; line-height: 1.5; } .psf-qr { width: 180px; height: 180px; image-rendering: pixelated; background: #fff; padding: 8px; border-radius: 10px; } .psf-user { min-width: 0; display: grid; gap: 4px; } .psf-user b { overflow-wrap: anywhere; }
+.badge.warn { background: rgba(251, 191, 36, .13); color: var(--warn); } .ml { margin-left: 8px; }
+.cmp-wrap { overflow-x: auto; } .cmp-tbl { min-width: 560px; } .cmp-tbl th a { color: inherit; } .cmp-tbl td:first-child, .cmp-tbl th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; min-width: 150px; }
+.cmp-tbl tr.cmp-diff td { background: rgba(251, 191, 36, .06); } .cmp-tbl tr.cmp-diff td:first-child { background: color-mix(in srgb, var(--panel) 92%, var(--warn)); }
+@media (max-width: 900px) { .psf { padding: 14px; } .psf-foot .btn { flex: 1 1 auto; } }

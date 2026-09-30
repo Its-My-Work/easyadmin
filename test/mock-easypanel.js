@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
+import { makePanelSettings } from './mock-panel-settings.js';
 
 /**
  * Имитация tRPC API Easypanel для тестов и демо. Состояние в памяти.
@@ -53,7 +54,8 @@ export function fakeShell(socket, url, socketFraming, opts = {}) {
   });
 }
 
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {} } = {}) {
+  const ps = makePanelSettings(psettings);
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -130,6 +132,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'settings.systemPrune': () => null,
     'settings.cleanupDockerImages': () => null,
     'settings.restartEasypanel': () => null,
+    ...ps.procs,
     'server.reboot': () => null,
   };
   for (const type of ['app', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis', 'compose']) {
@@ -207,7 +210,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
   });
 
   return {
-    server, calls, projects, token, crashes, resizes, connects,
+    server, calls, projects, token, crashes, resizes, connects, ps: ps.state,
     listen: () => new Promise((r) => server.listen(0, '127.0.0.1', () => r(`http://127.0.0.1:${server.address().port}`))),
     close: () => new Promise((r) => { for (const s of sockets) s.destroy(); server.closeAllConnections?.(); server.close(r); }),
   };

@@ -37,6 +37,14 @@ export function openDb(dataDir) {
       created_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS panel_config_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      username TEXT,
+      content_enc TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ts INTEGER NOT NULL,
