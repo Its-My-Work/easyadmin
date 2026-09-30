@@ -75,13 +75,14 @@ export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutM
 }
 
 /** Кандидаты адресов WebSocket логов: точный путь зависит от версии Easypanel, поэтому пробуем по очереди. */
-export function logSocketCandidates(baseUrl, { project, name, token, paths }) {
+export function logSocketCandidates(baseUrl, { project, name, token, paths, compose = false }) {
   const u = new URL(baseUrl);
   const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
   const service = `${project}_${name}`;
   return paths.map((p) => {
     const url = new URL(`${proto}//${u.host}${u.pathname.replace(/\/+$/, '')}${p}`);
     url.searchParams.set('service', service);
+    url.searchParams.set('compose', compose ? 'true' : 'false'); // у compose-сервиса нет swarm-сервиса: без compose=true панель вечно пишет «Waiting for service … to start»
     url.searchParams.set('token', token);
     return url.toString();
   });

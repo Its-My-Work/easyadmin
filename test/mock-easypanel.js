@@ -192,7 +192,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     if (isReal) connects.push(url.pathname);
     if (isReal) return fakeShell(socket, url, 'json-input-key', { strict: true, jsonOut: true, onCrash: (t) => crashes.push(t), onResize: (r) => resizes.push({ path: url.pathname, size: r, command: url.searchParams.get('command') }) });
     if (isConsole) return fakeShell(socket, url, consoleFraming);
-    calls.push({ proc: 'ws', input: { service: url.searchParams.get('service'), auth: req.headers.authorization } });
+    calls.push({ proc: 'ws', input: { service: url.searchParams.get('service'), compose: url.searchParams.get('compose'), auth: req.headers.authorization } });
     socket.write(frame(1, `line one\n\x1b[31mline two\x1b[0m`));
     socket.write(frame(1, JSON.stringify({ line: 'json line' })));
     socket.write(frame(1, 'frag-', false)); socket.write(frame(9, 'hi')); socket.write(frame(0, 'mented'));

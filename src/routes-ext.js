@@ -153,7 +153,7 @@ export function extraRoutes(d) {
         req.on('close', cleanup);
         const c = manager.clientFor(row);
         const errors = [];
-        for (const url of logSocketCandidates(c.base, { project: r.project, name: r.name, token: c.token, paths: config.logsPaths })) {
+        for (const url of logSocketCandidates(c.base, { project: r.project, name: r.name, token: c.token, paths: config.logsPaths, compose: r.type === 'compose' })) {
           if (closed) return;
           try { ws = await openWebSocket(url, { headers: { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin }, insecure: !!row.insecure_tls }); break; }
           catch (e) { errors.push(`${new URL(url).pathname}: ${e.message}`); }
