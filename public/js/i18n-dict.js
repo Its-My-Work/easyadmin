@@ -314,6 +314,8 @@ export const EN = [
   ['Соединение закрыто панелью', 'Connection closed by the panel'],
   ['Соединение закрыто', 'Connection closed'],
   ['Соединение потеряно', 'Connection lost'],
+  ['Переподключение…', 'Reconnecting…'],
+  ['{0} — повтор через {1} с', '{0} — retrying in {1} s'],
   ['Фильтр по названию процедуры…', 'Filter by procedure name…'],
   ['Формат данных неизвестен — панель проверит JSON и вернёт причину, если он неверный. Подсказку можно получить, вызвав связанную процедуру чтения.', 'The data format is unknown — the panel will validate the JSON and return the reason if it is wrong. You can get a hint by calling a related read procedure.'],
   ['изменение · осторожно', 'change · be careful'],

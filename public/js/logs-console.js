@@ -33,17 +33,37 @@ export function logsConsole({ s, ref, base, state, admin }) {
   view.addEventListener('scroll', () => { follow = view.scrollTop + view.clientHeight >= view.scrollHeight - 24; followBtn.classList.toggle('on', follow); });
 
   /* ---- логи ---- */
+  // поток сам переподключается (обрыв, перезапуск сервиса, деплой) с нарастающей паузой; после повторного подключения панель
+  // присылает хвост лога заново — первые секунды строки, которые уже есть на экране, пропускаем
+  let retry = 0, retryTimer = null, leaving = false, replaySeen = null;
   const connectLogs = () => {
-    es?.close();
-    logStatus.textContent = 'Подключение…'; logStatus.className = 'muted small';
-    es = new EventSource(`${base}/logs?${new URLSearchParams(ref)}`);
-    es.addEventListener('line', (e) => push({ k: 'log', text: JSON.parse(e.data) }));
-    es.addEventListener('status', (e) => {
-      const st = JSON.parse(e.data);
-      if (st.state === 'connected') { logStatus.textContent = '● Онлайн'; logStatus.className = 'small ok-text'; }
-      else { logStatus.textContent = st.state === 'closed' ? 'Поток завершён' : st.message; logStatus.className = `small ${st.state === 'closed' ? 'muted' : 'danger-text'}`; es.close(); }
+    clearTimeout(retryTimer); es?.close();
+    logStatus.textContent = retry ? 'Переподключение…' : 'Подключение…'; logStatus.className = 'muted small';
+    const stream = es = new EventSource(`${base}/logs?${new URLSearchParams(ref)}`);
+    const again = (msg) => {
+      if (leaving || es !== stream) return;
+      stream.close();
+      const wait = Math.min(30, 2 ** Math.min(retry, 5)); retry++;
+      logStatus.textContent = `${msg} — повтор через ${wait} с`; logStatus.className = 'small warn-text';
+      retryTimer = setTimeout(connectLogs, wait * 1000);
+    };
+    stream.addEventListener('line', (e) => {
+      const text = JSON.parse(e.data);
+      if (replaySeen) { const n = replaySeen.get(text); if (n) { replaySeen.set(text, n - 1); return; } }
+      push({ k: 'log', text });
     });
-    es.onerror = () => { logStatus.textContent = 'Соединение потеряно — переподключение…'; logStatus.className = 'small warn-text'; };
+    stream.addEventListener('status', (e) => {
+      const st = JSON.parse(e.data);
+      if (st.state === 'connected') {
+        logStatus.textContent = '● Онлайн'; logStatus.className = 'small ok-text';
+        if (retry) { // это повторное подключение: запоминаем уже показанные строки на время «воспроизведения» хвоста
+          replaySeen = new Map(); for (const it of all.slice(-300)) if (it.k === 'log') replaySeen.set(it.text, (replaySeen.get(it.text) ?? 0) + 1);
+          setTimeout(() => { replaySeen = null; }, 2500);
+        }
+        retry = 0;
+      } else again(st.state === 'closed' ? 'Поток завершён' : st.message);
+    });
+    stream.onerror = () => again('Соединение потеряно');
   };
 
   /* ---- терминал ---- */
@@ -101,7 +121,6 @@ export function logsConsole({ s, ref, base, state, admin }) {
   const q = h('input', { class: 'input', placeholder: 'Фильтр логов…', oninput: () => { filter = q.value.toLowerCase(); redraw(); } });
   const dl = h('button', { class: 'btn sm ghost', title: 'Скачать', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([all.map((it) => (it.k === 'cmd' ? `$ ${it.text}` : it.text)).join('\n')], { type: 'text/plain' })), download: `${s.name}.log` }); document.body.append(a); a.click(); a.remove(); } }, icon('download', 13));
   const clr = h('button', { class: 'btn sm ghost', onclick: () => { all = []; buffer = []; tpartial = null; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
-  const re = h('button', { class: 'btn sm ghost', onclick: connectLogs }, icon('refresh', 13), 'Переподключить');
 
   // у compose-сервиса несколько контейнеров: выбор, в каком открыть терминал (у одного контейнера список скрыт)
   const contSel = h('select', { class: 'input', 'aria-label': 'Контейнер', hidden: true, onchange: () => { if (term.connected) connectTerm(); } }); // другой контейнер — переподключение, если терминал уже подключён
@@ -125,11 +144,11 @@ export function logsConsole({ s, ref, base, state, admin }) {
     else if (e.ctrlKey && e.key.toLowerCase() === 'd') { send('\x04'); e.preventDefault(); }
   });
 
-  state.onLeave = () => { es?.close(); term.stop(); };
+  state.onLeave = () => { leaving = true; clearTimeout(retryTimer); es?.close(); term.stop(); };
   connectLogs();
   if (admin) { setTerm(false, 'Терминал не подключён'); loadContainers(); }
   return h('div', { class: 'stack' },
-    h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr, re),
+    h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr),
     h('div', { class: 'inline' }, logStatus, admin ? h('span', { class: 'muted small' }, '·') : null, admin ? termStatus : null, h('span', { class: 'spacer' }), count),
     view,
     admin ? h('div', { class: 'stack-sm' },
