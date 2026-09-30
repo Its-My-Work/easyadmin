@@ -1,11 +1,10 @@
 import { get } from './api.js';
 import { clear, h, icon } from './dom.js';
-import { advancedTab } from './panel-settings-advanced.js';
 import * as S from './psettings-sections.js';
 
 /* Настройки самой панели Easypanel: разделы с обычными формами, остальное — в «Расширенных» (универсальный доступ к процедурам панели). */
 const SECTIONS = [['overview', 'Обзор', S.overview], ['address', 'Адреса', S.address], ['general', 'Общее', S.general], ['branding', 'Оформление', S.branding], ['system', 'Обновления и Docker', S.system],
-  ['users', 'Пользователи', S.users], ['monitoring', 'Мониторинг', S.monitoring], ['traefik', 'Traefik', S.traefik], ['infra', 'Кластер и хранилища', S.infra], ['actions', 'Журнал панели', S.actions], ['advanced', 'Расширенные', (p) => advancedTab(p)]];
+  ['users', 'Пользователи', S.users], ['monitoring', 'Мониторинг', S.monitoring], ['traefik', 'Traefik', S.traefik], ['infra', 'Кластер и хранилища', S.infra], ['actions', 'Журнал панели', S.actions]];
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
 

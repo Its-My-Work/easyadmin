@@ -258,22 +258,6 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  /* ---------------- настройки панели: процедуры, найденные в интерфейсе панели ---------------- */
-  const SETTINGS_NS = ['settings', 'branding', 'users', 'git', 'github', 'docker', 'traefik', 'cluster', 'notifications', 'backups', 'system', 'auth'];
-  const SETTINGS_SEED = ['settings.systemPrune', 'settings.cleanupDockerImages', 'settings.restartEasypanel', 'branding.getBasicSettings', 'users.listUsers', 'users.generateApiToken', 'users.revokeApiToken'];
-  const settingsRoutes2 = [
-    ['GET', '/api/panels/:id/settings/procedures', async (ctx) => {
-      const row = panelOr404(ctx.params.id);
-      const found = await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => []);
-      const names = [...new Set([...SETTINGS_SEED, ...found])].filter((n) => SETTINGS_NS.includes(n.split('.')[0]));
-      const READ = /^(get|list|inspect|read|is|has|check|find)[A-Z]/;
-      const DANGER = /^(delete|remove|reset|reboot|restart|prune|cleanup|destroy|revoke|disable|stop|shutdown|kill|clear|purge)/i;
-      const items = names.map((n) => { const [ns, proc] = n.split('.'); return { name: n, ns, kind: READ.test(proc) ? 'read' : 'write', danger: DANGER.test(proc), getter: READ.test(proc) ? null : names.find((g) => g.startsWith(`${ns}.get`) && g.slice(`${ns}.get`.length) === proc.replace(/^(set|update|save|change|enable|disable)/, '')) ?? null }; })
-        .sort((a, b) => a.ns.localeCompare(b.ns) || (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'read' ? -1 : 1));
-      return { items, discovered: found.length };
-    }, { admin: true }],
-  ];
-
   /* ---------------- история нагрузки ---------------- */
   const historyRoutes = [
     ['GET', '/api/panels/:id/history', (ctx) => {
@@ -711,5 +695,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...settingsRoutes2, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

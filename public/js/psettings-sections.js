@@ -56,21 +56,25 @@ function licenseCard(p, entry) {
 
 /* ---------- Обзор ---------- */
 export function overview(p, entry, go) {
-  return lazy(h('div', { class: 'stack' }), async () => {
+  const box = h('div', { class: 'stack' });
+  const draw = () => lazy(box, async () => {
     const s = await get(`/api/panels/${p.id}/pstatus`);
     const n = (v) => (v == null ? '—' : String(v));
+    const update = () => runSystem(p, 'updatePanel', { title: 'Обновить Easypanel', message: 'Панель скачает свежий образ и перезапустится, на несколько минут станет недоступна. Сервисы продолжают работать.', danger: true, typed: true, done: () => setTimeout(draw, 5000) });
     return [
-      licenseCard(p, entry),
-      s.updateAvailable ? h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Доступно обновление Easypanel'), h('p', null, 'Новая версия готова к установке.'), h('button', { class: 'btn sm', onclick: () => go('system') }, 'Перейти к обновлению'))) : null,
+      s.updateAvailable ? h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Доступно обновление Easypanel'), h('p', null, 'Новая версия готова к установке.'),
+        h('div', { class: 'inline' }, h('button', { class: 'btn sm primary', onclick: update }, icon('rocket', 13), 'Обновить Easypanel'), h('button', { class: 'btn sm ghost', onclick: () => go('system') }, 'Подробнее')))) : null,
       s.dockerUpdate?.available ? h('div', { class: 'callout compact' }, icon('activity', 14), h('span', { class: 'small' }, `${t('Доступна новая версия Docker')}: ${s.dockerUpdate.latest}`)) : null,
       card('Состояние панели', null,
         kv('Версия Easypanel', s.version ? h('span', null, s.version, ' ', s.releaseTag ? badge(s.releaseTag) : null, ' ', s.updateAvailable ? badge('есть обновление', 'warn') : badge('актуальная', 'ok')) : '—'),
         kv('Версия Docker', s.dockerVersion ? h('span', null, s.dockerVersion, ' ', s.dockerUpdate?.available ? badge(`→ ${s.dockerUpdate.latest}`, 'warn') : null) : '—'),
         kv('IP-адрес сервера', s.serverIp), kv('Пользователи Easypanel', n(s.users)), kv('Билдеры Docker', n(s.builders)), kv('Узлы кластера', n(s.nodes)), kv('Сертификаты', n(s.certificates))),
+      licenseCard(p, entry),
       card('Быстрые переходы', null, h('div', { class: 'chips' },
         [['address', 'Домен панели'], ['users', 'Пользователи'], ['system', 'Очистка Docker'], ['traefik', 'Traefik'], ['monitoring', 'Метрики и логи']].map(([id, l]) => h('button', { class: 'chip-btn', onclick: () => go(id) }, l)))),
     ];
   });
+  return draw();
 }
 
 /* ---------- Адреса ---------- */

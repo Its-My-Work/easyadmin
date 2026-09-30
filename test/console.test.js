@@ -133,22 +133,6 @@ describe('консоль сервиса', () => {
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, {})).status, 400);
   });
 
-  test('настройки панели: процедуры из интерфейса панели, чтение/запись/осторожные, парные get→set; только админ', async () => {
-    const id = await addPanel('P-set', { newStats: true });
-    const r = await api('admin', 'GET', `/api/panels/${id}/settings/procedures`);
-    assert.equal(r.status, 200);
-    const by = Object.fromEntries(r.data.items.map((x) => [x.name, x]));
-    assert.equal(by['branding.getBasicSettings'].kind, 'read');
-    assert.equal(by['settings.restartEasypanel'].danger, true); assert.equal(by['settings.restartEasypanel'].kind, 'write');
-    assert.equal(by['settings.setPanelDomain'].kind, 'write'); assert.equal(by['settings.setPanelDomain'].danger, false);
-    assert.ok(!('dashboard.getOverview' in by), 'посторонние разделы не показываем');
-    assert.ok(r.data.discovered > 0);
-    assert.equal((await api('op', 'GET', `/api/panels/${id}/settings/procedures`)).status, 403);
-    // чтение идёт через существующую консоль API (только админ, мутации в журнале)
-    const read = await api('admin', 'POST', `/api/panels/${id}/trpc`, { kind: 'query', procedure: 'branding.getBasicSettings' });
-    assert.equal(read.data.result.name, 'Easypanel');
-  });
-
   test('панель молча игнорирует WebSocket на неверных путях: пути проверяются параллельно, ответ быстрый (а не минута)', async () => {
     const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
     const srv = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<html></html>'); });
