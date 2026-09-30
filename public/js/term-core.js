@@ -26,7 +26,8 @@ export function createTerminal({ panelId, onOut, onState }) {
       es.onerror = () => { if (es && es.readyState === 2) { es = null; cid = null; onState({ state: 'off', message: 'Соединение потеряно', failed: true }); } };
       return r;
     } catch (e) {
-      onState({ state: 'error', message: e.message, attempts: e.data?.attempts ?? [] });
+      const proxyLike = [502, 503, 504].includes(e.status) && !e.data;
+      onState({ state: 'error', message: proxyLike ? `${e.message} — ответ пришёл не от EasyAdmin (прокси панели): сервис мог перезапуститься или запрос занял слишком много времени. Подробности — в логах контейнера EasyAdmin.` : e.message, attempts: e.data?.attempts ?? [] });
       return null;
     }
   };

@@ -17,4 +17,7 @@ server.listen(config.port, config.host, () => {
   console.log(config.lang === 'en' ? translate(msg) : msg);
   app.start();
 });
+// сбой в одном соединении (например, WebSocket панели) не должен ронять весь сервис: логируем и продолжаем
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { app.stop(); server.close(() => process.exit(0)); });

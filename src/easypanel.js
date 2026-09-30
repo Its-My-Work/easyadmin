@@ -303,10 +303,12 @@ export async function discoverBundle(baseUrl, { insecure = false, timeoutMs = 10
   const scripts = [...new Set([...html.matchAll(/(?:src|href)=[\x22\x27]([^\x22\x27]+\.js[^\x22\x27]*)[\x22\x27]/g)].map((m) => m[1]))].slice(0, 10);
   const names = new Set(); const wsPaths = new Set();
   const VERB = /^(get|list|create|update|delete|remove|set|enable|disable|start|stop|restart|deploy|destroy|inspect|run|check|refresh|expose|kill|use|load|send|generate|revoke|activate|deactivate|rename|can|add|subscribe)[A-Z0-9]/;
-  for (const src of scripts) {
-    let url; try { url = new URL(src, base); } catch { continue; }
-    if (url.origin !== new URL(base).origin) continue; // только собственные файлы панели
-    const text = await get(url.toString());
+  const texts = await Promise.all(scripts.map(async (src) => {
+    let url; try { url = new URL(src, base); } catch { return ''; }
+    if (url.origin !== new URL(base).origin) return ''; // только собственные файлы панели
+    return get(url.toString());
+  }));
+  for (const text of texts) {
     for (const m of text.matchAll(/[\x22\x27\x60]([a-z][A-Za-z0-9]{2,30})\.([a-z][A-Za-z0-9]{2,50})[\x22\x27\x60]/g)) if (VERB.test(m[2])) names.add(`${m[1]}.${m[2]}`);
     for (const m of text.matchAll(/[\x22\x27\x60](\/(?:api\/)?ws\/[A-Za-z0-9_\/-]{2,60})[\x22\x27\x60]/g)) wsPaths.add(m[1]);
   }

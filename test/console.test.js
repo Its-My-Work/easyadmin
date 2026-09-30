@@ -6,9 +6,10 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
-import { FRAMINGS } from '../src/console.js';
+import { FRAMINGS, consoleCandidates, createConsoleHub } from '../src/console.js';
+import http from 'node:http';
 import { openDb } from '../src/db.js';
-import { createMockPanel } from './mock-easypanel.js';
+import { createMockPanel, fakeShell } from './mock-easypanel.js';
 
 let app, base, tmp, cfg; const jars = {}; const panels = []; const closers = [];
 async function api(who, method, p, body) {
@@ -152,6 +153,32 @@ describe('консоль сервиса', () => {
     // чтение идёт через существующую консоль API (только админ, мутации в журнале)
     const read = await api('admin', 'POST', `/api/panels/${id}/trpc`, { kind: 'query', procedure: 'branding.getBasicSettings' });
     assert.equal(read.data.result.name, 'Easypanel');
+  });
+
+  test('панель молча игнорирует WebSocket на неверных путях: пути проверяются параллельно, ответ быстрый (а не минута)', async () => {
+    const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+    const srv = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<html></html>'); });
+    srv.on('upgrade', (req, socket) => {
+      const u = new URL(req.url, 'http://x');
+      if (u.pathname !== '/ws/realterm') return; // ни ответа, ни закрытия — как забытый обработчик upgrade
+      const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] + GUID).digest('base64');
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+      fakeShell(socket, u, 'raw');
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${srv.address().port}`;
+    const hub = createConsoleHub();
+    try {
+      const junk = Array.from({ length: 12 }, (_, i) => `/ws/junk${i}`);
+      const t0 = Date.now();
+      const r = await hub.open({ userId: 1, urls: consoleCandidates(base, { token: 't', paths: [...junk, '/ws/realterm'] }), headers: {}, insecure: false });
+      assert.equal(r.path, '/ws/realterm'); assert.equal(r.framing, 'raw'); assert.equal(r.detected, true);
+      assert.ok(Date.now() - t0 < 7000, `заняло ${Date.now() - t0} мс`);
+      hub.close(r.id, 1);
+      const t1 = Date.now();
+      await assert.rejects(hub.open({ userId: 1, urls: consoleCandidates(base, { token: 't', paths: junk }), headers: {}, insecure: false }), (e) => e.status === 502 && e.extra.attempts.length === 12);
+      assert.ok(Date.now() - t1 < 6000, `все пути молчат: ${Date.now() - t1} мс`);
+    } finally { hub.closeAll(); srv.close(); srv.closeAllConnections(); }
   });
 
   test('форматы ввода — корректный JSON/текст', () => {

@@ -18,6 +18,7 @@ export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutM
       agent: false, rejectUnauthorized: !insecure, timeout: timeoutMs,
     });
     const ee = new EventEmitter();
+    ee.on('error', () => {}); // ошибка сокета до подключения слушателя не должна ронять процесс
     req.on('timeout', () => { req.destroy(new Error('таймаут рукопожатия')); });
     req.on('error', reject);
     req.on('response', (res) => { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); });

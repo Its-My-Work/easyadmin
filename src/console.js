@@ -62,27 +62,19 @@ export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs 
   }
 
   async function detectFraming(s) {
-    await sleep(350); // баннер/приглашение
+    await sleep(300); // баннер/приглашение
     for (const name of Object.keys(FRAMINGS)) {
       if (s.closed) return null;
       const a = 100 + crypto.randomInt(800); const b = 100 + crypto.randomInt(800);
       const marker = `__EA${a + b}__`;
       s.ws.send(FRAMINGS[name](`echo __EA$((${a}+${b}))__\n`));
-      for (let i = 0; i < 8; i++) { await sleep(150); if (s.buffer.includes(marker)) return name; }
+      for (let i = 0; i < 5; i++) { await sleep(120); if (s.buffer.includes(marker)) return name; if (s.closed) return null; }
     }
     return null;
   }
 
-  /** Открывает сеанс: перебирает адреса, затем определяет формат ввода. */
-  async function open({ userId, urls, headers, insecure, framing }) {
-    if ([...sessions.values()].filter((x) => x.userId === userId).length >= maxPerUser) throw new ConsoleError(`Открыто слишком много консолей (не более ${maxPerUser}) — закройте лишние`, 429);
-    const attempts = []; let ws = null; let path = null;
-    for (const url of urls) {
-      try { ws = await openWebSocket(url, { headers, insecure, timeoutMs: 6000 }); path = new URL(url).pathname; break; } catch (e) { attempts.push(`${new URL(url).pathname}: ${e.message}`); }
-    }
-    if (!ws) throw new ConsoleError('Не удалось подключиться к консоли панели', 502, { attempts });
+  function attach(userId, ws, path) {
     const s = { id: crypto.randomBytes(12).toString('hex'), userId, ws, path, framing: 'raw', detected: false, buffer: '', transcript: [], subs: new Set(), commands: 0, createdAt: Date.now(), lastUsed: Date.now(), closed: false, reason: null };
-    sessions.set(s.id, s);
     ws.on('message', (m) => {
       if (s.transcript.length < 20) s.transcript.push(String(m).slice(0, 300));
       const text = outputText(m);
@@ -91,16 +83,43 @@ export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs 
     });
     ws.on('error', (e) => emit(s, 'status', { state: 'error', message: e.message }));
     ws.on('close', () => end(s, s.reason ?? 'Соединение закрыто панелью'));
-    if (framing && framing !== 'auto') {
-      if (!FRAMINGS[framing]) { end(s, 'Неизвестный формат ввода'); throw new ConsoleError('Неизвестный формат ввода'); }
-      s.framing = framing; s.detected = true;
-    } else {
-      const found = await detectFraming(s);
-      if (found) { s.framing = found; s.detected = true; }
-      if (s.closed) throw new ConsoleError('Панель закрыла соединение во время подключения', 502, { attempts, transcript: s.transcript });
-    }
-    s.buffer = ''; // пробная команда и её вывод не нужны пользователю
-    return { id: s.id, path, framing: s.framing, detected: s.detected, transcript: s.transcript, attempts };
+    return s;
+  }
+
+  /**
+   * Открывает сеанс. Адреса проверяются ПАРАЛЛЕЛЬНО с коротким таймаутом: панель часто молча игнорирует WebSocket на неверных путях,
+   * и последовательный перебор занимал бы минуту (прокси отвечает 502 раньше). Из подключившихся берётся первый по приоритету,
+   * у которого удалось определить формат ввода; остальные закрываются.
+   */
+  async function open({ userId, urls, headers, insecure, framing, handshakeMs = 3500 }) {
+    if ([...sessions.values()].filter((x) => x.userId === userId).length >= maxPerUser) throw new ConsoleError(`Открыто слишком много консолей (не более ${maxPerUser}) — закройте лишние`, 429);
+    const results = await Promise.allSettled(urls.map((url) => openWebSocket(url, { headers, insecure, timeoutMs: handshakeMs })));
+    const attempts = []; const live = [];
+    results.forEach((r, i) => {
+      const path = new URL(urls[i]).pathname;
+      if (r.status === 'fulfilled') live.push({ ws: r.value, path }); else attempts.push(`${path}: ${r.reason?.message ?? r.reason}`);
+    });
+    if (!live.length) throw new ConsoleError('Не удалось подключиться к консоли панели', 502, { attempts });
+    if (framing && framing !== 'auto' && !FRAMINGS[framing]) { live.forEach((x) => x.ws.close()); throw new ConsoleError('Неизвестный формат ввода'); }
+
+    const cands = live.map((x) => attach(userId, x.ws, x.path));
+    // формат определяем на всех подключившихся адресах одновременно (у каждого свой сокет), затем выбираем первый по приоритету
+    const manual = framing && framing !== 'auto';
+    const found = await Promise.all(cands.map((s) => (manual || s.closed ? null : detectFraming(s))));
+    let chosen = null; let silent = null;
+    cands.forEach((s, i) => {
+      if (chosen) return;
+      if (s.closed) { attempts.push(`${s.path}: панель закрыла соединение`); return; }
+      if (manual) { s.framing = framing; s.detected = true; chosen = s; return; }
+      if (found[i]) { s.framing = found[i]; s.detected = true; chosen = s; return; }
+      silent ??= s; // соединение есть, но на пробную команду не ответило
+    });
+    chosen ??= silent;
+    for (const s of cands) if (s !== chosen && !s.closed) { s.reason = 'не выбран'; s.subs.clear(); try { s.ws.close(); } catch { /* закрыт */ } s.closed = true; }
+    if (!chosen) throw new ConsoleError('Панель закрыла соединение во время подключения', 502, { attempts, transcript: cands.flatMap((c) => c.transcript).slice(0, 20) });
+    sessions.set(chosen.id, chosen);
+    chosen.buffer = ''; // пробная команда и её вывод не нужны пользователю
+    return { id: chosen.id, path: chosen.path, framing: chosen.framing, detected: chosen.detected, transcript: chosen.transcript, attempts };
   }
 
   const need = (id, userId) => {

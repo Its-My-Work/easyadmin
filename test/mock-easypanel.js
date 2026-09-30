@@ -7,7 +7,7 @@ import http from 'node:http';
  */
 
 /** Игрушечный «шелл» для тестов консоли: читает маскированные клиентские кадры, понимает echo и $((a+b)). */
-function fakeShell(socket, url, socketFraming) {
+export function fakeShell(socket, url, socketFraming) {
   const FR = (opcode, text) => { const p = Buffer.from(text); return Buffer.concat([Buffer.from([0x80 | opcode, p.length]), p]); };
   const pick = (framing, raw) => {
     if (framing === 'raw') return raw;
