@@ -13,15 +13,42 @@ const mask = (v, reveal) => {
 };
 const call = (p, kind, procedure, input) => post(`/api/panels/${p.id}/trpc`, { kind, procedure, input }).then((r) => r.result);
 
+/** Список объектов из ответа панели (сам массив или первое поле-массив) → строки таблицы. */
+const rowsOf = (v) => {
+  const arr = Array.isArray(v) ? v : v && typeof v === 'object' ? Object.values(v).find((x) => Array.isArray(x) && x.length && x.every((r) => r && typeof r === 'object')) : null;
+  return Array.isArray(arr) && arr.length && arr.every((r) => r && typeof r === 'object' && !Array.isArray(r)) ? arr : null;
+};
+const cell = (x) => (x == null ? '—' : typeof x === 'object' ? JSON.stringify(x) : String(x));
+
 function showResult(p, proc, result) {
-  let reveal = false;
-  const pre = h('pre', { class: 'code' });
+  let reveal = false; let asTable = !!rowsOf(result);
+  const out = h('div');
   const hasSecrets = JSON.stringify(result ?? null).match(/"[^"]*(pass|secret|token|key|credential|private)[^"]*":/i);
   const cb = h('input', { type: 'checkbox', onchange: () => { reveal = cb.checked; draw(); } });
-  const draw = () => { pre.textContent = JSON.stringify(mask(result, reveal), null, 2) ?? 'null'; };
+  const draw = () => {
+    const data = mask(result, reveal); const rows = rowsOf(data);
+    if (asTable && rows) {
+      const cols = [...new Set(rows.flatMap((r) => Object.keys(r).filter((k) => typeof r[k] !== 'object' || r[k] === null)))].slice(0, 8);
+      clear(out).append(h('div', { class: 'card flush' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, cols.map((c) => h('th', null, c)))),
+        h('tbody', null, rows.map((r) => h('tr', null, cols.map((c) => h('td', { class: 'mono small' }, cell(r[c])))))))));
+    } else clear(out).append(h('pre', { class: 'code' }, JSON.stringify(data, null, 2) ?? 'null'));
+  };
   draw();
-  modal({ title: proc, wide: true, body: h('div', { class: 'stack' }, hasSecrets ? h('label', { class: 'check' }, cb, 'Показать секреты') : null, pre),
+  const toggle = rowsOf(result) ? h('div', { class: 'seg' }, [['Таблица', true], ['JSON', false]].map(([l, v]) => h('button', { type: 'button', class: `seg-btn ${asTable === v ? 'active' : ''}`, onclick: (e) => { asTable = v; e.currentTarget.parentElement.querySelectorAll('.seg-btn').forEach((b) => b.classList.toggle('active', b === e.currentTarget)); draw(); } }, l))) : null;
+  modal({ title: proc, wide: true, body: h('div', { class: 'stack' }, h('div', { class: 'inline' }, toggle, hasSecrets ? h('label', { class: 'check' }, cb, 'Показать секреты') : null), out),
     actions: [{ label: 'Закрыть', kind: 'ghost' }, { label: 'Копировать', kind: 'primary', onClick: async () => { try { await navigator.clipboard.writeText(JSON.stringify(mask(result, reveal), null, 2)); toast('Скопировано', 'success'); } catch { toast('Выделите текст и скопируйте вручную', 'error'); } return false; } }] });
+}
+
+// действия без параметров: у них уже есть готовые операции («Система»), редактор JSON здесь не нужен
+const ONE_CLICK = {
+  'settings.cleanupDockerImages': { op: 'cleanupImages', label: 'Очистить образы Docker', hint: 'Удаляет неиспользуемые образы. Работающие сервисы не затрагиваются.', danger: false },
+  'settings.systemPrune': { op: 'prune', label: 'Docker system prune', hint: 'Удаляет остановленные контейнеры, неиспользуемые сети и образы.', danger: true },
+  'settings.restartEasypanel': { op: 'restartPanel', label: 'Перезапустить Easypanel', hint: 'Сама панель будет недоступна пару минут.', danger: true },
+};
+async function runOneClick(p, item, reload) {
+  const a = ONE_CLICK[item.name];
+  if (!await confirmDialog({ title: a.label, message: `${a.hint} Панель «${p.name}».`, danger: a.danger, confirmText: 'Выполнить' })) return;
+  try { await post(`/api/panels/${p.id}/system`, { op: a.op }); toast(`${a.label}: готово`, 'success'); reload(); } catch (e) { toast(e.message, 'error', 8000); }
 }
 
 async function editModal(p, item, reload) {
@@ -61,7 +88,9 @@ export function settingsTab(p) {
         h('div', { class: 'inline' },
           it.kind === 'read'
             ? h('button', { class: 'btn sm', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { showResult(p, it.name, await call(p, 'query', it.name)); } catch (er) { toast(`${it.name}: ${er.message}`, 'error', 8000); } finally { b.disabled = false; } } }, icon('eye', 13), 'Прочитать')
-            : h('button', { class: `btn sm ${it.danger ? 'danger-text' : ''}`, onclick: () => editModal(p, it, draw) }, icon('edit', 13), 'Изменить…')))))))
+            : ONE_CLICK[it.name]
+              ? h('button', { class: `btn sm ${it.danger ? 'danger-text' : ''}`, title: ONE_CLICK[it.name].hint, onclick: () => runOneClick(p, it, draw) }, icon('rocket', 13), 'Выполнить')
+              : h('button', { class: `btn sm ${it.danger ? 'danger-text' : ''}`, onclick: () => editModal(p, it, draw) }, icon('edit', 13), 'Изменить…')))))))
       : [h('div', { class: 'muted pad' }, 'Ничего не найдено')]));
   };
   q.addEventListener('input', draw);

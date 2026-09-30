@@ -1,0 +1,157 @@
+import { del, get, post } from './api.js';
+import { clear, field, h, icon, toast } from './dom.js';
+
+/**
+ * «Логи и консоль»: один поток. Сверху логи сервиса (SSE ← WebSocket панели), в тот же список попадают команды и их вывод
+ * из терминала контейнера (SSE + POST ↔ WebSocket панели). Терминал подключается лениво — при первой команде.
+ */
+const MAX = 3000;
+const FORMATS = [['auto', 'Определить автоматически'], ['raw', 'Обычный текст'], ['json-input', 'JSON {type:"input",data}'], ['json-stdin', 'JSON {type:"stdin",data}'], ['json-data', 'JSON {data}'], ['json-input-key', 'JSON {input}'], ['json-command', 'JSON {command}']];
+const QUICK = ['ls -la', 'pwd', 'env | sort', 'ps aux', 'df -h', 'free -m', 'cat /etc/os-release', 'uname -a'];
+// экранирующие последовательности терминала и управляющие символы убираем, \r\n → \n
+const cleanText = (t) => t.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07]*\x07/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+
+export function logsConsole({ s, ref, base, state, admin }) {
+  const view = h('div', { class: 'logview', tabindex: 0 });
+  const logStatus = h('span', { class: 'muted small' }, 'Подключение…');
+  const termStatus = h('span', { class: 'muted small' });
+  const count = h('span', { class: 'muted small' });
+  const els = new WeakMap();
+  let es = null, paused = false, follow = true, filter = '', buffer = [], all = [];
+  let cid = null, tes = null, tpartial = null, pendingEcho = null, hist = [], hi = -1;
+
+  const cls = (l) => (/\b(error|fatal|panic|exception|fail(ed)?)\b/i.test(l) ? 'err' : /\bwarn(ing)?\b/i.test(l) ? 'warn' : '');
+  const shown = (it) => it.k !== 'log' || !filter || it.text.toLowerCase().includes(filter);
+  const row = (it) => { const el = h('div', { class: `ll ${it.k === 'log' ? cls(it.text) : it.k}` }, it.k === 'cmd' ? `$ ${it.text}` : it.text); els.set(it, el); return el; };
+  const stick = () => { if (follow) view.scrollTop = view.scrollHeight; };
+  const push = (it) => {
+    all.push(it);
+    if (all.length > MAX) { const old = all.shift(); els.get(old)?.remove(); }
+    if (paused) { buffer.push(it); count.textContent = `на паузе, накоплено ${buffer.length}`; return; }
+    if (shown(it)) view.append(row(it));
+    count.textContent = `${all.length} строк`; stick();
+  };
+  const redraw = () => { clear(view).append(...all.filter(shown).map(row)); stick(); };
+  view.addEventListener('scroll', () => { follow = view.scrollTop + view.clientHeight >= view.scrollHeight - 24; followBtn.classList.toggle('on', follow); });
+
+  /* ---- логи ---- */
+  const connectLogs = () => {
+    es?.close();
+    logStatus.textContent = 'Подключение…'; logStatus.className = 'muted small';
+    es = new EventSource(`${base}/logs?${new URLSearchParams(ref)}`);
+    es.addEventListener('line', (e) => push({ k: 'log', text: JSON.parse(e.data) }));
+    es.addEventListener('status', (e) => {
+      const st = JSON.parse(e.data);
+      if (st.state === 'connected') { logStatus.textContent = '● Онлайн'; logStatus.className = 'small ok-text'; }
+      else { logStatus.textContent = st.state === 'closed' ? 'Поток завершён' : st.message; logStatus.className = `small ${st.state === 'closed' ? 'muted' : 'danger-text'}`; es.close(); }
+    });
+    es.onerror = () => { logStatus.textContent = 'Соединение потеряно — переподключение…'; logStatus.className = 'small warn-text'; };
+  };
+
+  /* ---- терминал ---- */
+  const setTerm = (on, msg, c = 'muted') => {
+    if (!admin) return;
+    input.disabled = false; // вводить можно и без подключения — первая команда подключит терминал
+    termBtn.replaceChildren(icon(on ? 'x' : 'terminal', 13), on ? 'Отключить терминал' : 'Подключить терминал');
+    termBtn.dataset.on = on ? '1' : '';
+    ctrlC.disabled = !on; quick.disabled = !on;
+    termStatus.textContent = msg; termStatus.className = `small ${c}`;
+  };
+  const termOut = (raw) => {
+    let chunk = cleanText(raw);
+    if (pendingEcho != null) { // терминал обычно повторяет набранное — строку с командой мы уже показали сами
+      const t = chunk.replace(/^\n/, '');
+      if (t.startsWith(pendingEcho)) { chunk = t.slice(pendingEcho.length).replace(/^\n/, ''); pendingEcho = null; } else if (chunk.trim()) pendingEcho = null;
+    }
+    if (!chunk) return;
+    chunk.split('\n').forEach((part, i, arr) => {
+      if (!tpartial) { tpartial = { k: 'out', text: '' }; push(tpartial); }
+      tpartial.text += part;
+      const el = els.get(tpartial); if (el) el.textContent = tpartial.text;
+      if (i < arr.length - 1) tpartial = null;
+    });
+    stick();
+  };
+  const stopTerm = async (remote = true) => {
+    tes?.close(); tes = null;
+    if (cid && remote) { const id = cid; cid = null; try { await del(`/api/console/${id}`); } catch { /* уже закрыт */ } }
+    cid = null; tpartial = null;
+  };
+  const connectTerm = async () => {
+    await stopTerm(); clear(info);
+    setTerm(false, 'Терминал: подключение…'); termBtn.disabled = true;
+    try {
+      const r = await post(`/api/panels/${s.panelId}/console`, { ...ref, path: pathIn.value.trim() || undefined, framing: fmtSel.value });
+      cid = r.id; tpartial = null;
+      setTerm(true, `Терминал подключён · ${r.path} · ${r.detected ? r.framing : 'формат не определён'}`, r.detected ? 'ok-text' : 'warn-text');
+      if (!r.detected) info.append(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('div', null, 'Соединение есть, но формат ввода определить не удалось — панель не ответила на пробную команду. Выберите формат вручную в «Параметрах» и переподключитесь, либо введите команду и посмотрите, отвечает ли терминал.', r.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, r.transcript.join('\n'))) : null)));
+      tes = new EventSource(`/api/console/${cid}/stream`);
+      tes.addEventListener('out', (e) => termOut(JSON.parse(e.data).text));
+      tes.addEventListener('status', (e) => { const st = JSON.parse(e.data); if (st.state === 'closed' || st.state === 'error') { setTerm(false, st.message || 'Соединение закрыто', 'danger-text'); tes?.close(); tes = null; cid = null; } });
+      tes.onerror = () => { if (tes && tes.readyState === 2) { setTerm(false, 'Соединение потеряно', 'danger-text'); tes = null; cid = null; } };
+    } catch (e) {
+      setTerm(false, 'Не удалось подключиться', 'danger-text');
+      const att = e.data?.attempts ?? [];
+      info.append(h('div', { class: 'callout err compact' }, icon('alert', 14), h('div', null, h('b', null, e.message), att.length ? h('ul', { class: 'result-list' }, att.map((a) => h('li', { class: 'err mono small' }, a))) : null,
+        h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket, точный путь зависит от версии панели. Нажмите «Найти путь» или укажите его в «Параметрах».'))));
+      details.open = true;
+    } finally { termBtn.disabled = false; }
+  };
+  const send = async (data) => { if (!cid) return false; try { await post(`/api/console/${cid}/input`, { data }); return true; } catch (e) { toast(e.message, 'error'); if (/не найден|закрыт/.test(e.message)) setTerm(false, 'Сеанс закрыт', 'danger-text'); return false; } };
+  const run = async (cmd) => {
+    if (!cid) await connectTerm();
+    if (!cid) return;
+    push({ k: 'cmd', text: cmd }); pendingEcho = cmd;
+    follow = true; stick();
+    await send(`${cmd}\n`);
+  };
+  const discover = async () => {
+    try {
+      const r = await get(`/api/panels/${s.panelId}/console/paths`);
+      const list = r.related.length ? r.related : r.found;
+      info.replaceChildren(h('div', { class: 'callout compact' }, icon('activity', 14), h('div', null,
+        list.length ? h('div', null, h('b', null, 'Найдено в интерфейсе панели — нажмите, чтобы подставить:'), h('div', { class: 'chips' }, list.map((x) => h('button', { type: 'button', class: 'chip clickable', onclick: () => { pathIn.value = x; } }, x)))) : h('b', null, 'В интерфейсе панели пути WebSocket не найдены'),
+        h('p', { class: 'muted small' }, `Пробуются также: ${r.known.join(', ')}`))));
+    } catch (e) { toast(e.message, 'error'); }
+  };
+
+  /* ---- элементы ---- */
+  const pauseBtn = h('button', { class: 'btn sm', onclick: () => {
+    paused = !paused; pauseBtn.replaceChildren(icon(paused ? 'play' : 'stop', 13), paused ? 'Продолжить' : 'Пауза');
+    if (!paused) { const b = buffer; buffer = []; b.forEach((it) => shown(it) && view.append(row(it))); count.textContent = `${all.length} строк`; stick(); }
+  } }, icon('stop', 13), 'Пауза');
+  const followBtn = h('button', { class: 'btn sm on', title: 'Прокручивать к новым строкам', onclick: () => { follow = !follow; followBtn.classList.toggle('on', follow); stick(); } }, icon('down', 13), 'Следить');
+  const q = h('input', { class: 'input', placeholder: 'Фильтр логов…', oninput: () => { filter = q.value.toLowerCase(); redraw(); } });
+  const dl = h('button', { class: 'btn sm ghost', title: 'Скачать', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([all.map((it) => (it.k === 'cmd' ? `$ ${it.text}` : it.text)).join('\n')], { type: 'text/plain' })), download: `${s.name}.log` }); document.body.append(a); a.click(); a.remove(); } }, icon('download', 13));
+  const clr = h('button', { class: 'btn sm ghost', onclick: () => { all = []; buffer = []; tpartial = null; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
+  const re = h('button', { class: 'btn sm ghost', onclick: connectLogs }, icon('refresh', 13), 'Переподключить');
+
+  const pathIn = h('input', { class: 'input mono', placeholder: '/ws/… (необязательно: путь WebSocket терминала)', autocomplete: 'off' });
+  const fmtSel = h('select', { class: 'input' }, FORMATS.map(([v, l]) => h('option', { value: v }, l)));
+  const input = h('input', { class: 'input mono term-input', placeholder: 'команда и Enter — подключит терминал · ↑↓ история', autocomplete: 'off', spellcheck: 'false', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
+  const info = h('div', { class: 'stack-sm' });
+  const termBtn = h('button', { class: 'btn sm', onclick: async () => { if (termBtn.dataset.on) { await stopTerm(); setTerm(false, 'Терминал отключён'); } else connectTerm(); } });
+  const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => send('\x03') }, 'Ctrl+C');
+  const quick = h('select', { class: 'input term-quick', disabled: true, onchange: (e) => { if (e.target.value) { input.value = e.target.value; input.focus(); } e.target.value = ''; } }, h('option', { value: '' }, 'Быстрые команды…'), QUICK.map((c) => h('option', { value: c }, c)));
+  const details = h('details', { class: 'more' }, h('summary', null, 'Параметры подключения'),
+    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel)), h('button', { class: 'btn sm', type: 'button', onclick: discover }, icon('search', 13), 'Найти путь в интерфейсе панели')));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { const v = input.value; if (!v.trim()) return; hist.push(v); hi = hist.length; input.value = ''; run(v); }
+    else if (e.key === 'ArrowUp') { if (hist.length) { hi = Math.max(0, hi - 1); input.value = hist[hi]; e.preventDefault(); } }
+    else if (e.key === 'ArrowDown') { if (hist.length) { hi = Math.min(hist.length, hi + 1); input.value = hist[hi] ?? ''; e.preventDefault(); } }
+    else if (e.ctrlKey && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) { send('\x03'); e.preventDefault(); }
+    else if (e.ctrlKey && e.key.toLowerCase() === 'd') { send('\x04'); e.preventDefault(); }
+  });
+
+  state.onLeave = () => { es?.close(); stopTerm(); };
+  connectLogs();
+  if (admin) setTerm(false, 'Терминал не подключён');
+  return h('div', { class: 'stack' },
+    h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr, re),
+    h('div', { class: 'inline' }, logStatus, admin ? h('span', { class: 'muted small' }, '·') : null, admin ? termStatus : null, h('span', { class: 'spacer' }), count),
+    view,
+    admin ? h('div', { class: 'stack-sm' },
+      h('div', { class: 'term-bar' }, h('span', { class: 'term-prompt' }, '$'), input),
+      h('div', { class: 'inline' }, termBtn, ctrlC, quick, h('span', { class: 'spacer' }), h('span', { class: 'muted small' }, 'В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.')),
+      details, info) : null);
+}

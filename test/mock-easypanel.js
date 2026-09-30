@@ -75,6 +75,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     }),
     'projects.listProjects': () => [...projects.keys()].map((name) => ({ name })),
     'projects.createProject': (i) => { projects.set(i.name, []); return null; },
+    'users.listUsers': () => [{ id: 'u1', email: 'admin@example.com', admin: true, apiToken: 'tok-secret' }, { id: 'u2', email: 'dev@example.com', admin: false }],
     'branding.getBasicSettings': () => ({ name: 'Easypanel', apiSecretToken: 'super-secret-value', nested: { password: 'p', visible: 'ok' } }),
     'templates.createFromSchema': (i) => {
       if (!projects.has(i.projectName)) throw Object.assign(new Error('Project not found'), { code: 'NOT_FOUND' });

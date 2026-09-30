@@ -306,3 +306,9 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .term-quick { width: auto; min-width: 170px; height: 30px; padding: 0 8px; font-size: 12.5px; }
 
 .set-group > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; } .set-group > summary::-webkit-details-marker { display: none; } .set-group > summary h4 { margin: 0; text-transform: uppercase; letter-spacing: .05em; font-size: 12px; color: var(--muted); } .set-group[open] > summary { margin-bottom: 10px; }
+
+/* логи + консоль в одном потоке */
+.ll.cmd { color: var(--accent); font-weight: 650; }
+.ll.out { color: #cfe3ff; background: rgba(99, 102, 241, .08); border-left: 2px solid var(--accent); padding-left: 8px; }
+.term-bar { display: flex; align-items: center; gap: 8px; } .term-prompt { font-family: var(--mono, ui-monospace, monospace); font-weight: 700; color: var(--accent); }
+.term-bar .term-input { flex: 1; border-radius: 10px; border-top: 1px solid var(--border2); }
