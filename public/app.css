@@ -323,3 +323,7 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
   .svc-tbl .badge { padding: 2px 8px; }
   .svc-tbl .qa { gap: 0; }
 }
+
+/* compose: подпись контейнера в логах и у команд терминала */
+.ltag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 600; line-height: 1.5; }
+.ltag.h0 { color: hsl(0 75% 72%); background: hsl(0 75% 72% / .14); } .ltag.h1 { color: hsl(40 75% 72%); background: hsl(40 75% 72% / .14); } .ltag.h2 { color: hsl(90 75% 72%); background: hsl(90 75% 72% / .14); } .ltag.h3 { color: hsl(150 75% 72%); background: hsl(150 75% 72% / .14); } .ltag.h4 { color: hsl(190 75% 72%); background: hsl(190 75% 72% / .14); } .ltag.h5 { color: hsl(225 75% 72%); background: hsl(225 75% 72% / .14); } .ltag.h6 { color: hsl(275 75% 72%); background: hsl(275 75% 72% / .14); } .ltag.h7 { color: hsl(320 75% 72%); background: hsl(320 75% 72% / .14); } 

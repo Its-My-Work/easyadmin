@@ -178,15 +178,22 @@ export function extraRoutes(d) {
   const serviceContainers = async (c, r) => {
     const list = await c.query('projects.getDockerContainers', { service: `${r.project}_${r.name}` }).catch(() => null);
     return (Array.isArray(list) ? list : []).filter((x) => (x.Id ?? x.id) && (x.State ?? x.state ?? 'running') === 'running')
-      .map((x) => ({ id: String(x.Id ?? x.id), name: String((x.Names?.[0] ?? x.name ?? x.Id ?? x.id)).replace(/^\//, '') }));
+      .map((x) => {
+        const service = x.Labels?.['com.docker.compose.service'] ?? null; const num = x.Labels?.['com.docker.compose.container-number'] ?? null;
+        return { id: String(x.Id ?? x.id), name: String((x.Names?.[0] ?? x.name ?? x.Id ?? x.id)).replace(/^\//, ''), service, tag: service && num ? `${service}-${num}` : null }; // tag — как контейнер подписан в логах compose
+      });
   };
+  // по умолчанию — контейнер, названный как сам сервис, иначе первый
+  const defaultContainer = (list, name) => list.find((x) => x.service === name) ?? list[0];
   const SHELL_CMD = Buffer.from('command -v bash >/dev/null 2>&1 && exec bash || exec sh').toString('base64');
   const consoleRoutes = [
     ['GET', '/api/panels/:id/console/containers', async (ctx) => {
       consoleOn();
       const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
       const q = ctx.url.searchParams;
-      return { containers: await serviceContainers(manager.clientFor(row), ref({ type: q.get('type'), project: q.get('project'), name: q.get('name') })) };
+      const r = ref({ type: q.get('type'), project: q.get('project'), name: q.get('name') });
+      const containers = await serviceContainers(manager.clientFor(row), r);
+      return { containers, selected: defaultContainer(containers, r.name)?.id ?? null };
     }, { admin: true }],
     ['POST', '/api/panels/:id/console', async (ctx) => {
       consoleOn();
@@ -213,7 +220,7 @@ export function extraRoutes(d) {
       if (!server && (!ctx.body.path || /containerShell$/.test(ctx.body.path))) {
         const running = await serviceContainers(c, r);
         const want = ctx.body.container == null ? null : String(ctx.body.container);
-        container = want ? running.find((x) => x.id === want) : running[0];
+        container = want ? running.find((x) => x.id === want) : defaultContainer(running, r.name);
         if (want && !container) throw new HttpError(404, 'Контейнер не найден среди запущенных контейнеров сервиса');
         if (container) extra = { container: container.id, command: SHELL_CMD };
         else if (ctx.body.path) throw new HttpError(409, 'У сервиса нет запущенных контейнеров');
@@ -222,7 +229,7 @@ export function extraRoutes(d) {
       try {
         const s = await hub.open({ userId: ctx.user.id, urls, headers: { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin }, insecure: !!row.insecure_tls, framing: ctx.body.framing });
         audit(ctx, { action: 'console.open', panel: row, target: label, detail: `${s.path} · ${s.framing}${container ? ` · ${container.name}` : ''}` });
-        return { ...s, container: container?.name ?? null };
+        return { ...s, container: container?.name ?? null, tag: container?.tag ?? null };
       } catch (e) {
         audit(ctx, { action: 'console.open', panel: row, target: label, ok: false, detail: e.message });
         return consoleErr(e);

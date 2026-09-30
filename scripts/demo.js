@@ -12,7 +12,7 @@ const seeds = [
   ['Прод · EU', { shop: [{ name: 'web', image: 'ghcr.io/acme/shop:1.8.2', env: 'NODE_ENV=production\nDATABASE_URL=postgres://x' }, { name: 'api', image: 'ghcr.io/acme/api:2.4.0' }, { name: 'worker', enabled: false }, { name: 'db', type: 'postgres' }, { name: 'cache', type: 'redis' }], blog: [{ name: 'wordpress' }, { name: 'mysql', type: 'mysql' }] }, { cpu: 34, mem: 58, disk: 41 }],
   ['Прод · US', { crm: [{ name: 'app', image: 'ghcr.io/acme/crm:3.1' }, { name: 'db', type: 'mariadb' }], analytics: [{ name: 'metabase' }, { name: 'pg', type: 'postgres' }] }, { cpu: 72, mem: 81, disk: 66 }],
   ['Стейджинг', { shop: [{ name: 'web', image: 'ghcr.io/acme/shop:1.9.0-rc1' }, { name: 'api', enabled: false, image: 'ghcr.io/acme/api:2.5.0-rc' }, { name: 'mongo', type: 'mongo' }] }, { cpu: 12, mem: 30, disk: 22 }],
-  ['Клиент Acme', { acme: [{ name: 'site', crash: true }, { name: 'stack', type: 'compose' }] }, { cpu: 91, mem: 88, disk: 93 }],
+  ['Клиент Acme', { acme: [{ name: 'site', crash: true }, { name: 'stack', type: 'compose', parts: ['web', 'db'] }] }, { cpu: 91, mem: 88, disk: 93 }],
 ];
 const port = Number(process.env.PORT || 3100);
 const panels = [];

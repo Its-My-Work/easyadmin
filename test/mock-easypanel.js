@@ -120,7 +120,11 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'projects.getDockerContainers': (i) => {
       if (containersPerProject && !i.projectName) throw Object.assign(new Error('Input validation failed'), { code: 'BAD_REQUEST' });
       if (containers) return containers;
-      return [...projects.entries()].filter(([p]) => !containersPerProject || p === i.projectName).flatMap(([p, l]) => l.filter((s) => !i.service || `${p}_${s.name}` === i.service).map((s) => ({ Id: `cid-${p}-${s.name}`, Names: [`/${p}_${s.name}.1.abc`], State: s.crash ? 'exited' : 'running', name: `${p}_${s.name}.1.abc`, state: s.crash ? 'exited' : (s.enabled ? 'running' : 'shutdown') })));
+      const one = (p, s) => ({ Id: `cid-${p}-${s.name}`, Names: [`/${p}_${s.name}.1.abc`], State: s.crash ? 'exited' : 'running', name: `${p}_${s.name}.1.abc`, state: s.crash ? 'exited' : (s.enabled ? 'running' : 'shutdown') });
+      // compose-стек: s.parts = имена внутренних сервисов → по контейнеру на каждый, с метками compose
+      const part = (p, s, pt) => ({ Id: `cid-${p}-${s.name}-${pt}`, Names: [`/${p}_${s.name}-${pt}-1`], Labels: { 'com.docker.compose.service': pt, 'com.docker.compose.container-number': '1' }, State: 'running', name: `${p}_${s.name}-${pt}-1`, state: 'running' });
+      return [...projects.entries()].filter(([p]) => !containersPerProject || p === i.projectName)
+        .flatMap(([p, l]) => l.filter((s) => !i.service || `${p}_${s.name}` === i.service).flatMap((s) => (s.parts ? s.parts.map((pt) => part(p, s, pt)) : [one(p, s)])));
     },
     'monitor.getServiceStats': () => ({ cpu: 1.5, memory: 120 }),
     'settings.systemPrune': () => null,
@@ -194,6 +198,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     if (isConsole) return fakeShell(socket, url, consoleFraming);
     calls.push({ proc: 'ws', input: { service: url.searchParams.get('service'), compose: url.searchParams.get('compose'), auth: req.headers.authorization } });
     socket.write(frame(1, `line one\n\x1b[31mline two\x1b[0m`));
+    if (url.searchParams.get('compose') === 'true') socket.write(frame(1, 'web-1  | hello web\ndb-1   | db ready'));
     socket.write(frame(1, JSON.stringify({ line: 'json line' })));
     socket.write(frame(1, 'frag-', false)); socket.write(frame(9, 'hi')); socket.write(frame(0, 'mented'));
     let n = 0; const t = setInterval(() => { if (!socket.destroyed) socket.write(frame(1, `tick ${++n}`)); }, 40);

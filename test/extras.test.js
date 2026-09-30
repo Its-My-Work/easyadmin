@@ -172,7 +172,8 @@ describe('API: логи и email-канал', () => {
   test('логи compose-сервиса: compose=true (иначе панель бесконечно пишет «Waiting for service … to start»), у остальных compose=false', async () => {
     assert.equal(A.calls.find((x) => x.proc === 'ws').input.compose, 'false');
     const n = A.calls.filter((x) => x.proc === 'ws').length;
-    await readSse(`/api/panels/${idA}/logs?type=compose&project=web&name=site`, (t) => t.includes('json line'));
+    const cr = await readSse(`/api/panels/${idA}/logs?type=compose&project=web&name=site`, (t) => t.includes('db ready'));
+    assert.match(cr.text, /data: "web-1  \| hello web"/); assert.match(cr.text, /data: "db-1   \| db ready"/);
     assert.equal(A.calls.filter((x) => x.proc === 'ws')[n].input.compose, 'true');
   });
   test('при закрытии клиента соединение с панелью закрывается', async () => {

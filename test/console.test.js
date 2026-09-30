@@ -219,13 +219,29 @@ describe('консоль сервиса', () => {
     assert.deepEqual(m.crashes, []);
     await api('admin', 'DELETE', `/api/console/${o.data.id}`);
     const list = await api('admin', 'GET', `/api/panels/${id}/console/containers?type=app&project=web&name=site`);
-    assert.deepEqual(list.data.containers, [{ id: 'cid-web-site', name: 'web_site.1.abc' }]);
+    assert.deepEqual(list.data.containers, [{ id: 'cid-web-site', name: 'web_site.1.abc', service: null, tag: null }]);
     assert.equal((await api('op', 'GET', `/api/panels/${id}/console/containers?type=app&project=web&name=site`)).status, 403);
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site', path: '/ws/hostShell' })).status, 400, 'ручной путь хоста для сервиса запрещён');
     assert.ok(!m.connects.includes('/ws/hostShell'));
     // чужой контейнер указать нельзя, у остановленного сервиса запущенных контейнеров нет
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site', container: 'other' })).status, 404);
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'down', path: '/ws/containerShell' })).status, 409);
+  });
+
+  test('compose-сервис: список контейнеров с тегами логов, по умолчанию — контейнер с именем сервиса, выбор другого', async () => {
+    const m = createMockPanel({ token: 'T', seed: { web: [{ name: 'stk', type: 'compose', parts: ['db', 'stk'] }] }, realPanel: true });
+    panels.push(m); const url = await m.listen();
+    const id = (await api('admin', 'POST', '/api/panels', { name: 'P-compose', url, token: 'T' })).data.id;
+    const q = 'type=compose&project=web&name=stk';
+    const list = await api('admin', 'GET', `/api/panels/${id}/console/containers?${q}`);
+    assert.deepEqual(list.data.containers.map((c) => [c.tag, c.service]), [['db-1', 'db'], ['stk-1', 'stk']]);
+    assert.equal(list.data.selected, 'cid-web-stk-stk');
+    const o = await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'compose', project: 'web', name: 'stk' });
+    assert.equal(o.status, 200, JSON.stringify(o.data)); assert.equal(o.data.tag, 'stk-1'); assert.equal(o.data.container, 'web_stk-stk-1');
+    await api('admin', 'DELETE', `/api/console/${o.data.id}`);
+    const db = await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'compose', project: 'web', name: 'stk', container: 'cid-web-stk-db' });
+    assert.equal(db.data.tag, 'db-1'); assert.equal(db.data.container, 'web_stk-db-1');
+    await api('admin', 'DELETE', `/api/console/${db.data.id}`);
   });
 
   test('форматы ввода — корректный JSON/текст', () => {
