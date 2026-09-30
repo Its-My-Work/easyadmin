@@ -285,6 +285,8 @@ export const EN = [
   ['Консоль отключена (EASYADMIN_CONSOLE=off)', 'The console is disabled (EASYADMIN_CONSOLE=off)'],
   ['Контейнер не найден среди запущенных контейнеров сервиса', 'The container is not among the service\'s running containers'],
   ['У сервиса нет запущенных контейнеров', 'The service has no running containers'],
+  ['Этот путь — консоль хоста, а не сервиса', 'This path is the host console, not a service console'],
+  ['Контейнер', 'Container'],
   ['Консоль', 'Console'],
   ['Найдено в интерфейсе панели — нажмите, чтобы подставить:', 'Found in the panel UI — click to use:'],
   ['Найти путь в интерфейсе панели', 'Find the path in the panel UI'],

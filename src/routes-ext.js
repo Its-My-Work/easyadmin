@@ -172,14 +172,29 @@ export function extraRoutes(d) {
   const hub = d.consoleHub;
   const consoleOn = () => { if (config.consoleEnabled === false) throw new HttpError(404, 'Консоль отключена (EASYADMIN_CONSOLE=off)'); };
   const consoleErr = (e) => { if (e instanceof ConsoleError) throw new HttpError(e.status, e.message, e.extra); throw e; };
+  // хост и контейнер — разные терминалы: в режиме сервиса пути хоста не пробуем и не предлагаем (это привилегированная оболочка хоста), и наоборот
+  const consoleRelated = (paths, server) => paths.filter((x) => /console|terminal|exec|shell|tty/i.test(x) && (server ? !/container|service/i.test(x) : !/host|server|node|system/i.test(x)));
+  // запущенные контейнеры сервиса: /ws/containerShell работает с конкретным контейнером (id)
+  const serviceContainers = async (c, r) => {
+    const list = await c.query('projects.getDockerContainers', { service: `${r.project}_${r.name}` }).catch(() => null);
+    return (Array.isArray(list) ? list : []).filter((x) => (x.Id ?? x.id) && (x.State ?? x.state ?? 'running') === 'running')
+      .map((x) => ({ id: String(x.Id ?? x.id), name: String((x.Names?.[0] ?? x.name ?? x.Id ?? x.id)).replace(/^\//, '') }));
+  };
+  const SHELL_CMD = Buffer.from('command -v bash >/dev/null 2>&1 && exec bash || exec sh').toString('base64');
   const consoleRoutes = [
+    ['GET', '/api/panels/:id/console/containers', async (ctx) => {
+      consoleOn();
+      const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
+      const q = ctx.url.searchParams;
+      return { containers: await serviceContainers(manager.clientFor(row), ref({ type: q.get('type'), project: q.get('project'), name: q.get('name') })) };
+    }, { admin: true }],
     // пути WebSocket, найденные в интерфейсе панели, — для диагностики и ручного выбора
     ['GET', '/api/panels/:id/console/paths', async (ctx) => {
       consoleOn();
       const row = panelOr404(ctx.params.id);
       const server = ctx.url.searchParams.get('server') === '1';
       const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
-      return { known: server ? config.serverConsolePaths : config.consolePaths, found: wsPaths, related: wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x)) };
+      return { known: server ? config.serverConsolePaths : config.consolePaths, found: wsPaths, related: consoleRelated(wsPaths, server) };
     }, { admin: true }],
     // одним нажатием собираем всё, что нужно для подбора терминала: как панель отвечает на Upgrade по каждому пути + фрагменты её JS, где создаётся WebSocket
     ['GET', '/api/panels/:id/console/report', async (ctx) => {
@@ -189,9 +204,10 @@ export function extraRoutes(d) {
       const r = server ? { type: null, project: null, name: null } : ref({ type: q.get('type'), project: q.get('project'), name: q.get('name') });
       const c = manager.clientFor(row);
       const bundle = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ procedures: [], wsPaths: [], wsSnippets: [] }));
-      const related = bundle.wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x));
-      const paths = [...new Set([...related, ...(server ? config.serverConsolePaths : config.consolePaths), ...bundle.wsPaths])].slice(0, 24);
-      const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths });
+      const related = consoleRelated(bundle.wsPaths, server);
+      const paths = [...new Set([...related, ...(server ? config.serverConsolePaths : config.consolePaths), ...bundle.wsPaths.filter((x) => !/hostShell|containerShell/.test(x))])].slice(0, 24);
+      const target = server ? null : (await serviceContainers(c, r))[0];
+      const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths, extra: target ? { container: target.id, command: SHELL_CMD } : {} });
       const headers = { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin };
       const probes = await Promise.all(urls.map(async (u) => ({ path: new URL(u).pathname, ...(await probeWebSocket(u, { headers, insecure: !!row.insecure_tls })) })));
       return { panel: row.name, mode: server ? 'server' : 'service', versionHint: bundle.procedures.length, wsPathsInUi: bundle.wsPaths, snippets: bundle.wsSnippets, probes };
@@ -204,32 +220,33 @@ export function extraRoutes(d) {
       const label = server ? 'сервер' : `${r.project}/${r.name}`;
       const c = manager.clientFor(row);
       let paths = [];
-      if (ctx.body.path) { need(/^\/[A-Za-z0-9_\/-]{1,80}$/.test(String(ctx.body.path)), 'Некорректный путь WebSocket'); paths = [String(ctx.body.path)]; }
+      if (ctx.body.path) {
+        need(/^\/[A-Za-z0-9_\/-]{1,80}$/.test(String(ctx.body.path)), 'Некорректный путь WebSocket');
+        need(server || !/hostShell|host|server/i.test(String(ctx.body.path)), 'Этот путь — консоль хоста, а не сервиса');
+        paths = [String(ctx.body.path)];
+      }
       else {
         const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
-        // хост и контейнер — разные терминалы: в режиме сервиса пути хоста не пробуем (иначе поднимется лишняя привилегированная оболочка хоста), и наоборот
-        const related = wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x) && (server ? !/container|service/i.test(x) : !/host|server|node|system/i.test(x)));
+        const related = consoleRelated(wsPaths, server);
         // для сервера сначала пути со словами server/host/node, для сервиса — service/container
         const first = related.filter((x) => (server ? /server|host|node|system/i : /service|container|app/i).test(x));
         paths = [...new Set([...first, ...(server ? config.serverConsolePaths : config.consolePaths), ...related])];
       }
-      // /ws/containerShell работает с конкретным контейнером (id) и программой (base64): берём запущенный контейнер сервиса
-      let extra = {};
+      // /ws/containerShell: id контейнера (выбранного или первого запущенного) и программа в base64
+      let extra = {}; let container = null;
       if (!server && (!ctx.body.path || /containerShell$/.test(ctx.body.path))) {
-        const service = `${r.project}_${r.name}`;
-        const list = await c.query('projects.getDockerContainers', { service }).catch(() => null);
-        const running = (Array.isArray(list) ? list : []).filter((x) => (x.Id ?? x.id) && (x.State ?? x.state ?? 'running') === 'running');
+        const running = await serviceContainers(c, r);
         const want = ctx.body.container == null ? null : String(ctx.body.container);
-        const pick = want ? running.find((x) => (x.Id ?? x.id) === want) : running[0];
-        if (want && !pick) throw new HttpError(404, 'Контейнер не найден среди запущенных контейнеров сервиса');
-        if (pick) extra = { container: pick.Id ?? pick.id, command: Buffer.from('command -v bash >/dev/null 2>&1 && exec bash || exec sh').toString('base64') };
+        container = want ? running.find((x) => x.id === want) : running[0];
+        if (want && !container) throw new HttpError(404, 'Контейнер не найден среди запущенных контейнеров сервиса');
+        if (container) extra = { container: container.id, command: SHELL_CMD };
         else if (ctx.body.path) throw new HttpError(409, 'У сервиса нет запущенных контейнеров');
       }
       const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths, extra });
       try {
         const s = await hub.open({ userId: ctx.user.id, urls, headers: { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin }, insecure: !!row.insecure_tls, framing: ctx.body.framing });
-        audit(ctx, { action: 'console.open', panel: row, target: label, detail: `${s.path} · ${s.framing}` });
-        return s;
+        audit(ctx, { action: 'console.open', panel: row, target: label, detail: `${s.path} · ${s.framing}${container ? ` · ${container.name}` : ''}` });
+        return { ...s, container: container?.name ?? null };
       } catch (e) {
         audit(ctx, { action: 'console.open', panel: row, target: label, ok: false, detail: e.message });
         return consoleErr(e);

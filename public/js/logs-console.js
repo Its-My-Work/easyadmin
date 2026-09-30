@@ -79,12 +79,12 @@ export function logsConsole({ s, ref, base, state, admin }) {
     termBtn.disabled = false;
     if (st.state === 'on') {
       tpartial = null;
-      setTerm(true, `Терминал подключён · ${st.path} · ${st.detected ? st.framing : 'формат не определён'}`, st.detected ? 'ok-text' : 'warn-text');
+      setTerm(true, `Терминал подключён · ${st.container ? `${st.container} · ` : ''}${st.path} · ${st.detected ? st.framing : 'формат не определён'}`, st.detected ? 'ok-text' : 'warn-text');
       if (!st.detected) info.append(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('div', null, 'Соединение есть, но формат ввода определить не удалось — панель не ответила на пробную команду. Выберите формат вручную в «Параметрах» и переподключитесь, либо введите команду и посмотрите, отвечает ли терминал.', st.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, st.transcript.join('\n'))) : null)));
     } else if (st.state === 'off') setTerm(false, st.message || 'Терминал отключён', st.failed ? 'danger-text' : 'muted');
     else { setTerm(false, 'Не удалось подключиться', 'danger-text'); info.append(errorCallout(st)); details.open = true; }
   } });
-  const connectTerm = () => term.connect({ ...ref, path: pathIn.value.trim() || undefined, framing: fmtSel.value });
+  const connectTerm = () => term.connect({ ...ref, path: pathIn.value.trim() || undefined, framing: fmtSel.value, container: contSel.value || undefined });
   const send = async (data) => { const r = await term.send(data); if (typeof r === 'string') toast(r, 'error'); return r === true; };
   const run = async (cmd) => {
     if (!term.connected) await connectTerm();
@@ -114,6 +114,15 @@ export function logsConsole({ s, ref, base, state, admin }) {
   const clr = h('button', { class: 'btn sm ghost', onclick: () => { all = []; buffer = []; tpartial = null; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
   const re = h('button', { class: 'btn sm ghost', onclick: connectLogs }, icon('refresh', 13), 'Переподключить');
 
+  // у compose-сервиса несколько контейнеров: выбор, в каком открыть терминал (у одного контейнера список скрыт)
+  const contSel = h('select', { class: 'input', 'aria-label': 'Контейнер', hidden: true });
+  const loadContainers = async () => {
+    try {
+      const r = await get(`/api/panels/${s.panelId}/console/containers?${new URLSearchParams(ref)}`);
+      contSel.replaceChildren(...r.containers.map((c) => h('option', { value: c.id }, c.name)));
+      contSel.hidden = r.containers.length < 2;
+    } catch { /* панель без списка контейнеров — терминал возьмёт первый */ }
+  };
   const pathIn = h('input', { class: 'input mono', placeholder: '/ws/… (необязательно: путь WebSocket терминала)', autocomplete: 'off' });
   const fmtSel = h('select', { class: 'input' }, FORMATS.map(([v, l]) => h('option', { value: v }, l)));
   const input = h('input', { class: 'input mono term-input', placeholder: 'команда и Enter — подключит терминал · ↑↓ история', autocomplete: 'off', spellcheck: 'false', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
@@ -133,13 +142,13 @@ export function logsConsole({ s, ref, base, state, admin }) {
 
   state.onLeave = () => { es?.close(); term.stop(); };
   connectLogs();
-  if (admin) setTerm(false, 'Терминал не подключён');
+  if (admin) { setTerm(false, 'Терминал не подключён'); loadContainers(); }
   return h('div', { class: 'stack' },
     h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr, re),
     h('div', { class: 'inline' }, logStatus, admin ? h('span', { class: 'muted small' }, '·') : null, admin ? termStatus : null, h('span', { class: 'spacer' }), count),
     view,
     admin ? h('div', { class: 'stack-sm' },
       h('div', { class: 'term-bar' }, h('span', { class: 'term-prompt' }, '$'), input),
-      h('div', { class: 'inline' }, termBtn, ctrlC, quick, h('span', { class: 'spacer' }), h('span', { class: 'muted small' }, 'В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.')),
+      h('div', { class: 'inline' }, termBtn, contSel, ctrlC, quick, h('span', { class: 'spacer' }), h('span', { class: 'muted small' }, 'В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.')),
       details, info) : null);
 }

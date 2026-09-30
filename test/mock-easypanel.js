@@ -176,7 +176,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
 
   // WebSocket логов: текст, JSON, фрагментированное сообщение, ping, затем «тики» до закрытия клиентом
   const frame = (opcode, payload, fin = true) => { const b = Buffer.from(payload); return Buffer.concat([Buffer.from([(fin ? 0x80 : 0) | opcode, b.length]), b]); };
-  const sockets = new Set(); const crashes = []; const resizes = [];
+  const sockets = new Set(); const crashes = []; const resizes = []; const connects = [];
   server.on('upgrade', (req, socket) => {
     sockets.add(socket); socket.on('close', () => sockets.delete(socket));
     const url = new URL(req.url, 'http://x');
@@ -189,6 +189,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     const key = req.headers['sec-websocket-key'];
     const accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    if (isReal) connects.push(url.pathname);
     if (isReal) return fakeShell(socket, url, 'json-input-key', { strict: true, jsonOut: true, onCrash: (t) => crashes.push(t), onResize: (r) => resizes.push({ path: url.pathname, size: r, command: url.searchParams.get('command') }) });
     if (isConsole) return fakeShell(socket, url, consoleFraming);
     calls.push({ proc: 'ws', input: { service: url.searchParams.get('service'), auth: req.headers.authorization } });
@@ -201,7 +202,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
   });
 
   return {
-    server, calls, projects, token, crashes, resizes,
+    server, calls, projects, token, crashes, resizes, connects,
     listen: () => new Promise((r) => server.listen(0, '127.0.0.1', () => r(`http://127.0.0.1:${server.address().port}`))),
     close: () => new Promise((r) => { for (const s of sockets) s.destroy(); server.closeAllConnections?.(); server.close(r); }),
   };

@@ -228,7 +228,8 @@ describe('консоль сервиса', () => {
     const o = await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site' });
     assert.equal(o.status, 200, JSON.stringify(o.data));
     assert.equal(o.data.path, '/ws/containerShell'); assert.equal(o.data.detected, true);
-    assert.equal(m.resizes[0].path, '/ws/containerShell');
+    assert.equal(m.resizes[0].path, '/ws/containerShell'); assert.equal(o.data.container, 'web_site.1.abc');
+    assert.ok(!m.connects.includes('/ws/hostShell'), 'оболочка хоста для сервиса не открывалась');
     assert.match(Buffer.from(m.resizes[0].command, 'base64').toString(), /exec sh/);
     const reading = readUntil(o.data.id, (t) => t.includes('svc-ok'));
     await new Promise((r) => setTimeout(r, 150));
@@ -236,6 +237,13 @@ describe('консоль сервиса', () => {
     assert.match(await reading, /svc-ok/);
     assert.deepEqual(m.crashes, []);
     await api('admin', 'DELETE', `/api/console/${o.data.id}`);
+    const list = await api('admin', 'GET', `/api/panels/${id}/console/containers?type=app&project=web&name=site`);
+    assert.deepEqual(list.data.containers, [{ id: 'cid-web-site', name: 'web_site.1.abc' }]);
+    assert.equal((await api('op', 'GET', `/api/panels/${id}/console/containers?type=app&project=web&name=site`)).status, 403);
+    const paths = await api('admin', 'GET', `/api/panels/${id}/console/paths`);
+    assert.ok(!paths.data.related.includes('/ws/hostShell') && paths.data.related.includes('/ws/containerShell'), 'для сервиса не предлагается путь хоста');
+    assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site', path: '/ws/hostShell' })).status, 400, 'ручной путь хоста для сервиса запрещён');
+    assert.ok(!m.connects.includes('/ws/hostShell'));
     // чужой контейнер указать нельзя, у остановленного сервиса запущенных контейнеров нет
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site', container: 'other' })).status, 404);
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'down', path: '/ws/containerShell' })).status, 409);
