@@ -1,5 +1,5 @@
 import { get } from './api.js';
-import { clear, field, h, icon, toast } from './dom.js';
+import { clear, h, icon, toast } from './dom.js';
 import { createTerminal } from './term-core.js';
 
 /**
@@ -7,7 +7,6 @@ import { createTerminal } from './term-core.js';
  * из терминала контейнера (SSE + POST ↔ WebSocket панели). Терминал подключается лениво — при первой команде.
  */
 const MAX = 3000;
-const FORMATS = [['auto', 'Определить автоматически'], ['raw', 'Обычный текст'], ['json-input', 'JSON {type:"input",data}'], ['json-stdin', 'JSON {type:"stdin",data}'], ['json-data', 'JSON {data}'], ['json-input-key', 'JSON {input}'], ['json-command', 'JSON {command}']];
 const QUICK = ['ls -la', 'pwd', 'env | sort', 'ps aux', 'df -h', 'free -m', 'cat /etc/os-release', 'uname -a'];
 
 export function logsConsole({ s, ref, base, state, admin }) {
@@ -72,18 +71,18 @@ export function logsConsole({ s, ref, base, state, admin }) {
     stick();
   };
   const errorCallout = (st) => h('div', { class: 'callout err compact' }, icon('alert', 14), h('div', null, h('b', null, st.message), st.attempts?.length ? h('ul', { class: 'result-list' }, st.attempts.map((a) => h('li', { class: 'err mono small' }, a))) : null,
-    h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket, точный путь зависит от версии панели. При необходимости путь и формат можно указать в «Параметрах».')));
+    h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket; версия панели может не поддерживать консоль или её адрес изменился.')));
   const term = createTerminal({ panelId: () => s.panelId, onOut: termOut, onState: (st) => {
     if (st.state === 'connecting') { clear(info); setTerm(false, 'Терминал: подключение…'); termBtn.disabled = true; return; }
     termBtn.disabled = false;
     if (st.state === 'on') {
       tpartial = null;
       setTerm(true, `Терминал подключён · ${st.container ? `${st.container} · ` : ''}${st.path} · ${st.detected ? st.framing : 'формат не определён'}`, st.detected ? 'ok-text' : 'warn-text');
-      if (!st.detected) info.append(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('div', null, 'Соединение есть, но формат ввода определить не удалось — панель не ответила на пробную команду. Выберите формат вручную в «Параметрах» и переподключитесь, либо введите команду и посмотрите, отвечает ли терминал.', st.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, st.transcript.join('\n'))) : null)));
+      if (!st.detected) info.append(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('div', null, 'Соединение есть, но панель не ответила на пробную команду. Введите команду и посмотрите, отвечает ли терминал; если нет — переподключитесь.', st.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, st.transcript.join('\n'))) : null)));
     } else if (st.state === 'off') setTerm(false, st.message || 'Терминал отключён', st.failed ? 'danger-text' : 'muted');
-    else { setTerm(false, 'Не удалось подключиться', 'danger-text'); info.append(errorCallout(st)); details.open = true; }
+    else { setTerm(false, 'Не удалось подключиться', 'danger-text'); info.append(errorCallout(st)); }
   } });
-  const connectTerm = () => term.connect({ ...ref, path: pathIn.value.trim() || undefined, framing: fmtSel.value, container: contSel.value || undefined });
+  const connectTerm = () => term.connect({ ...ref, container: contSel.value || undefined });
   const send = async (data) => { const r = await term.send(data); if (typeof r === 'string') toast(r, 'error'); return r === true; };
   const run = async (cmd) => {
     if (!term.connected) await connectTerm();
@@ -113,15 +112,11 @@ export function logsConsole({ s, ref, base, state, admin }) {
       contSel.hidden = r.containers.length < 2;
     } catch { /* панель без списка контейнеров — терминал возьмёт первый */ }
   };
-  const pathIn = h('input', { class: 'input mono', placeholder: '/ws/… (необязательно: путь WebSocket терминала)', autocomplete: 'off' });
-  const fmtSel = h('select', { class: 'input' }, FORMATS.map(([v, l]) => h('option', { value: v }, l)));
   const input = h('input', { class: 'input mono term-input', placeholder: 'команда и Enter — подключит терминал · ↑↓ история', autocomplete: 'off', spellcheck: 'false', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
   const info = h('div', { class: 'stack-sm' });
   const termBtn = h('button', { class: 'btn sm', onclick: async () => { if (termBtn.dataset.on) { await term.stop(); setTerm(false, 'Терминал отключён'); } else connectTerm(); } });
   const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => send('\x03') }, 'Ctrl+C');
   const quick = h('select', { class: 'input term-quick', disabled: true, onchange: (e) => { if (e.target.value) { input.value = e.target.value; input.focus(); } e.target.value = ''; } }, h('option', { value: '' }, 'Быстрые команды…'), QUICK.map((c) => h('option', { value: c }, c)));
-  const details = h('details', { class: 'more' }, h('summary', null, 'Параметры подключения'),
-    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel))));
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { const v = input.value; if (!v.trim()) return; hist.push(v); hi = hist.length; input.value = ''; run(v); }
     else if (e.key === 'ArrowUp') { if (hist.length) { hi = Math.max(0, hi - 1); input.value = hist[hi]; e.preventDefault(); } }
@@ -140,5 +135,5 @@ export function logsConsole({ s, ref, base, state, admin }) {
     admin ? h('div', { class: 'stack-sm' },
       h('div', { class: 'term-bar' }, h('span', { class: 'term-prompt' }, '$'), input),
       h('div', { class: 'inline' }, termBtn, contSel, ctrlC, quick, h('span', { class: 'spacer' }), h('span', { class: 'muted small' }, 'В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.')),
-      details, info) : null);
+      info) : null);
 }
