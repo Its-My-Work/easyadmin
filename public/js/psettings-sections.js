@@ -2,6 +2,7 @@ import { del, get, post, put } from './api.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
 import { settingsGroup } from './psettings-forms.js';
+import { logosCard, notifyCard, storageCard } from './psettings-extras.js';
 
 /* Разделы настроек панели Easypanel. Каждая функция получает панель p, общий entry (счётчик несохранённых форм) и go(section). */
 const skeleton = () => h('div', { class: 'skeleton', style: { height: '120px' } });
@@ -194,13 +195,13 @@ export function traefik(p, entry) {
 /* ---------- Мониторинг ---------- */
 export const monitoring = (p, entry) => lazy(h('div', { class: 'stack' }), () => settingsGroup(p, 'monitoring', entry));
 export const general = (p, entry) => lazy(h('div', { class: 'stack' }), () => settingsGroup(p, 'general', entry));
-export const branding = (p, entry) => lazy(h('div', { class: 'stack' }), () => settingsGroup(p, 'branding', entry));
+export const branding = (p, entry) => lazy(h('div', { class: 'stack' }), async () => [...await settingsGroup(p, 'branding', entry), await Promise.resolve(logosCard(p))]);
 
 /* ---------- Кластер, хранилища бэкапов, каналы панели ---------- */
 export function infra(p) {
   const box = h('div', { class: 'stack' });
   const draw = () => lazy(box, async () => {
-    const [cl, st, nf] = await Promise.all([get(`/api/panels/${p.id}/pcluster`), get(`/api/panels/${p.id}/pstorage`).catch((e) => ({ error: e.message, providers: [] })), get(`/api/panels/${p.id}/pnotify`).catch((e) => ({ error: e.message, channels: [] }))]);
+    const cl = await get(`/api/panels/${p.id}/pcluster`);
     const rm = (what, url, name) => async () => { if (await confirmDialog({ title: `Удалить ${what}?`, message: name, danger: true, confirmText: 'Удалить' })) { try { await del(url); toast(t('Удалено'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } };
     return [
       card('Кластер Docker Swarm', 'Узлы кластера и команда подключения нового рабочего узла (worker).',
@@ -208,14 +209,7 @@ export function infra(p) {
         h('div', { class: 'list' }, cl.nodes.length ? cl.nodes.map((n) => h('div', { class: 'list-item' }, h('div', null, h('b', null, n.host || n.id), ' ', badge(n.manager ? 'manager' : (n.role ?? 'worker'), n.manager ? 'ok' : ''), n.state ? h('span', { class: 'muted small' }, ` · ${n.state}`) : null),
           n.manager ? null : h('button', { class: 'btn sm icon ghost', title: 'Удалить узел', 'aria-label': 'Удалить узел', onclick: rm('узел', `/api/panels/${p.id}/pcluster/${n.id}`, n.host || n.id) }, icon('trash', 14)))) : [h('div', { class: 'muted pad' }, 'Узлов нет')]),
         cl.workerCommand ? h('div', { class: 'stack-sm' }, h('div', { class: 'field-label' }, 'Подключение worker'), h('pre', { class: 'code' }, cl.workerCommand), h('button', { class: 'btn sm', onclick: () => copyText(cl.workerCommand) }, icon('copy', 13), 'Копировать')) : null),
-      card('Хранилища бэкапов', 'Куда панель складывает резервные копии. Ключи и пароли не показываются. Создание и изменение хранилищ — в самой панели (им нужны ключи доступа).',
-        st.error ? h('div', { class: 'muted small' }, st.error) : null,
-        h('div', { class: 'list' }, st.providers.length ? st.providers.map((x) => h('div', { class: 'list-item' }, h('div', null, h('b', null, x.name || x.id), ' ', x.type ? badge(x.type) : null, h('div', { class: 'muted small mono' }, Object.entries(x.details).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(' · '))),
-          x.type ? h('button', { class: 'btn sm icon ghost', title: 'Удалить', 'aria-label': 'Удалить', onclick: rm('хранилище', `/api/panels/${p.id}/pstorage/${x.type}/${x.id}`, x.name) }, icon('trash', 14)) : null)) : [h('div', { class: 'muted pad' }, 'Хранилищ нет')])),
-      card('Каналы уведомлений панели', 'Собственные уведомления Easypanel (диск, нагрузка). Каналы EasyAdmin настраиваются в разделе «Настройки» слева.',
-        nf.error ? h('div', { class: 'muted small' }, nf.error) : null,
-        h('div', { class: 'list' }, nf.channels.length ? nf.channels.map((x) => h('div', { class: 'list-item' }, h('div', null, h('b', null, x.name || x.id), ' ', x.type ? badge(x.type) : null, h('div', { class: 'muted small' }, x.events.join(', '))),
-          h('button', { class: 'btn sm icon ghost', title: 'Удалить', 'aria-label': 'Удалить', onclick: rm('канал', `/api/panels/${p.id}/pnotify/${x.id}?name=${encodeURIComponent(x.name)}`, x.name) }, icon('trash', 14)))) : [h('div', { class: 'muted pad' }, 'Каналов нет')])),
+      storageCard(p), notifyCard(p),
     ];
   });
   return draw();

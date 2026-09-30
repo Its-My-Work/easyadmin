@@ -5,6 +5,7 @@ import { t } from './i18n.js';
 import { can, favorites, isDb, pushRecent, refresh, store, subscribe, svcKey, toggleFavorite } from './store.js';
 import { logsView } from './logs-console.js';
 import { consoleView } from './service-console.js';
+import { backupsView } from './backups-tab.js';
 import { BUILDS, SOURCES, sourceFields, repoLabel, sourceKind, splitRepoUrl } from './source-form.js';
 import { cloneModal, saveTemplateModal } from './views2.js';
 
@@ -46,7 +47,7 @@ const domainOf = (x, fallbackPort = '') => {
 const portOf = (x) => ({ id: x.id ?? x._id, published: x.published ?? x.publishedPort ?? x.external ?? x.hostPort ?? '', target: x.target ?? x.targetPort ?? x.internal ?? x.containerPort ?? '', protocol: String(x.protocol ?? 'tcp').toLowerCase() });
 const mountOf = (x) => ({ id: x.id ?? x._id, type: x.type ?? 'volume', name: x.name ?? x.volume ?? '', hostPath: x.hostPath ?? x.source ?? '', mountPath: x.mountPath ?? x.target ?? x.path ?? '', content: x.content ?? '' });
 
-const NAV_ICON = { overview: 'grid', env: 'edit', logs: 'terminal', console: 'terminal', domains: 'globe', storage: 'database', resources: 'activity', source: 'box', automation: 'link', raw: 'layers', danger: 'trash' };
+const NAV_ICON = { backups: 'database', overview: 'grid', env: 'edit', logs: 'terminal', console: 'terminal', domains: 'globe', storage: 'database', resources: 'activity', source: 'box', automation: 'link', raw: 'layers', danger: 'trash' };
 
 /** Открывает боковую панель сервиса. */
 export function openService(s) {
@@ -93,7 +94,7 @@ export function openService(s) {
   const tabs = [
     ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', 'Логи'], ...(can('admin') ? [['console', 'Консоль']] : [])]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
     ['resources', 'Ресурсы'], ...(s.type === 'app' && !ro ? [['source', 'Источник']] : []),
-    ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
+    ...(can('admin') && ['postgres', 'mysql', 'mariadb', 'mongo', 'app'].includes(s.type) ? [['backups', 'Бэкапы']] : []), ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
   ];
   const remembered = lsGet('ea-drawer-tab');
   if (tabs.some(([id]) => id === remembered)) state.tab = remembered;
@@ -139,7 +140,7 @@ export function openService(s) {
     const svc = d.service || {};
     clear(body);
     if (d.warnings?.length) body.append(h('div', { class: 'callout warn' }, icon('alert'), h('div', null, d.warnings.join('; '))));
-    const views = { overview, env, logs, console: console_, domains, storage, resources, source, raw, danger, automation };
+    const views = { overview, env, logs, console: console_, backups, domains, storage, resources, source, raw, danger, automation };
     body.append(views[state.tab](svc, d));
   }
 
@@ -299,6 +300,7 @@ export function openService(s) {
   /* ---- Логи и Консоль: две вкладки ---- */
   function logs() { return logsView({ s, ref, base, state }); }
   function console_() { return consoleView({ s, ref, state }); }
+  function backups() { return backupsView({ s, ref, state }); }
 
   function automation() {
     const box = h('div', { class: 'stack' });

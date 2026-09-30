@@ -282,19 +282,10 @@ export function psettingsRoutes(d) {
       return { nodes: nodes?.error ? [] : listOf(nodes, 'nodes').map((n) => ({ id: String(n.ID ?? n.id ?? ''), host: n.Description?.Hostname ?? n.hostname ?? n.name ?? '', role: n.Spec?.Role ?? n.role ?? null, state: n.Status?.State ?? n.status ?? null, manager: !!(n.ManagerStatus ?? n.manager) })), error: nodes?.error ?? null, workerCommand: typeof cmd === 'string' ? cmd : firstString(cmd) };
     }, { admin: true }],
     ['DELETE', '/api/panels/:id/pcluster/:nid', async (ctx) => { const { row, c } = access(ctx); const nid = id(ctx.params.nid); await write(ctx, row, 'cluster.node.remove', nid, () => c.mutate('cluster.removeNode', { id: nid })); return { ok: true }; }, { admin: true }],
-    ['GET', '/api/panels/:id/pstorage', async (ctx) => {
-      const { c } = access(ctx);
-      const list = listOf(await call(() => c.query('storageProviders.common.list')));
-      return { providers: list.map((p) => ({ id: String(p.id ?? ''), name: p.name ?? '', type: providerType(p), details: maskDeep(Object.fromEntries(Object.entries(p).filter(([k, v]) => !['id', 'name', 'type'].includes(k) && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')))) })) };
-    }, { admin: true }],
     ['DELETE', '/api/panels/:id/pstorage/:type/:pid', async (ctx) => {
       const { row, c } = access(ctx); const type = ctx.params.type; need(PROVIDER_TYPES.includes(type), 'Неизвестный тип хранилища'); const pid = id(ctx.params.pid);
       await write(ctx, row, 'storage.provider.delete', `${type}/${pid}`, () => c.mutate(`storageProviders.${type}.deleteProvider`, { id: pid }));
       return { ok: true };
-    }, { admin: true }],
-    ['GET', '/api/panels/:id/pnotify', async (ctx) => {
-      const { c } = access(ctx);
-      return { channels: listOf(await call(() => c.query('notifications.listNotificationChannels')), 'channels').map((x) => ({ id: String(x.id ?? ''), name: x.name ?? '', type: x.target?.type ?? null, events: Array.isArray(x.events) ? x.events : [] })) };
     }, { admin: true }],
     ['DELETE', '/api/panels/:id/pnotify/:cid', async (ctx) => { const { row, c } = access(ctx); const cid = id(ctx.params.cid); await write(ctx, row, 'panel.notify.destroy', ctx.url.searchParams.get('name') || cid, () => c.mutate('notifications.destroyNotificationChannel', { id: cid })); return { ok: true }; }, { admin: true }],
 
