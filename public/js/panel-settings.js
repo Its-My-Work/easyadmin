@@ -1,3 +1,4 @@
+import { get } from './api.js';
 import { clear, h, icon } from './dom.js';
 import { advancedTab } from './panel-settings-advanced.js';
 import * as S from './psettings-sections.js';
@@ -15,7 +16,8 @@ const TTL = 120_000;
 export function settingsTab(p) {
   const hit = cache.get(p.id);
   if (hit && (hit.entry.dirty > 0 || Date.now() - hit.at < TTL)) return hit.root;
-  const entry = { dirty: 0 };
+  const entry = { dirty: 0, license: null };
+  entry.reloadLicense = async () => { entry.license = await get(`/api/panels/${p.id}/plicense`).catch(() => entry.license); draw(); };
   let current = SECTIONS.some(([id]) => id === lsGet('ea-pset-section')) ? lsGet('ea-pset-section') : 'overview';
   const nav = h('div', { class: 'chips psf-nav', role: 'tablist' });
   const body = h('div', { class: 'psf-body' });
@@ -31,6 +33,8 @@ export function settingsTab(p) {
     h('div', { class: 'section-head' }, h('div', { class: 'muted small' }, 'Настройки самой Easypanel. Изменения применяются сразу и записываются в журнал.'), h('a', { class: 'btn sm ghost', href: '#/psettings' }, icon('layers', 13), 'Сравнить панели')),
     nav, body);
   cache.set(p.id, { root, at: Date.now(), entry });
-  draw();
+  // лицензия нужна, чтобы сразу показать закрытые настройки неактивными; если панель её не отдаёт — ничего не блокируем
+  clear(body).append(h('div', { class: 'skeleton', style: { height: '120px' } }));
+  get(`/api/panels/${p.id}/plicense`).then((l) => { entry.license = l; }, () => { entry.license = { known: false, features: {}, featureLabels: {} }; }).then(draw);
   return root;
 }

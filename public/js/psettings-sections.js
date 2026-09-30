@@ -24,12 +24,43 @@ async function runSystem(p, op, { title, message, danger = false, typed = false,
   try { await post(`/api/panels/${p.id}/system`, { op }); toast(`${t(title)}: ${t('готово')}`, 'success'); done?.(); return true; } catch (e) { toast(e.message, 'error', 8000); return false; }
 }
 
+/* ---------- Лицензия ---------- */
+function licenseModal(p, entry) {
+  const mode = h('select', { class: 'input' }, [['lemon', 'Ключ Lemon Squeezy'], ['order', 'По номеру заказа'], ['portal', 'Portal-лицензия']].map(([v, l]) => h('option', { value: v }, t(l))));
+  const key = h('input', { class: 'input mono', type: 'password', autocomplete: 'off', placeholder: 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX', spellcheck: 'false', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
+  const ident = h('input', { class: 'input', placeholder: 'you@example.com', autocomplete: 'off' });
+  const order = h('input', { class: 'input mono', placeholder: '123456', autocomplete: 'off' });
+  const panes = { lemon: h('div', { class: 'stack' }, field('Лицензионный ключ', key, 'Ключ передаётся панели и в EasyAdmin не сохраняется, в журнал не попадает.')),
+    order: h('div', { class: 'stack' }, field('E-mail или идентификатор заказа', ident), field('Номер заказа', order)),
+    portal: h('div', { class: 'stack' }, h('p', { class: 'muted small' }, 'Панель сама запросит Portal-лицензию для этого сервера. Подойдёт, если лицензия куплена на портале Easypanel и привязана к серверу.')) };
+  const pane = h('div'); const draw = () => clear(pane).append(panes[mode.value]); mode.addEventListener('change', draw); draw();
+  modal({ title: 'Активация лицензии', body: h('div', { class: 'stack' }, h('p', { class: 'muted small' }, `${t('Панель')}: «${p.name}». ${t('Лицензия покупается на сайте Easypanel.')}`), field('Способ', mode), pane),
+    actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Активировать', kind: 'primary', onClick: async () => {
+      if (mode.value === 'lemon') await post(`/api/panels/${p.id}/plicense/lemon`, { licenseKey: key.value.trim() });
+      else if (mode.value === 'order') await post(`/api/panels/${p.id}/plicense/order`, { identifier: ident.value.trim(), orderId: order.value.trim() });
+      else await post(`/api/panels/${p.id}/plicense/portal`);
+      toast(t('Лицензия активирована'), 'success'); await entry.reloadLicense();
+    } }] });
+}
+function licenseCard(p, entry) {
+  const l = entry.license; if (!l) return null;
+  const tier = l.tier === 'portal' ? `Portal${l.portal?.plan ? ` · ${l.portal.plan}` : ''}` : l.tier === 'lemon' ? `Lemon Squeezy${l.lemon?.productId ? ` · ${t('продукт')} ${l.lemon.productId}` : ''}` : t('Бесплатный тариф');
+  const off = (kind) => async () => { if (await confirmDialog({ title: 'Деактивировать лицензию?', message: 'Платные функции панели перестанут работать. Данные сохранятся.', danger: true, confirmText: 'Деактивировать', typeToConfirm: p.name })) { try { await del(`/api/panels/${p.id}/plicense/${kind}`); toast(t('Лицензия деактивирована'), 'success'); await entry.reloadLicense(); } catch (e) { toast(e.message, 'error'); } } };
+  return card('Лицензия Easypanel', 'Платные функции панели открываются лицензией. Закрытые настройки в EasyAdmin неактивны и помечены замком.',
+    kv('Тариф', h('span', null, tier, ' ', l.tier === 'free' ? badge('ограничения', 'warn') : badge('активна', 'ok'))),
+    l.known ? null : h('div', { class: 'callout compact' }, icon('activity', 14), h('span', { class: 'small' }, 'Панель не отдаёт сведения о лицензии (старая версия) — ограничения в EasyAdmin не применяются.')),
+    h('div', { class: 'list' }, Object.entries(l.featureLabels ?? {}).map(([k, label]) => h('div', { class: 'list-item' }, h('span', null, label), l.features[k] ? badge('доступно', 'ok') : h('span', { class: 'badge warn' }, icon('key', 11), t('нужна лицензия'))))),
+    h('div', { class: 'inline psf-foot' }, h('button', { class: 'btn sm primary', onclick: () => licenseModal(p, entry) }, icon('key', 13), 'Активировать лицензию'),
+      l.lemon ? h('button', { class: 'btn sm ghost', onclick: off('lemon') }, 'Деактивировать Lemon') : null, l.portal ? h('button', { class: 'btn sm ghost', onclick: off('portal') }, 'Деактивировать Portal') : null));
+}
+
 /* ---------- Обзор ---------- */
 export function overview(p, entry, go) {
   return lazy(h('div', { class: 'stack' }), async () => {
     const s = await get(`/api/panels/${p.id}/pstatus`);
     const n = (v) => (v == null ? '—' : String(v));
     return [
+      licenseCard(p, entry),
       s.updateAvailable ? h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Доступно обновление Easypanel'), h('p', null, 'Новая версия готова к установке.'), h('button', { class: 'btn sm', onclick: () => go('system') }, 'Перейти к обновлению'))) : null,
       s.dockerUpdate?.available ? h('div', { class: 'callout compact' }, icon('activity', 14), h('span', { class: 'small' }, `${t('Доступна новая версия Docker')}: ${s.dockerUpdate.latest}`)) : null,
       card('Состояние панели', null,
@@ -127,25 +158,27 @@ async function twoFactorModal(p) {
     r.qr ? h('img', { src: r.qr, alt: 'QR', class: 'psf-qr' }) : null, r.secret ? h('div', null, h('div', { class: 'field-label' }, 'Секрет'), h('pre', { class: 'code' }, r.secret)) : null, field('Код из приложения', code)),
   actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Включить', kind: 'primary', onClick: async () => { await post(`/api/panels/${p.id}/paccount/2fa`, { op: 'enable', code: code.value.trim() }); toast(t('Двухфакторная аутентификация включена'), 'success'); } }] });
 }
-export function users(p) {
+export function users(p, entry) {
   const box = h('div', { class: 'stack' });
+  const lockedUsers = entry?.license?.features?.multipleUsers === false;
   const draw = () => lazy(box, async () => {
     const r = await get(`/api/panels/${p.id}/pusers`);
     const row = (u) => h('div', { class: 'list-item' },
       h('div', { class: 'psf-user' }, h('b', null, u.email || u.id), h('div', { class: 'chips' }, u.admin ? badge('админ', 'ok') : badge('пользователь'), u.hasToken ? badge('API-токен') : null, u.twoFactor ? badge('2FA') : null, u.self ? badge('EasyAdmin', 'warn') : null)),
       h('div', { class: 'inline' },
-        h('button', { class: 'btn sm icon ghost', title: 'Изменить', 'aria-label': 'Изменить', onclick: () => userModal(p, u, draw) }, icon('edit', 14)),
+        h('button', { class: 'btn sm icon ghost', title: 'Изменить', 'aria-label': 'Изменить', disabled: lockedUsers, onclick: () => userModal(p, u, draw) }, icon('edit', 14)),
         u.self ? null : h('button', { class: 'btn sm icon ghost', title: u.hasToken ? 'Отозвать токен' : 'Выдать API-токен', 'aria-label': 'API-токен', onclick: async () => {
           try {
             if (u.hasToken) { if (await confirmDialog({ title: 'Отозвать API-токен?', message: u.email, danger: true, confirmText: 'Отозвать' })) { await del(`/api/panels/${p.id}/pusers/${u.id}/token?email=${encodeURIComponent(u.email)}`); toast(t('Токен отозван'), 'success'); draw(); } }
             else { const x = await post(`/api/panels/${p.id}/pusers/${u.id}/token?email=${encodeURIComponent(u.email)}`); draw(); tokenModal(x.token); }
           } catch (e) { toast(e.message, 'error'); }
         } }, icon('key', 14)),
-        u.self ? null : h('button', { class: 'btn sm icon ghost', title: 'Удалить', 'aria-label': 'Удалить', onclick: async () => { if (await confirmDialog({ title: 'Удалить пользователя?', message: u.email, danger: true, confirmText: 'Удалить', typeToConfirm: u.email })) { try { await del(`/api/panels/${p.id}/pusers/${u.id}?email=${encodeURIComponent(u.email)}`); toast(t('Пользователь удалён'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } } }, icon('trash', 14))));
+        u.self ? null : h('button', { class: 'btn sm icon ghost', title: 'Удалить', 'aria-label': 'Удалить', disabled: lockedUsers, onclick: async () => { if (await confirmDialog({ title: 'Удалить пользователя?', message: u.email, danger: true, confirmText: 'Удалить', typeToConfirm: u.email })) { try { await del(`/api/panels/${p.id}/pusers/${u.id}?email=${encodeURIComponent(u.email)}`); toast(t('Пользователь удалён'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } } }, icon('trash', 14))));
     return [
+      lockedUsers ? h('div', { class: 'callout warn' }, icon('key'), h('div', null, h('b', null, 'Нужна лицензия'), h('p', null, 'Создание, изменение и удаление пользователей Easypanel доступно с лицензией (без неё панель молча игнорирует такие запросы). Список, API-токены и свой аккаунт работают.'))) : null,
       card('Пользователи Easypanel', 'Метка «EasyAdmin» — пользователь, от имени которого EasyAdmin работает с панелью. Его нельзя удалить и нельзя менять ему токен: доступ к панели пропадёт.',
         h('div', { class: 'list' }, r.users.length ? r.users.map(row) : [h('div', { class: 'muted pad' }, 'Пользователей нет')]),
-        h('div', { class: 'inline psf-foot' }, h('button', { class: 'btn sm', onclick: () => userModal(p, null, draw) }, icon('plus', 13), 'Добавить пользователя'))),
+        h('div', { class: 'inline psf-foot' }, h('button', { class: 'btn sm', disabled: lockedUsers, onclick: () => userModal(p, null, draw) }, icon('plus', 13), 'Добавить пользователя'))),
       card('Мой аккаунт', 'Свой e-mail, пароль и двухфакторная защита пользователя, от имени которого работает EasyAdmin.', h('div', { class: 'inline psf-foot' },
         h('button', { class: 'btn sm', onclick: () => credentialsModal(p) }, icon('edit', 13), 'Изменить e-mail и пароль'),
         h('button', { class: 'btn sm', onclick: () => twoFactorModal(p).catch((e) => toast(e.message, 'error')) }, icon('shield', 13), 'Настроить 2FA'),
@@ -195,21 +228,21 @@ export function traefik(p, entry) {
 /* ---------- Мониторинг ---------- */
 export const monitoring = (p, entry) => lazy(h('div', { class: 'stack' }), () => settingsGroup(p, 'monitoring', entry));
 export const general = (p, entry) => lazy(h('div', { class: 'stack' }), () => settingsGroup(p, 'general', entry));
-export const branding = (p, entry) => lazy(h('div', { class: 'stack' }), async () => [...await settingsGroup(p, 'branding', entry), await Promise.resolve(logosCard(p))]);
+export const branding = (p, entry) => lazy(h('div', { class: 'stack' }), async () => [...await settingsGroup(p, 'branding', entry), await Promise.resolve(logosCard(p, entry))]);
 
 /* ---------- Кластер, хранилища бэкапов, каналы панели ---------- */
-export function infra(p) {
+export function infra(p, entry) {
   const box = h('div', { class: 'stack' });
   const draw = () => lazy(box, async () => {
     const cl = await get(`/api/panels/${p.id}/pcluster`);
     const rm = (what, url, name) => async () => { if (await confirmDialog({ title: `Удалить ${what}?`, message: name, danger: true, confirmText: 'Удалить' })) { try { await del(url); toast(t('Удалено'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } };
     return [
-      card('Кластер Docker Swarm', 'Узлы кластера и команда подключения нового рабочего узла (worker).',
+      cl.locked ? card('Кластер Docker Swarm', 'Узлы кластера и команда подключения нового рабочего узла (worker).', h('div', { class: 'callout warn compact' }, icon('key', 14), h('span', { class: 'small' }, 'Кластер доступен в Easypanel только с лицензией. Активировать её можно на вкладке «Обзор».'))) : card('Кластер Docker Swarm', 'Узлы кластера и команда подключения нового рабочего узла (worker).',
         cl.error ? h('div', { class: 'muted small' }, cl.error) : null,
         h('div', { class: 'list' }, cl.nodes.length ? cl.nodes.map((n) => h('div', { class: 'list-item' }, h('div', null, h('b', null, n.host || n.id), ' ', badge(n.manager ? 'manager' : (n.role ?? 'worker'), n.manager ? 'ok' : ''), n.state ? h('span', { class: 'muted small' }, ` · ${n.state}`) : null),
           n.manager ? null : h('button', { class: 'btn sm icon ghost', title: 'Удалить узел', 'aria-label': 'Удалить узел', onclick: rm('узел', `/api/panels/${p.id}/pcluster/${n.id}`, n.host || n.id) }, icon('trash', 14)))) : [h('div', { class: 'muted pad' }, 'Узлов нет')]),
         cl.workerCommand ? h('div', { class: 'stack-sm' }, h('div', { class: 'field-label' }, 'Подключение worker'), h('pre', { class: 'code' }, cl.workerCommand), h('button', { class: 'btn sm', onclick: () => copyText(cl.workerCommand) }, icon('copy', 13), 'Копировать')) : null),
-      storageCard(p), notifyCard(p),
+      storageCard(p), notifyCard(p, entry),
     ];
   });
   return draw();

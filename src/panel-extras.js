@@ -1,4 +1,5 @@
 import { HttpError } from './http.js';
+import { makeLicense } from './panel-license.js';
 
 /**
  * Дополнения к настройкам панели: хранилища бэкапов и каналы уведомлений Easypanel (создание, правка, проверка),
@@ -55,6 +56,8 @@ function fromSpec(spec, body, old, { editing }) {
 
 export function extrasRoutes(d) {
   const { db, manager, audit, asHttp, panelOr404, assertPanel } = d;
+  const lic = makeLicense(d);
+  const applied = async (check) => { let ok = false; try { ok = await check(); } catch { ok = true; } if (!ok) throw new HttpError(502, 'Панель не применила изменение — возможно, для него нужна лицензия Easypanel'); };
   const access = (ctx) => { const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id); return { row, c: manager.clientFor(row) }; };
   const call = async (fn) => { try { return await fn(); } catch (e) { throw asHttp(e); } };
   const write = async (ctx, row, action, target, fn, detail) => {
@@ -152,14 +155,19 @@ export function extrasRoutes(d) {
     }, { admin: true }],
     ['POST', '/api/panels/:id/pnotify', async (ctx) => {
       const { row, c } = access(ctx); const v = cleanChannel(ctx.body, null);
+      await lic.require(row, c, 'notifications', 'Каналы уведомлений панели');
+      const count = (await channels(c)).length;
       await write(ctx, row, 'panel.notify.create', v.name, () => c.mutate('notifications.createNotificationChannel', v), `тип ${v.target.type}`);
+      await applied(async () => (await channels(c)).length > count);
       return { ok: true };
     }, { admin: true }],
     ['PUT', '/api/panels/:id/pnotify/:cid', async (ctx) => {
       const { row, c } = access(ctx); const cid = id(ctx.params.cid);
       const old = (await channels(c)).find((x) => String(x.id) === cid); need(old, 'Канал не найден');
       const v = cleanChannel({ ...ctx.body, type: old.target?.type }, old);
+      await lic.require(row, c, 'notifications', 'Каналы уведомлений панели');
       await write(ctx, row, 'panel.notify.update', v.name, () => c.mutate('notifications.updateNotificationChannel', { id: cid, ...v }), `тип ${v.target.type}`);
+      await applied(async () => (await channels(c)).some((x) => String(x.id) === cid && x.name === v.name));
       return { ok: true };
     }, { admin: true }],
     ['POST', '/api/panels/:id/pnotify/test', async (ctx) => {
@@ -176,6 +184,7 @@ export function extrasRoutes(d) {
     }, { admin: true }],
     ['PUT', '/api/panels/:id/plogos', async (ctx) => {
       const { row, c } = access(ctx); const slot = String(ctx.body?.slot ?? ''); need(LOGO_SLOTS.includes(slot), 'Неизвестный логотип');
+      await lic.require(row, c, 'branding', 'Логотипы интерфейса');
       let value = ctx.body?.value; if (value === null || value === '') value = '';
       else { need(typeof value === 'string' && value.length <= 700_000, 'Файл слишком большой (до 500 КБ)'); need(DATA_IMG.test(value) || /^https:\/\/[^\s]{3,500}$/.test(value), 'Нужна картинка PNG, JPEG, GIF, WebP или SVG'); }
       // панель заменяет все логотипы разом — остальные берём текущие
@@ -187,8 +196,9 @@ export function extrasRoutes(d) {
 
     /* ---------- бэкапы сервиса ---------- */
     ['GET', '/api/panels/:id/pbackups', async (ctx) => {
-      const { c } = access(ctx); const r = svcRef(ctx, ctx.url.searchParams); const kind = kindOf(r.type);
+      const { row, c } = access(ctx); const r = svcRef(ctx, ctx.url.searchParams); const kind = kindOf(r.type);
       if (!kind) return { kind: null, schedules: [], providers: [], history: [] };
+      const scheduled = kind === 'volume' || await lic.has(row, c, 'databaseBackups'); // расписания баз без лицензии панель не выполняет
       const sel = { projectName: r.project, serviceName: r.name };
       const [schedules, opts, extra, acts] = await Promise.all([
         call(() => c.query(kind === 'db' ? 'databaseBackups.listDatabaseBackups' : 'volumeBackups.listVolumeBackups', sel)),
@@ -197,18 +207,20 @@ export function extrasRoutes(d) {
         c.query('actions.listActions', { limit: 50, ...sel }).catch(() => []),
       ]);
       const history = listOf(acts, 'actions').filter((a) => a?.type === 'backup').slice(0, 20).map((a) => ({ id: String(a.id), status: a.status ?? null, createdAt: a.createdAt ?? a.startedAt ?? null, description: a.description ?? null, restorable: kind === 'db' && a.status === 'done' && !!a.meta?.path, databaseName: a.meta?.databaseName ?? null, path: a.meta?.path ?? null, storageProviderId: a.meta?.storageProviderId ?? null }));
-      return { kind, schedules: listOf(schedules), providers: listOf(opts).map((o) => ({ id: String(o.value ?? o.id ?? ''), name: o.label ?? o.name ?? '' })),
+      return { kind, scheduled, schedules: listOf(schedules), providers: listOf(opts).map((o) => ({ id: String(o.value ?? o.id ?? ''), name: o.label ?? o.name ?? '' })),
         databases: kind === 'db' ? listOf(extra, 'databases').map((x) => (typeof x === 'string' ? x : x?.name)).filter(Boolean) : [], mounts: kind === 'volume' ? listOf(extra, 'mounts').map((m) => ({ name: m.name ?? m.volumeName ?? '', mountPath: m.mountPath ?? m.path ?? '' })).filter((m) => m.name) : [], history };
     }, { admin: true }],
     ['POST', '/api/panels/:id/pbackups', async (ctx) => {
       const { row, c } = access(ctx); const r = svcRef(ctx, ctx.body); const kind = kindOf(r.type); need(kind, 'У этого типа сервиса нет бэкапов');
       const v = cleanSchedule(kind, ctx.body?.schedule);
+      if (kind === 'db') await lic.require(row, c, 'databaseBackups', 'Расписания бэкапов баз данных (без лицензии панель их не выполняет)');
       await write(ctx, row, `backup.${kind}.create`, `${r.project}/${r.name}`, () => c.mutate(kind === 'db' ? 'databaseBackups.createDatabaseBackup' : 'volumeBackups.createVolumeBackup', { projectName: r.project, serviceName: r.name, ...v }), `${v.schedule}${v.databaseName ? ` · ${v.databaseName}` : ` · ${v.volumeName}`}`);
       return { ok: true };
     }, { admin: true }],
     ['PUT', '/api/panels/:id/pbackups/:bid', async (ctx) => {
       const { row, c } = access(ctx); const r = svcRef(ctx, ctx.body); const kind = kindOf(r.type); need(kind, 'У этого типа сервиса нет бэкапов'); const bid = id(ctx.params.bid);
       await owned(c, kind, r, bid); const v = cleanSchedule(kind, ctx.body?.schedule);
+      if (kind === 'db' && v.enabled) await lic.require(row, c, 'databaseBackups', 'Расписания бэкапов баз данных (без лицензии панель их не выполняет)');
       await write(ctx, row, `backup.${kind}.update`, `${r.project}/${r.name}`, () => c.mutate(kind === 'db' ? 'databaseBackups.updateDatabaseBackup' : 'volumeBackups.updateVolumeBackup', { id: bid, projectName: r.project, serviceName: r.name, ...v }), v.schedule);
       return { ok: true };
     }, { admin: true }],

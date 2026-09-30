@@ -1,5 +1,6 @@
 import { decrypt, encrypt } from './crypto.js';
 import { HttpError } from './http.js';
+import { makeLicense } from './panel-license.js';
 
 /**
  * Настройки самой панели Easypanel: типизированный реестр одиночных настроек (формы строятся из него и на сервере проверяются тем же описанием)
@@ -22,7 +23,7 @@ export const SETTINGS = [
     fields: [{ name: 'customPanelDomain', type: 'domain', label: 'Свой домен', placeholder: 'panel.example.com', hint: 'Пусто — только сгенерированный домен.' }, B('serveOnIp', 'Открывать панель по IP-адресу сервера', 'Запасной вход, если домен перестанет работать.')],
     get: 'settings.getPanelDomain', read: (r) => ({ customPanelDomain: r?.customPanelDomain ?? '', serveOnIp: !!r?.serveOnIp, _info: { defaultPanelDomain: r?.defaultPanelDomain ?? null } }),
     set: 'settings.setPanelDomain', build: (v) => ({ customPanelDomain: v.customPanelDomain || '', serveOnIp: !!v.serveOnIp }) },
-  { key: 'serviceDomain', section: 'address', title: 'Базовый домен сервисов', danger: true, hint: 'Поддомены сервисов создаются от этого домена. Нужна DNS-запись *.домен на сервер.',
+  { key: 'serviceDomain', section: 'address', title: 'Базовый домен сервисов', needs: 'customServiceDomain', danger: true, hint: 'Поддомены сервисов создаются от этого домена. Нужна DNS-запись *.домен на сервер.',
     fields: [{ name: 'customServiceDomain', type: 'domain', label: 'Свой домен', placeholder: 'apps.example.com', hint: 'Пусто — сгенерированный домен.' }],
     get: 'settings.getServiceDomain', read: (r) => ({ customServiceDomain: r?.customServiceDomain ?? '', _info: { defaultServiceDomain: r?.defaultServiceDomain ?? null } }),
     set: 'settings.setServiceDomain', build: (v) => ({ customServiceDomain: v.customServiceDomain || '' }) },
@@ -46,22 +47,22 @@ export const SETTINGS = [
     fields: [{ name: 'serverName', type: 'text', label: 'Название сервера', max: 60 }, { name: 'serverColor', type: 'color', label: 'Цвет' }, B('hideIp', 'Скрыть IP-адрес сервера'), B('hideNotes', 'Скрыть заметки')],
     get: 'branding.getBasicSettings', read: (r) => ({ serverName: r?.serverName ?? '', serverColor: r?.serverColor ?? '', hideIp: !!r?.hideIp, hideNotes: !!r?.hideNotes }),
     set: 'branding.setBasicSettings', build: (v) => ({ serverName: v.serverName ?? '', serverColor: v.serverColor ?? '', hideIp: !!v.hideIp, hideNotes: !!v.hideNotes }) },
-  { key: 'brandingLinks', section: 'branding', title: 'Ссылки в интерфейсе', bulk: true, hint: 'Какие ссылки Easypanel скрыть.',
+  { key: 'brandingLinks', section: 'branding', title: 'Ссылки в интерфейсе', needs: 'branding', bulk: true, hint: 'Какие ссылки Easypanel скрыть.',
     fields: [B('hideDocumentationLink', 'Документация'), B('hideChangelogLink', 'Список изменений'), B('hideDiscordLink', 'Discord'), B('hideFeedbackLink', 'Обратная связь'), B('hideOtherLinks', 'Прочие ссылки')],
     get: 'branding.getLinksSettings', read: (r) => ({ hideDocumentationLink: !!r?.hideDocumentationLink, hideChangelogLink: !!r?.hideChangelogLink, hideDiscordLink: !!r?.hideDiscordLink, hideFeedbackLink: !!r?.hideFeedbackLink, hideOtherLinks: !!r?.hideOtherLinks }),
     set: 'branding.setLinksSettings', build: (v) => ({ hideDocumentationLink: !!v.hideDocumentationLink, hideChangelogLink: !!v.hideChangelogLink, hideDiscordLink: !!v.hideDiscordLink, hideFeedbackLink: !!v.hideFeedbackLink, hideOtherLinks: !!v.hideOtherLinks }) },
-  { key: 'errorPages', section: 'branding', title: 'Страницы ошибок', bulk: true, hint: 'Оформление страниц ошибок, которые видят посетители ваших сервисов.',
+  { key: 'errorPages', section: 'branding', title: 'Страницы ошибок', needs: 'branding', bulk: true, hint: 'Оформление страниц ошибок, которые видят посетители ваших сервисов.',
     fields: [B('hideLogo', 'Скрыть логотип'), B('hideLinks', 'Скрыть ссылки'), { name: 'customCss', type: 'textarea', label: 'Свой CSS', max: 20000, mono: true }],
     get: 'branding.getErrorPageSettings', read: (r) => ({ hideLogo: !!r?.hideLogo, hideLinks: !!r?.hideLinks, customCss: r?.customCss ?? '' }),
     set: 'branding.setErrorPageSettings', build: (v) => ({ hideLogo: !!v.hideLogo, hideLinks: !!v.hideLinks, customCss: v.customCss ?? '' }) },
-  { key: 'customCode', section: 'branding', title: 'Свой код в интерфейсе', danger: true, bulk: true, hint: 'HTML/JS, который подставляется в интерфейс панели. Выполняется в браузере каждого, кто открывает панель.',
+  { key: 'customCode', section: 'branding', title: 'Свой код в интерфейсе', needs: 'branding', danger: true, bulk: true, hint: 'HTML/JS, который подставляется в интерфейс панели. Выполняется в браузере каждого, кто открывает панель.',
     fields: [{ name: 'customCode', type: 'textarea', label: 'Код', max: 50000, mono: true }],
     get: 'branding.getCustomCodeSettings', read: (r) => ({ customCode: r?.customCode ?? '' }), set: 'branding.setCustomCodeSettings', build: (v) => ({ customCode: v.customCode ?? '' }) },
-  { key: 'metrics', section: 'monitoring', title: 'Расширенные метрики', hint: 'Prometheus собирает историю нагрузки сервисов. Включение запускает дополнительные контейнеры.', danger: true,
+  { key: 'metrics', section: 'monitoring', title: 'Расширенные метрики', needs: 'advancedMonitoring', allowOff: true, hint: 'Prometheus собирает историю нагрузки сервисов. Включение запускает дополнительные контейнеры.', danger: true,
     fields: [B('enabled', 'Собирать метрики'), { name: 'retentionType', type: 'select', label: 'Хранить', options: [['days', 'дней'], ['gb', 'ГБ']] }, { name: 'retentionValue', type: 'int', label: 'Срок или объём', min: 1, max: 3650 }, { name: 'scrapeInterval', type: 'number', label: 'Интервал опроса, с', min: 1, max: 3600 }],
     get: 'metrics.getSettings', read: (r) => ({ enabled: !!r?.enabled, retentionType: r?.retentionType ?? 'days', retentionValue: r?.retentionValue ?? 7, scrapeInterval: r?.scrapeInterval ?? 15 }),
     set: 'metrics.updateSettings', build: (v) => ({ enabled: !!v.enabled, retentionType: v.retentionType, retentionValue: v.retentionValue, scrapeInterval: v.scrapeInterval }) },
-  { key: 'logsAgg', section: 'monitoring', title: 'Сбор логов', hint: 'Loki хранит логи сервисов, в том числе после перезапуска. Включение запускает дополнительные контейнеры.', danger: true,
+  { key: 'logsAgg', section: 'monitoring', title: 'Сбор логов', needs: 'advancedMonitoring', allowOff: true, hint: 'Loki хранит логи сервисов, в том числе после перезапуска. Включение запускает дополнительные контейнеры.', danger: true,
     fields: [B('enabled', 'Собирать логи'), { name: 'retentionType', type: 'select', label: 'Хранить', options: [['hours', 'часов'], ['days', 'дней']] }, { name: 'retentionValue', type: 'int', label: 'Срок', min: 1, max: 3650 }],
     get: 'logs.getSettings', read: (r) => ({ enabled: !!r?.enabled, retentionType: r?.retentionType ?? 'days', retentionValue: r?.retentionValue ?? 7 }),
     set: 'logs.updateSettings', build: (v) => ({ enabled: !!v.enabled, retentionType: v.retentionType, retentionValue: v.retentionValue }) },
@@ -121,6 +122,7 @@ const id = (v) => { const s = String(v ?? ''); if (!/^[A-Za-z0-9_-]{1,64}$/.test
 export function psettingsRoutes(d) {
   const { db, key, manager, audit, need, asHttp, panelOr404, assertPanel, canPanel } = d;
   const now = () => Date.now();
+  const lic = makeLicense(d);
   const access = (ctx) => { const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id); return { row, c: manager.clientFor(row) }; };
   const call = async (fn) => { try { return await fn(); } catch (e) { throw asHttp(e); } };
   const write = async (ctx, row, action, target, fn, detail) => {
@@ -128,6 +130,8 @@ export function psettingsRoutes(d) {
     catch (e) { audit(ctx, { action, panel: row, target, ok: false, detail: e.message }); throw asHttp(e); }
   };
   const readSetting = async (c, def) => def.read(await c.query(def.get));
+  // часть процедур панели без лицензии молча ничего не делает и отвечает «успех» — результат проверяется перечитыванием
+  const applied = async (c, check) => { let ok = false; try { ok = await check(); } catch { ok = true; /* проверить нечем — не считаем отказом */ } if (!ok) throw new HttpError(502, 'Панель не применила изменение — возможно, для него нужна лицензия Easypanel'); };
 
   /* ---- история конфигурации Traefik: перед каждой записью сохраняем прежний текст (зашифрованным) ---- */
   const keepVersion = (panelId, kind, user, text) => {
@@ -139,7 +143,7 @@ export function psettingsRoutes(d) {
 
   return [
     /* ---------- реестр и значения ---------- */
-    ['GET', '/api/psettings/schema', () => ({ sections: SECTIONS, settings: SETTINGS.map(({ key: k, section, title, hint, danger, bulk, fields }) => ({ key: k, section, title, hint, danger: !!danger, bulk: !!bulk, fields })) }), { admin: true }],
+    ['GET', '/api/psettings/schema', () => ({ sections: SECTIONS, settings: SETTINGS.map(({ key: k, section, title, hint, danger, bulk, fields, needs, allowOff }) => ({ key: k, section, title, hint, danger: !!danger, bulk: !!bulk, fields, needs: needs ?? null, allowOff: !!allowOff })) }), { admin: true }],
     ['GET', '/api/panels/:id/psettings', async (ctx) => {
       const { c } = access(ctx);
       const only = ctx.url.searchParams.get('section');
@@ -152,6 +156,7 @@ export function psettingsRoutes(d) {
       const { row, c } = access(ctx); const def = settingByKey(ctx.params.key);
       need(def, 'Неизвестная настройка');
       const value = cleanValue(def, ctx.body.value);
+      if (def.needs) { const e = await lic.entitlementsOf(row, c); if (!e.features[def.needs] && !(def.allowOff && value.enabled === false)) throw new HttpError(403, `${def.title}: нужна лицензия Easypanel${def.allowOff ? ' (без неё можно только выключить)' : ''}`, { license: true, feature: def.needs }); }
       const before = await call(() => readSetting(c, def));
       await write(ctx, row, `psettings.${def.key}`, row.name, () => c.mutate(def.set, def.build(value)), diffText(def, before, value));
       return { value: await call(() => readSetting(c, def)).catch(() => ({ ...value })) };
@@ -202,7 +207,9 @@ export function psettingsRoutes(d) {
       const { row, c } = access(ctx); const b = ctx.body ?? {};
       need(EMAIL.test(String(b.email ?? '')), 'Некорректный e-mail');
       need(typeof b.password === 'string' && b.password.length >= 8 && b.password.length <= 200, 'Пароль — не короче 8 символов');
+      await lic.require(row, c, 'multipleUsers', 'Создание пользователей Easypanel');
       await write(ctx, row, 'panel.user.create', String(b.email), () => c.mutate('users.createUser', { email: b.email, password: b.password, admin: !!b.admin }), b.admin ? 'администратор' : 'пользователь');
+      await applied(c, async () => listOf(await c.query('users.listUsers'), 'users').some((u) => String(u.email).toLowerCase() === String(b.email).toLowerCase()));
       return { ok: true };
     }, { admin: true }],
     ['PUT', '/api/panels/:id/pusers/:uid', async (ctx) => {
@@ -210,14 +217,18 @@ export function psettingsRoutes(d) {
       need(typeof b.admin === 'boolean', 'Укажите, администратор ли пользователь');
       if (b.password !== undefined && b.password !== '') need(typeof b.password === 'string' && b.password.length >= 8 && b.password.length <= 200, 'Пароль — не короче 8 символов');
       const input = { id: uid, admin: b.admin, ...(b.password ? { password: b.password } : {}) };
+      await lic.require(row, c, 'multipleUsers', 'Изменение пользователей Easypanel');
       await write(ctx, row, 'panel.user.update', b.email ? String(b.email) : uid, () => c.mutate('users.updateUser', input), `admin=${b.admin}${b.password ? '; пароль изменён' : ''}`);
+      await applied(c, async () => listOf(await c.query('users.listUsers'), 'users').some((u) => String(u.id) === uid && !!u.admin === b.admin));
       return { ok: true };
     }, { admin: true }],
     ['DELETE', '/api/panels/:id/pusers/:uid', async (ctx) => {
       const { row, c } = access(ctx); const uid = id(ctx.params.uid);
       const me = await c.query('auth.getUser').catch(() => null);
       need(String(me?.user?.id ?? me?.id ?? '') !== uid, 'Нельзя удалить пользователя, от имени которого EasyAdmin работает с панелью');
+      await lic.require(row, c, 'multipleUsers', 'Удаление пользователей Easypanel');
       await write(ctx, row, 'panel.user.destroy', ctx.url.searchParams.get('email') || uid, () => c.mutate('users.destroyUser', { id: uid }));
+      await applied(c, async () => !listOf(await c.query('users.listUsers'), 'users').some((u) => String(u.id) === uid));
       return { ok: true };
     }, { admin: true }],
     ['POST', '/api/panels/:id/pusers/:uid/token', async (ctx) => {
@@ -277,7 +288,8 @@ export function psettingsRoutes(d) {
 
     /* ---------- кластер, хранилища бэкапов, каналы уведомлений панели ---------- */
     ['GET', '/api/panels/:id/pcluster', async (ctx) => {
-      const { c } = access(ctx);
+      const { row, c } = access(ctx);
+      if (!await lic.has(row, c, 'cluster')) return { nodes: [], workerCommand: null, error: null, locked: true };
       const [nodes, cmd] = await Promise.all([c.query('cluster.listNodes').catch((e) => ({ error: e.message })), c.query('cluster.addWorkerCommand').catch(() => null)]);
       return { nodes: nodes?.error ? [] : listOf(nodes, 'nodes').map((n) => ({ id: String(n.ID ?? n.id ?? ''), host: n.Description?.Hostname ?? n.hostname ?? n.name ?? '', role: n.Spec?.Role ?? n.role ?? null, state: n.Status?.State ?? n.status ?? null, manager: !!(n.ManagerStatus ?? n.manager) })), error: nodes?.error ?? null, workerCommand: typeof cmd === 'string' ? cmd : firstString(cmd) };
     }, { admin: true }],
@@ -287,7 +299,7 @@ export function psettingsRoutes(d) {
       await write(ctx, row, 'storage.provider.delete', `${type}/${pid}`, () => c.mutate(`storageProviders.${type}.deleteProvider`, { id: pid }));
       return { ok: true };
     }, { admin: true }],
-    ['DELETE', '/api/panels/:id/pnotify/:cid', async (ctx) => { const { row, c } = access(ctx); const cid = id(ctx.params.cid); await write(ctx, row, 'panel.notify.destroy', ctx.url.searchParams.get('name') || cid, () => c.mutate('notifications.destroyNotificationChannel', { id: cid })); return { ok: true }; }, { admin: true }],
+    ['DELETE', '/api/panels/:id/pnotify/:cid', async (ctx) => { const { row, c } = access(ctx); const cid = id(ctx.params.cid); await lic.require(row, c, 'notifications', 'Каналы уведомлений панели'); await write(ctx, row, 'panel.notify.destroy', ctx.url.searchParams.get('name') || cid, () => c.mutate('notifications.destroyNotificationChannel', { id: cid })); await applied(c, async () => !listOf(await c.query('notifications.listNotificationChannels'), 'channels').some((x) => String(x.id) === cid)); return { ok: true }; }, { admin: true }],
 
     /* ---------- журнал действий панели ---------- */
     ['GET', '/api/panels/:id/pactions', async (ctx) => {
@@ -306,7 +318,9 @@ export function psettingsRoutes(d) {
         const c = manager.clientFor(row); const values = {}; const errors = {};
         await Promise.all(keys.map(async (k) => { try { values[k] = await readSetting(c, settingByKey(k)); } catch (e) { errors[k] = e.message; } }));
         const ver = await c.query('update.getStatus').then((v) => v?.version ?? null, () => null);
-        return { id: row.id, name: row.name, status: row.status, version: ver, values, errors };
+        const ent = await lic.entitlementsOf(row, c).catch(() => null);
+        const locks = Object.fromEntries(keys.filter((k) => settingByKey(k).needs && ent && !ent.features[settingByKey(k).needs]).map((k) => [k, true]));
+        return { id: row.id, name: row.name, status: row.status, version: ver, values, errors, locks, tier: ent?.tier ?? null };
       }));
       return { keys, panels };
     }, { admin: true }],
@@ -322,6 +336,7 @@ export function psettingsRoutes(d) {
         if (!canPanel(ctx.user, row.id)) { results.push({ panelId: pid, name: row.name, ok: false, error: 'Нет доступа к этой панели' }); continue; }
         try {
           const c = manager.clientFor(row);
+          if (def.needs) { const e = await lic.entitlementsOf(row, c); if (!e.features[def.needs]) { results.push({ panelId: pid, name: row.name, ok: false, skipped: true, error: 'Пропущено: нужна лицензия Easypanel' }); continue; } }
           const before = await readSetting(c, def).catch(() => null);
           await write(ctx, row, `psettings.${def.key}`, row.name, () => c.mutate(def.set, def.build(value)), `массовое применение · ${diffText(def, before, value)}`);
           results.push({ panelId: pid, name: row.name, ok: true });

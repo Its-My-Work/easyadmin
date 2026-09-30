@@ -13,6 +13,7 @@ import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
 import { applyConfig, extractConfig, mergeEnv, parseEnvLines } from './templates.js';
 import { psettingsRoutes } from './panel-settings.js';
 import { extrasRoutes } from './panel-extras.js';
+import { licenseRoutes } from './panel-license.js';
 
 const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
 
@@ -710,5 +711,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...settingsRoutes2, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...settingsRoutes2, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

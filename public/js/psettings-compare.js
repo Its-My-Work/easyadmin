@@ -18,11 +18,11 @@ function applyModal(def, cmp, reload) {
   // значение по умолчанию — у первой панели, где оно прочиталось
   const first = cmp.panels.find((p) => p.values[def.key])?.values[def.key] ?? {};
   const inputs = def.fields.map((f) => ({ f, c: control(f, first[f.name], undefined) }));
-  const picks = cmp.panels.map((p) => ({ p, cb: h('input', { type: 'checkbox', checked: ['online', 'degraded'].includes(p.status) }) }));
+  const picks = cmp.panels.map((p) => ({ p, locked: !!p.locks?.[def.key], cb: h('input', { type: 'checkbox', checked: ['online', 'degraded'].includes(p.status) && !p.locks?.[def.key], disabled: !!p.locks?.[def.key] }) }));
   const result = h('div', { class: 'stack-sm' });
   modal({ title: `${t('Применить ко всем')}: ${t(def.title)}`, wide: true,
     body: h('div', { class: 'stack' }, h('p', { class: 'muted small' }, def.hint ? t(def.hint) : ''), h('div', { class: 'stack-sm' }, inputs.map(({ c }) => c.el)),
-      h('div', null, h('div', { class: 'field-label' }, 'Панели'), h('div', { class: 'stack-sm' }, picks.map(({ p, cb }) => h('label', { class: 'check' }, cb, p.name, p.version ? h('span', { class: 'muted small' }, ` · ${p.version}`) : null)))), result),
+      h('div', null, h('div', { class: 'field-label' }, 'Панели'), h('div', { class: 'stack-sm' }, picks.map(({ p, cb, locked }) => h('label', { class: 'check' }, cb, p.name, p.version ? h('span', { class: 'muted small' }, ` · ${p.version}`) : null, locked ? h('span', { class: 'badge warn ml' }, icon('key', 11), t('нужна лицензия')) : null)))), result),
     actions: [{ label: 'Закрыть', kind: 'ghost' }, { label: 'Применить', kind: 'primary', close: false, onClick: async () => {
       const ids = picks.filter(({ cb }) => cb.checked).map(({ p }) => p.id);
       if (!ids.length) throw new Error(t('Выберите хотя бы одну панель'));
@@ -57,7 +57,7 @@ export function comparePage() {
             h('tr', { class: vers.size > 1 ? 'cmp-diff' : '' }, h('td', null, h('b', null, 'Версия Easypanel')), cmp.panels.map((p) => h('td', { class: 'mono small' }, p.version ?? '—')), h('td')),
             shown.map(({ def, differs }) => h('tr', { class: differs ? 'cmp-diff' : '' },
               h('td', null, h('b', null, t(def.title)), differs ? h('span', { class: 'badge warn ml' }, 'различается') : null),
-              cmp.panels.map((p) => h('td', { class: 'small' }, fmt(def, p.values[def.key], p.errors[def.key]))),
+              cmp.panels.map((p) => h('td', { class: 'small' }, p.locks?.[def.key] ? h('span', { class: 'muted', title: t('нужна лицензия') }, icon('key', 12), ' ') : null, fmt(def, p.values[def.key], p.errors[def.key]))),
               h('td', { class: 'w-actions' }, def.bulk ? h('button', { class: 'btn sm', onclick: () => applyModal(def, cmp, draw) }, 'Применить…') : null)))))),
         shown.length ? null : h('div', { class: 'muted pad' }, 'Различий нет — настройки всех панелей совпадают.'),
         h('p', { class: 'muted small' }, 'Домены, токены и другие настройки, которые у каждой панели свои, показаны только для сравнения и массово не меняются.'));

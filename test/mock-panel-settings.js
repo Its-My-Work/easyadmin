@@ -1,7 +1,16 @@
 /** Имитация процедур настроек Easypanel (реальные пути tRPC и формы ответов) с состоянием в памяти. */
 const bad = (message) => Object.assign(new Error(message), { code: 'BAD_REQUEST' });
 
-export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2.36.0' } = {}) {
+import { entitlements } from '../src/panel-license.js';
+
+const LICENSES = {
+  full: { lemon: null, portal: { plan: { name: 'Pro', options: { advanced_monitoring: true, notifications: true, database_backups: true, branding: true, mutiple_users: true, cluster: true } } } },
+  free: { lemon: null, portal: null },
+  lemon: { lemon: { valid: true, meta: { product_id: 108137 } }, portal: null },
+  lemonFull: { lemon: { valid: true, meta: { product_id: 108143 } }, portal: null },
+};
+
+export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2.36.0', license = 'full', portalAvailable = false, hideLicense = false } = {}) {
   const st = {
     panelDomain: { customPanelDomain: null, defaultPanelDomain: 'mock.easypanel.host', serveOnIp: true },
     serviceDomain: { customServiceDomain: null, defaultServiceDomain: 'mock.easypanel.host' },
@@ -19,8 +28,9 @@ export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2
     dbBackups: [{ id: 'b1', projectName: 'web', serviceName: 'pg', databaseName: 'app', enabled: true, schedule: '0 2 * * *', retention: 7, storageProviderId: 'p1', storageProviderPath: 'pg' }],
     volBackups: [{ id: 'v1', projectName: 'web', serviceName: 'site', volumeName: 'data', enabled: true, schedule: '0 3 * * *', storageProviderId: 'p1', storageProviderPath: 'site', storageProviderName: 'Backups' }],
     actions: [{ id: 'a1', type: 'backup', status: 'done', projectName: 'web', serviceName: 'pg', description: 'Backup app', meta: { path: 'pg/2026-09-30.sql.gz', databaseName: 'app', storageProviderId: 'p1' } }, { id: 'a2', type: 'deploy', status: 'done', projectName: 'web', serviceName: 'pg' }],
-    notified: [], twoFactor: false, changed: [],
+    notified: [], twoFactor: false, changed: [], license: structuredClone(typeof license === 'string' ? LICENSES[license] : license), portalAvailable,
   };
+  const ent = () => entitlements(st.license.lemon, st.license.portal).features;
   const guard = (name, fn) => (i) => { if (reject.includes(name)) throw bad(`rejected ${name}`); st.changed.push(name); return fn(i ?? {}); };
   const procs = {
     'settings.getPanelDomain': () => st.panelDomain,
@@ -104,5 +114,24 @@ export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2
     'actions.getAction': (i) => ({ id: i.id, status: 'running', log: 'step 1\nstep 2' }),
     'actions.killAction': guard('actions.killAction', () => null),
   };
+  // поведение панели без лицензии: одни процедуры отвечают ошибкой, другие молча ничего не делают
+  const silent = (name, feature) => { const f = procs[name]; procs[name] = (i) => (ent()[feature] ? f(i) : null); };
+  const thrown = (name, feature, msg, when = () => true) => { const f = procs[name]; procs[name] = (i) => { if (!ent()[feature] && when(i ?? {})) throw bad(msg); return f(i); }; };
+  for (const n of ['users.createUser', 'users.updateUser', 'users.destroyUser']) silent(n, 'multipleUsers');
+  for (const n of ['notifications.createNotificationChannel', 'notifications.updateNotificationChannel', 'notifications.destroyNotificationChannel']) silent(n, 'notifications');
+  for (const n of ['branding.setLinksSettings', 'branding.setErrorPageSettings', 'branding.setCustomCodeSettings', 'branding.setLogoSettings']) thrown(n, 'branding', 'You need a license that supports white-labeling.');
+  for (const n of ['metrics.updateSettings', 'logs.updateSettings']) thrown(n, 'advancedMonitoring', 'A license with advanced monitoring support is required.', (i) => i.enabled);
+  thrown('settings.setServiceDomain', 'customServiceDomain', 'Custom service domain feature requires a valid license');
+  const nodes = procs['cluster.listNodes']; procs['cluster.listNodes'] = () => (ent().cluster ? nodes() : null);
+  const wc = procs['cluster.addWorkerCommand']; procs['cluster.addWorkerCommand'] = () => (ent().cluster ? wc() : null);
+  Object.assign(procs, {
+    'lemonLicense.getLicensePayload': () => { if (hideLicense) throw Object.assign(new Error('No procedure'), { code: 'NOT_FOUND' }); return st.license.lemon; },
+    'portalLicense.getLicensePayload': () => { if (hideLicense) throw Object.assign(new Error('No procedure'), { code: 'NOT_FOUND' }); return st.license.portal; },
+    'lemonLicense.activate': guard('lemonLicense.activate', (i) => { if (String(i.licenseKey).startsWith('GOOD')) st.license.lemon = { valid: true, meta: { product_id: 108139 } }; return null; }), // неверный ключ панель молча игнорирует
+    'lemonLicense.activateByOrder': guard('lemonLicense.activateByOrder', (i) => { if (i.orderId === '1001') st.license.lemon = { valid: true, meta: { product_id: 108137 } }; return null; }),
+    'lemonLicense.deactivate': guard('lemonLicense.deactivate', () => { st.license.lemon = null; return null; }),
+    'portalLicense.activate': guard('portalLicense.activate', () => { if (!st.portalAvailable) throw bad('License is not valid'); st.license.portal = LICENSES.full.portal; return null; }),
+    'portalLicense.deactivate': guard('portalLicense.deactivate', () => { st.license.portal = null; return null; }),
+  });
   return { procs, state: st };
 }

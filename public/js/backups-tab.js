@@ -13,7 +13,8 @@ function scheduleModal(p, ref, data, item, reload) {
   const names = db ? data.databases : data.mounts.map((m) => m.name);
   const target = names.length ? h('select', { class: 'input' }, names.map((n) => h('option', { value: n, selected: n === (item?.databaseName ?? item?.volumeName) }, n)))
     : h('input', { class: 'input mono', value: item?.databaseName ?? item?.volumeName ?? '', placeholder: db ? 'database' : 'volume' });
-  const enabled = h('input', { type: 'checkbox', checked: item ? !!item.enabled : true });
+  const noSched = db && data.scheduled === false; // без лицензии панель не выполняет расписания баз данных
+  const enabled = h('input', { type: 'checkbox', checked: noSched ? false : item ? !!item.enabled : true, disabled: noSched });
   const cron = h('input', { class: 'input mono', value: item?.schedule ?? '0 2 * * *', maxlength: 60, spellcheck: 'false' });
   const preset = h('select', { class: 'input', onchange: () => { if (preset.value) cron.value = preset.value; } }, PRESETS.map(([c, l]) => h('option', { value: c, selected: c === (PRESETS.some(([x]) => x === cron.value) ? cron.value : '') }, t(l))));
   cron.addEventListener('input', () => { preset.value = PRESETS.some(([c]) => c === cron.value) ? cron.value : ''; });
@@ -21,7 +22,7 @@ function scheduleModal(p, ref, data, item, reload) {
   const path = h('input', { class: 'input mono', value: item?.storageProviderPath ?? `${ref.name}`, placeholder: `${ref.name}`, maxlength: 200 });
   const keep = h('input', { class: 'input', type: 'number', min: 1, max: 3650, value: item?.retention ?? 7 });
   modal({ title: editing ? 'Расписание бэкапа' : 'Новое расписание бэкапа', body: h('div', { class: 'stack' },
-    field(db ? 'База данных' : 'Том', target), h('label', { class: 'check' }, enabled, 'Включено'),
+    field(db ? 'База данных' : 'Том', target), h('label', { class: 'check' }, enabled, 'Включено'), noSched ? h('p', { class: 'muted small' }, 'Без лицензии Easypanel расписание не выполняется, поэтому включить его нельзя.') : null,
     h('div', { class: 'grid-2' }, field('Расписание', preset), field('Cron (минута час день месяц день_недели)', cron)),
     field('Хранилище', prov), field('Папка в хранилище', path, 'Буквы, цифры, / - _ . и пробел.'), db ? field('Сколько копий хранить', keep) : null),
   actions: [{ label: 'Отмена', kind: 'ghost' }, { label: editing ? 'Сохранить' : 'Создать', kind: 'primary', onClick: async () => {
@@ -49,9 +50,11 @@ export function backupsView({ s, ref, state }) {
         try { await post(`/api/panels/${p.id}/pbackups/restore`, { ...ref, databaseName: x.databaseName, path: x.path, storageProviderId: x.storageProviderId, confirm: `${ref.project}/${ref.name}` }); toast(t('Восстановление запущено — ход выполнения смотрите в журнале панели'), 'success'); } catch (e) { toast(e.message, 'error', 8000); }
       };
       clear(box).append(
+        db && d.scheduled === false ? h('div', { class: 'callout warn' }, icon('key'), h('div', null, h('b', null, 'Расписания баз данных требуют лицензии'), h('p', null, 'Без лицензии Easypanel не выполняет бэкапы баз по расписанию. Доступны: запуск копии вручную, журнал копий и восстановление. Тома приложений копируются и без лицензии.'),
+          h('a', { class: 'btn sm', href: `#/panel/${p.id}/settings`, onclick: () => { try { localStorage.setItem('ea-pset-section', 'overview'); } catch { /* приватный режим */ } } }, 'Открыть лицензию панели'))) : null,
         !d.providers.length ? h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Нет хранилища для копий'), h('p', null, 'Сначала добавьте хранилище бэкапов в настройках панели.'),
           h('a', { class: 'btn sm', href: `#/panel/${p.id}/settings`, onclick: () => { try { localStorage.setItem('ea-pset-section', 'infra'); } catch { /* приватный режим */ } } }, 'Открыть настройки панели'))) : null,
-        h('div', { class: 'card psf' }, h('div', { class: 'card-head' }, h('h4', null, db ? 'Бэкапы базы данных' : 'Бэкапы томов'), h('button', { class: 'btn sm', disabled: !d.providers.length, onclick: () => scheduleModal(p, ref, d, null, draw) }, icon('plus', 13), 'Новое расписание')),
+        h('div', { class: 'card psf' }, h('div', { class: 'card-head' }, h('h4', null, db ? 'Бэкапы базы данных' : 'Бэкапы томов'), h('button', { class: 'btn sm', disabled: !d.providers.length || (db && d.scheduled === false), onclick: () => scheduleModal(p, ref, d, null, draw) }, icon('plus', 13), 'Новое расписание')),
           h('p', { class: 'muted small psf-hint' }, db ? 'Копии баз данных по расписанию складываются в выбранное хранилище.' : 'Копии томов приложения по расписанию складываются в выбранное хранилище.'),
           h('div', { class: 'list' }, d.schedules.length ? d.schedules.map((x) => h('div', { class: 'list-item' },
             h('div', { class: 'psf-user' }, h('b', { class: 'mono' }, x.databaseName ?? x.volumeName), h('div', { class: 'chips' }, x.enabled ? badge('включено', 'ok') : badge('выключено'), badge(presetName(x.schedule) ? t(presetName(x.schedule)) : x.schedule), db && x.retention ? badge(`${t('копий')}: ${x.retention}`) : null),

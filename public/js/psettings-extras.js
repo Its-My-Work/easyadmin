@@ -65,17 +65,19 @@ function channelModal(p, r, type, item, reload) {
   actions: [{ label: 'Закрыть', kind: 'ghost' }, { label: 'Отправить тест', onClick: async () => { await post(`/api/panels/${p.id}/pnotify/test`, { ...body(), ...(item ? { id: item.id } : {}) }); toast(t('Тестовое сообщение отправлено'), 'success'); return false; } },
     { label: editing ? 'Сохранить' : 'Создать', kind: 'primary', onClick: async () => { if (editing) await put(`/api/panels/${p.id}/pnotify/${item.id}`, body()); else await post(`/api/panels/${p.id}/pnotify`, body()); toast(t('Сохранено'), 'success'); reload(); } }] });
 }
-export function notifyCard(p) {
+export function notifyCard(p, entry) {
   const box = h('div');
+  const locked = entry?.license?.features?.notifications === false;
   const draw = () => lazy(box, async () => {
     const r = await get(`/api/panels/${p.id}/pnotify`);
     const typeSel = h('select', { class: 'input' }, Object.entries(r.specs).map(([k, v]) => h('option', { value: k }, t(v.label))));
     return card('Каналы уведомлений панели', 'Собственные уведомления Easypanel (деплои, бэкапы, диск, обновления). Каналы EasyAdmin настраиваются в разделе «Настройки» слева.',
+      locked ? h('div', { class: 'callout warn compact' }, icon('key', 14), h('span', { class: 'small' }, 'Каналы уведомлений Easypanel доступны с лицензией (без неё панель молча игнорирует изменения). Активировать её можно на вкладке «Обзор».')) : null,
       h('div', { class: 'list' }, r.channels.length ? r.channels.map((x) => h('div', { class: 'list-item' },
         h('div', { class: 'psf-user' }, h('b', null, x.name || x.id), h('div', { class: 'chips' }, x.type ? badge(t(r.specs[x.type]?.label ?? x.type)) : null, r.events.filter(([k]) => x.events?.[k]?.enabled).map(([, l]) => badge(t(l))))),
-        h('div', { class: 'inline' }, x.type && r.specs[x.type] ? iconBtn('Изменить', 'edit', () => channelModal(p, r, x.type, x, draw)) : null,
-          iconBtn('Удалить', 'trash', async () => { if (await confirmDialog({ title: 'Удалить канал?', message: x.name, danger: true, confirmText: 'Удалить' })) { try { await del(`/api/panels/${p.id}/pnotify/${x.id}?name=${encodeURIComponent(x.name)}`); toast(t('Удалено'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } })))) : [h('div', { class: 'muted pad' }, 'Каналов нет')]),
-      h('div', { class: 'inline psf-foot' }, typeSel, h('button', { class: 'btn sm', onclick: () => channelModal(p, r, typeSel.value, null, draw) }, icon('plus', 13), 'Добавить канал')));
+        h('div', { class: 'inline' }, x.type && r.specs[x.type] && !locked ? iconBtn('Изменить', 'edit', () => channelModal(p, r, x.type, x, draw)) : null,
+          locked ? null : iconBtn('Удалить', 'trash', async () => { if (await confirmDialog({ title: 'Удалить канал?', message: x.name, danger: true, confirmText: 'Удалить' })) { try { await del(`/api/panels/${p.id}/pnotify/${x.id}?name=${encodeURIComponent(x.name)}`); toast(t('Удалено'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } })))) : [h('div', { class: 'muted pad' }, 'Каналов нет')]),
+      locked ? null : h('div', { class: 'inline psf-foot' }, typeSel, h('button', { class: 'btn sm', onclick: () => channelModal(p, r, typeSel.value, null, draw) }, icon('plus', 13), 'Добавить канал')));
   });
   return draw();
 }
@@ -83,8 +85,9 @@ export function notifyCard(p) {
 /* ---------- логотипы интерфейса ---------- */
 const SLOTS = [['lightLogo', 'Логотип (светлая тема)'], ['lightLogoMark', 'Знак (светлая тема)'], ['darkLogo', 'Логотип (тёмная тема)'], ['darkLogoMark', 'Знак (тёмная тема)']];
 const MAX_BYTES = 500 * 1024;
-export function logosCard(p) {
+export function logosCard(p, entry) {
   const box = h('div');
+  const locked = entry?.license?.features?.branding === false;
   const draw = () => lazy(box, async () => {
     const r = await get(`/api/panels/${p.id}/plogos`);
     const upload = (slot) => { const inp = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml', hidden: true, onchange: () => {
@@ -93,10 +96,11 @@ export function logosCard(p) {
       const fr = new FileReader(); fr.onload = async () => { try { await put(`/api/panels/${p.id}/plogos`, { slot, value: fr.result }); toast(t('Логотип загружен'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } }; fr.readAsDataURL(f);
     } }); document.body.append(inp); inp.click(); setTimeout(() => inp.remove(), 60_000); };
     return card('Логотипы интерфейса', 'Показываются в интерфейсе Easypanel. PNG, JPEG, GIF, WebP или SVG до 500 КБ. Загрузка одного логотипа не затрагивает остальные.',
+      locked ? h('div', { class: 'callout warn compact' }, icon('key', 14), h('span', { class: 'small' }, 'Брендинг доступен в Easypanel с лицензией. Активировать её можно на вкладке «Обзор».')) : null,
       h('div', { class: 'list' }, SLOTS.map(([slot, label]) => { const l = r.logos[slot]; return h('div', { class: 'list-item' },
         h('div', { class: 'inline psf-logorow' }, l.preview ? h('img', { src: l.preview, alt: '', class: `psf-logo ${slot.startsWith('dark') ? 'dark' : ''}` }) : h('span', { class: 'psf-logo empty' }), h('div', null, h('b', null, label), h('div', { class: 'muted small' }, l.set ? `${Math.round(l.size / 1024)} КБ` : 'не задан'))),
-        h('div', { class: 'inline' }, h('button', { class: 'btn sm', onclick: () => upload(slot) }, icon('upload', 13), 'Загрузить'),
-          l.set ? iconBtn('Удалить', 'trash', async () => { try { await put(`/api/panels/${p.id}/plogos`, { slot, value: null }); toast(t('Логотип удалён'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } }) : null)); })));
+        h('div', { class: 'inline' }, h('button', { class: 'btn sm', disabled: locked, onclick: () => upload(slot) }, icon('upload', 13), 'Загрузить'),
+          l.set && !locked ? iconBtn('Удалить', 'trash', async () => { try { await put(`/api/panels/${p.id}/plogos`, { slot, value: null }); toast(t('Логотип удалён'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } }) : null)); })));
   });
   return draw();
 }

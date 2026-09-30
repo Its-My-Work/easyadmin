@@ -57,7 +57,8 @@ export function settingCard(p, def, initial, entry) {
     if (d !== wasDirty) { entry.dirty += d ? 1 : -1; wasDirty = d; }
     if (d) { status.textContent = t('Есть несохранённые изменения'); status.className = 'small warn-text'; }
   }
-  async function save() {
+  let save = async () => {};
+  async function saveImpl() {
     const value = read();
     if (def.danger) {
       const ok = await confirmDialog({ title: t(def.title), message: `${t(def.hint)} ${t('Панель')}: «${p.name}».`, danger: true, confirmText: 'Сохранить', typeToConfirm: def.key === 'panelDomain' ? p.name : undefined });
@@ -72,17 +73,27 @@ export function settingCard(p, def, initial, entry) {
       toast(`${t(def.title)}: ${t('сохранено')}`, 'success');
     } catch (e) { status.textContent = e.message; status.className = 'small danger-text'; saveBtn.disabled = false; }
   }
+  save = saveImpl;
   const extra = [];
   if (info.defaultPanelDomain) extra.push(h('div', { class: 'hint' }, `${t('Сгенерированный домен')}: `, h('code', null, info.defaultPanelDomain)));
   if (info.defaultServiceDomain) extra.push(h('div', { class: 'hint' }, `${t('Сгенерированный домен')}: `, h('code', null, info.defaultServiceDomain)));
   if (def.key === 'githubToken') extra.push(h('div', { class: `small ${info.hasToken ? 'ok-text' : 'muted'}` }, info.hasToken ? `● ${t('Токен сохранён')}` : t('Токен не задан')));
   const simple = inputs.every(({ f }) => f.type !== 'textarea');
-  return h('div', { class: 'card psf' },
-    h('div', { class: 'card-head' }, h('h4', null, t(def.title)), def.danger ? h('span', { class: 'badge warn' }, t('осторожно')) : null),
+  // лицензия: без неё функция закрыта (карточка неактивна); у мониторинга, если он уже включён, остаётся возможность выключить
+  const missing = def.needs && entry.license?.features?.[def.needs] === false;
+  const locked = missing && !(def.allowOff && saved.enabled === true);
+  const offOnly = missing && !locked;
+  if (offOnly) { const sv = save; save = async () => { if (read().enabled) { status.textContent = t('Без лицензии можно только выключить'); status.className = 'small danger-text'; return; } return sv(); }; }
+  const card = h('div', { class: `card psf ${locked ? 'psf-locked' : ''}` },
+    h('div', { class: 'card-head' }, h('h4', null, t(def.title)), locked ? h('span', { class: 'badge warn' }, icon('key', 11), t('нужна лицензия')) : def.danger ? h('span', { class: 'badge warn' }, t('осторожно')) : null),
+    locked ? h('div', { class: 'callout compact' }, icon('key', 14), h('span', { class: 'small' }, `${t(entry.license.featureLabels?.[def.needs] ?? def.needs)}: ${t('эта функция доступна в Easypanel только с лицензией. Активировать её можно на вкладке «Обзор».')}`)) : null,
+    offOnly ? h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, t('Лицензии нет: настройку можно только выключить.'))) : null,
     def.hint ? h('p', { class: 'muted small psf-hint' }, t(def.hint)) : null,
     ...extra,
     h('div', { class: simple && inputs.filter(({ f }) => f.type !== 'bool').length > 1 ? 'grid-2 psf-fields' : 'stack-sm psf-fields' }, inputs.map(({ c }) => c.el)),
     h('div', { class: 'inline psf-foot' }, saveBtn, resetBtn, h('span', { class: 'spacer' }), status));
+  if (locked) { card.querySelectorAll('input,select,textarea,button').forEach((el) => { el.disabled = true; }); card.querySelector('.psf-foot')?.remove(); }
+  return card;
 }
 
 /** Карточки всех настроек раздела: значения читаются одним запросом, ошибки отдельных настроек показываются в своей карточке. */
