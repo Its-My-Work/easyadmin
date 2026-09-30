@@ -177,27 +177,33 @@ export function extraRoutes(d) {
     ['GET', '/api/panels/:id/console/paths', async (ctx) => {
       consoleOn();
       const row = panelOr404(ctx.params.id);
+      const server = ctx.url.searchParams.get('server') === '1';
       const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
-      return { known: config.consolePaths, found: wsPaths, related: wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x)) };
+      return { known: server ? config.serverConsolePaths : config.consolePaths, found: wsPaths, related: wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x)) };
     }, { admin: true }],
     ['POST', '/api/panels/:id/console', async (ctx) => {
       consoleOn();
       const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
-      const r = ref({ type: ctx.body.type, project: ctx.body.project, name: ctx.body.name });
+      const server = ctx.body.server === true; // консоль самого сервера (хоста), а не контейнера сервиса
+      const r = server ? { type: null, project: null, name: null } : ref({ type: ctx.body.type, project: ctx.body.project, name: ctx.body.name });
+      const label = server ? 'сервер' : `${r.project}/${r.name}`;
       const c = manager.clientFor(row);
       let paths = [];
       if (ctx.body.path) { need(/^\/[A-Za-z0-9_\/-]{1,80}$/.test(String(ctx.body.path)), 'Некорректный путь WebSocket'); paths = [String(ctx.body.path)]; }
       else {
         const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
-        paths = [...new Set([...config.consolePaths, ...wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x))])];
+        const related = wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x));
+        // для сервера сначала пути со словами server/host/node, для сервиса — service/container
+        const first = related.filter((x) => (server ? /server|host|node|system/i : /service|container|app/i).test(x));
+        paths = [...new Set([...first, ...(server ? config.serverConsolePaths : config.consolePaths), ...related])];
       }
       const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths });
       try {
         const s = await hub.open({ userId: ctx.user.id, urls, headers: { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin }, insecure: !!row.insecure_tls, framing: ctx.body.framing });
-        audit(ctx, { action: 'console.open', panel: row, target: `${r.project}/${r.name}`, detail: `${s.path} · ${s.framing}` });
+        audit(ctx, { action: 'console.open', panel: row, target: label, detail: `${s.path} · ${s.framing}` });
         return s;
       } catch (e) {
-        audit(ctx, { action: 'console.open', panel: row, target: `${r.project}/${r.name}`, ok: false, detail: e.message });
+        audit(ctx, { action: 'console.open', panel: row, target: label, ok: false, detail: e.message });
         return consoleErr(e);
       }
     }, { admin: true }],

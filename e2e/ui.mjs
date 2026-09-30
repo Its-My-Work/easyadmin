@@ -192,6 +192,17 @@ await step('логи и консоль в одном потоке: логи ид
   await p.click('.drawer button:has-text("Отключить терминал")'); await p.waitForSelector('.drawer :text("Терминал отключён")');
   await p.keyboard.press('Escape');
 });
+await step('консоль сервера: пункт меню, подключение, команда, вывод, отключение', async () => {
+  await p.goto(U + '#/'); await p.waitForSelector('.panel-card');
+  await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.term-big');
+  await p.fill('.term-input', 'echo host-e2e'); await p.press('.term-input', 'Enter');
+  await p.waitForSelector('.page :text("Подключено")', { timeout: 12000 });
+  await p.waitForFunction(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo host-e2e') && t.split('\n').some((l) => l.trim() === 'host-e2e'); }, null, { timeout: 6000 });
+  await p.waitForTimeout(300);
+  await p.click('.nav-item:has-text("Обзор")'); await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.term-big');
+  if (!(await p.locator('.term-big').innerText()).includes('host-e2e')) throw new Error('вывод консоли пропал после перехода по страницам');
+  await p.click('.page button:has-text("Отключить терминал")'); await p.waitForSelector('.page :text("Терминал отключён")');
+});
 await step('настройки панели: список процедур, чтение со скрытыми секретами', async () => {
   await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.set-group');
   await p.fill('.page input.search', 'branding'); await p.waitForSelector('.set-group .list-item:has-text("getBasicSettings")');

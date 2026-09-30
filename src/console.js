@@ -31,10 +31,12 @@ export function consoleCandidates(baseUrl, { project, name, type, token, paths }
   const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
   return paths.map((p) => {
     const url = new URL(`${proto}//${u.host}${u.pathname.replace(/\/+$/, '')}${p}`);
-    url.searchParams.set('service', `${project}_${name}`);
-    url.searchParams.set('projectName', project);
-    url.searchParams.set('serviceName', name);
-    if (type) url.searchParams.set('type', type);
+    if (project && name) { // консоль самого сервера — без сервиса
+      url.searchParams.set('service', `${project}_${name}`);
+      url.searchParams.set('projectName', project);
+      url.searchParams.set('serviceName', name);
+      if (type) url.searchParams.set('type', type);
+    }
     url.searchParams.set('token', token);
     url.searchParams.set('cols', '120'); url.searchParams.set('rows', '30');
     return url.toString();

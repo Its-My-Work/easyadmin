@@ -117,6 +117,27 @@ describe('консоль сервиса', () => {
     } finally { cfg.consoleEnabled = true; }
   });
 
+  test('консоль сервера (хоста): открывается без сервиса, свои пути по умолчанию, команды выполняются, в журнале «сервер»', async () => {
+    const id = await addPanel('P-srv', { consolePath: '/ws/serverConsole', consoleFraming: 'json-input' });
+    assert.equal((await api('op', 'POST', `/api/panels/${id}/console`, { server: true })).status, 403);
+    const o = await api('admin', 'POST', `/api/panels/${id}/console`, { server: true });
+    assert.equal(o.status, 200, JSON.stringify(o.data));
+    assert.equal(o.data.path, '/ws/serverConsole'); assert.equal(o.data.framing, 'json-input'); assert.equal(o.data.detected, true);
+    const reading = readUntil(o.data.id, (t) => t.includes('host-ok'));
+    await new Promise((r) => setTimeout(r, 150));
+    await api('admin', 'POST', `/api/console/${o.data.id}/input`, { data: 'echo host-ok\n' });
+    assert.match(await reading, /host-ok/);
+    await api('admin', 'DELETE', `/api/console/${o.data.id}`);
+    const audit = (await api('admin', 'GET', '/api/audit?q=console.open')).data;
+    assert.ok(audit.some((a) => a.action === 'console.open' && a.target === 'сервер' && a.ok === 1));
+    const paths = await api('admin', 'GET', `/api/panels/${id}/console/paths?server=1`);
+    assert.ok(paths.data.known.includes('/ws/serverConsole'));
+    // для сервиса путь /ws/serverConsole не подходит (другие пути по умолчанию) — сервис и хост не путаются
+    assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, { type: 'app', project: 'web', name: 'site' })).status, 502);
+    // без server и без сервиса — ошибка проверки, а не обращение к панели
+    assert.equal((await api('admin', 'POST', `/api/panels/${id}/console`, {})).status, 400);
+  });
+
   test('настройки панели: процедуры из интерфейса панели, чтение/запись/осторожные, парные get→set; только админ', async () => {
     const id = await addPanel('P-set', { newStats: true });
     const r = await api('admin', 'GET', `/api/panels/${id}/settings/procedures`);

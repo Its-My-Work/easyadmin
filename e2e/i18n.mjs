@@ -82,6 +82,12 @@ await step('service console + panel settings', async () => {
   await p.fill('.page input.search', 'systemPrune'); await p.click('.set-group .list-item:has-text("systemPrune") button:has-text("Run")'); await p.waitForSelector('.modal'); await scan('settings one-click'); await esc();
   await p.fill('.page input.search', 'generateApiToken'); await p.click('.set-group .list-item:has-text("generateApiToken") button:has-text("Change")'); await p.waitForSelector('.modal textarea'); await scan('settings edit'); await esc();
 });
+await step('server console page', async () => {
+  await p.goto(U + '#/'); await p.waitForSelector('.panel-card'); await p.click('.nav-item:has-text("Console")'); await p.waitForSelector('.term-big'); await scan('server console idle');
+  await p.click('.page summary:has-text("Connection settings")'); await scan('server console settings');
+  await p.fill('.term-input', 'echo hi'); await p.press('.term-input', 'Enter'); await p.waitForSelector('.page :text("Connected")', { timeout: 12000 }); await p.waitForTimeout(300); await scan('server console connected');
+  await p.click('.page button:has-text("Disconnect terminal")');
+});
 await step('schedules', async () => { await p.goto(U + '#/schedules'); await p.waitForTimeout(300); await scan('schedules empty'); await p.click('button:has-text("New schedule")'); await p.waitForSelector('.modal'); await scan('schedule modal'); await p.selectOption('.modal select >> nth=0', 'system'); await scan('schedule system'); await p.selectOption('.modal select >> nth=2', 'interval').catch(() => {}); await scan('schedule interval'); await p.click('.modal-foot button:has-text("Create")'); await p.waitForTimeout(400); await scan('schedule error'); await esc(); });
 await step('inventory', async () => { await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row, .tbl', { timeout: 15000 }); await scan('images'); await p.click('.seg button:has-text("Certificates")'); await p.waitForSelector('.badge', { timeout: 8000 }); await scan('certs'); await p.locator('button:has-text("Reissue")').first().click(); await p.waitForSelector('.modal'); await scan('reissue confirm'); await esc(); });
 await step('audit', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); });

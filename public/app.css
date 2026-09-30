@@ -312,3 +312,4 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .ll.out { color: #cfe3ff; background: rgba(99, 102, 241, .08); border-left: 2px solid var(--accent); padding-left: 8px; }
 .term-bar { display: flex; align-items: center; gap: 8px; } .term-prompt { font-family: var(--mono, ui-monospace, monospace); font-weight: 700; color: var(--accent); }
 .term-bar .term-input { flex: 1; border-radius: 10px; border-top: 1px solid var(--border2); }
+.term.term-big { min-height: 50vh; max-height: 62vh; border-radius: 10px 10px 0 0; } .term-bar + * { margin-top: 0; }

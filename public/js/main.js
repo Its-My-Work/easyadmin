@@ -7,6 +7,7 @@ import { clear, h, icon, toast, relTime } from './dom.js';
 import { STATUS, store, notify, refresh, subscribe, allServices, can, favorites, recents, svcKey } from './store.js';
 import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './views2.js';
 import { avatar, profilePage, usersPage } from './pages-users.js';
+import { consolePage } from './server-console.js';
 import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead } from './views.js';
 
 const root = document.getElementById('root');
@@ -63,7 +64,7 @@ function buildShell() {
   shell = { nav, panelsList, view, updated, refreshBtn };
 }
 
-const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/users', 'users', 'Пользователи', 'admin'], ['#/settings', 'settings', 'Настройки', 'admin']];
+const NAV = [['#/', 'grid', 'Обзор'], ['#/services', 'layers', 'Все сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/console', 'terminal', 'Консоль', 'admin'], ['#/users', 'users', 'Пользователи', 'admin'], ['#/settings', 'settings', 'Настройки', 'admin']];
 const dotClass = (s) => (s === 'online' ? 'ok' : s === 'degraded' ? 'warn' : s === 'unknown' ? 'muted' : 'err');
 
 function route() {
@@ -110,6 +111,7 @@ function renderView() {
   else if (r.a === 'settings') node = can('admin') ? settingsPage() : profilePage();
   else if (r.a === 'profile') node = profilePage();
   else if (r.a === 'users') node = usersPage();
+  else if (r.a === 'console') node = can('admin') ? consolePage() : dashboard();
   else node = dashboard();
   const scroll = shell.view.scrollTop;
   // фоновое обновление: без анимаций и с одной атомарной заменой содержимого — никакого «моргания»
@@ -126,6 +128,7 @@ function onStoreChange() {
   const r = route();
   const sig = JSON.stringify([store.panels, store.error, store.loadedAt > 0]);
   const typing = shell?.view.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (r.a === 'console' && r.hash === lastHash) { lastSig = sig; return; } // терминал не перерисовываем при обновлении данных
   if (r.hash !== lastHash || (sig !== lastSig && !typing)) { lastHash = r.hash; lastSig = sig; renderView(); }
 }
 
@@ -139,7 +142,7 @@ function openPalette() {
   const go = (hash) => () => { location.hash = hash; };
   const fav = favorites(), rec = recents();
   // порядок страниц — как в боковом меню
-  const pages = [['Обзор', 'grid', '#/'], ['Все сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ['Профиль', 'users', '#/profile'], ...(can('admin') ? [['Пользователи', 'users', '#/users'], ['Настройки', 'settings', '#/settings']] : [])];
+  const pages = [['Обзор', 'grid', '#/'], ['Все сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ['Профиль', 'users', '#/profile'], ...(can('admin') ? [['Консоль сервера', 'terminal', '#/console'], ['Пользователи', 'users', '#/users'], ['Настройки', 'settings', '#/settings']] : [])];
   const items = [
     ...pages.map(([title, ic, hash], order) => ({ title, shown: t(title), hint: 'Страница', ic, group: 'page', order, run: go(hash) })),
     ...(can('admin') ? [{ title: 'Добавить панель', shown: t('Добавить панель'), hint: 'Команда', ic: 'plus', group: 'cmd', order: 0, run: () => panelForm() }] : []),
