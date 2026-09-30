@@ -181,6 +181,19 @@ describe('консоль сервиса', () => {
     } finally { hub.closeAll(); srv.close(); srv.closeAllConnections(); }
   });
 
+  test('диагностика терминала: ответ панели на Upgrade по каждому пути и фрагменты её JS с new WebSocket(…); токены не попадают', async () => {
+    const id = await addPanel('P-rep', { newStats: true, consolePath: '/ws/custom-terminal', consoleFraming: 'raw' });
+    const r = await api('admin', 'GET', `/api/panels/${id}/console/report?server=1`);
+    assert.equal(r.status, 200);
+    const by = Object.fromEntries(r.data.probes.map((p) => [p.path, p]));
+    assert.equal(by['/ws/custom-terminal'].status, 101); assert.equal(by['/ws/custom-terminal'].upgraded, true); assert.match(by['/ws/custom-terminal'].firstBytes, /connected/);
+    assert.ok(Object.values(by).some((p) => p.status === 404 || p.error), 'неверные пути видны с причиной');
+    assert.ok(r.data.snippets.some((x) => x.includes('new WebSocket')), 'фрагмент JS панели');
+    assert.ok(!JSON.stringify(r.data).includes('token=T'), 'токен не в отчёте');
+    assert.equal((await api('op', 'GET', `/api/panels/${id}/console/report?server=1`)).status, 403);
+    assert.equal((await api('admin', 'GET', `/api/panels/${id}/console/report`)).status, 400, 'без server нужен сервис');
+  });
+
   test('форматы ввода — корректный JSON/текст', () => {
     for (const [name, f] of Object.entries(FRAMINGS)) {
       const out = f('echo "hi"\n');

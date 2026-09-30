@@ -1,5 +1,6 @@
 import { get } from './api.js';
 import { clear, field, h, icon, toast } from './dom.js';
+import { showConsoleReport } from './console-report.js';
 import { createTerminal } from './term-core.js';
 import { store } from './store.js';
 
@@ -80,7 +81,7 @@ export function consolePage() {
     } catch (e) { toast(e.message, 'error'); }
   };
   const details = h('details', { class: 'more' }, h('summary', null, 'Параметры подключения'),
-    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel)), h('button', { class: 'btn sm', type: 'button', onclick: discover }, icon('search', 13), 'Найти путь в интерфейсе панели')));
+    h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Путь WebSocket', pathIn), field('Формат ввода', fmtSel)), h('div', { class: 'inline' }, h('button', { class: 'btn sm', type: 'button', onclick: discover }, icon('search', 13), 'Найти путь в интерфейсе панели'), h('button', { class: 'btn sm', type: 'button', onclick: () => showConsoleReport(`/api/panels/${S.panelId}/console/report?server=1`) }, icon('activity', 13), 'Собрать диагностику'))));
   const run = async (cmd) => {
     if (!term.connected) await term.connect({ server: true, path: S.path.trim() || undefined, framing: S.fmt });
     if (!term.connected) return;

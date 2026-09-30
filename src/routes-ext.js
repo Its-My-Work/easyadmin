@@ -9,7 +9,7 @@ import { EVENT_TYPES } from './alerts.js';
 import { CatalogError, createCatalog } from './catalog.js';
 import { ConsoleError, consoleCandidates } from './console.js';
 import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http.js';
-import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
+import { extractLines, logSocketCandidates, openWebSocket, probeWebSocket } from './ws.js';
 import { applyConfig, extractConfig, mergeEnv, parseEnvLines } from './templates.js';
 
 const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
@@ -180,6 +180,21 @@ export function extraRoutes(d) {
       const server = ctx.url.searchParams.get('server') === '1';
       const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
       return { known: server ? config.serverConsolePaths : config.consolePaths, found: wsPaths, related: wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x)) };
+    }, { admin: true }],
+    // одним нажатием собираем всё, что нужно для подбора терминала: как панель отвечает на Upgrade по каждому пути + фрагменты её JS, где создаётся WebSocket
+    ['GET', '/api/panels/:id/console/report', async (ctx) => {
+      consoleOn();
+      const row = panelOr404(ctx.params.id);
+      const q = ctx.url.searchParams; const server = q.get('server') === '1';
+      const r = server ? { type: null, project: null, name: null } : ref({ type: q.get('type'), project: q.get('project'), name: q.get('name') });
+      const c = manager.clientFor(row);
+      const bundle = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ procedures: [], wsPaths: [], wsSnippets: [] }));
+      const related = bundle.wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x));
+      const paths = [...new Set([...related, ...(server ? config.serverConsolePaths : config.consolePaths), ...bundle.wsPaths])].slice(0, 24);
+      const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths });
+      const headers = { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin };
+      const probes = await Promise.all(urls.map(async (u) => ({ path: new URL(u).pathname, ...(await probeWebSocket(u, { headers, insecure: !!row.insecure_tls })) })));
+      return { panel: row.name, mode: server ? 'server' : 'service', versionHint: bundle.procedures.length, wsPathsInUi: bundle.wsPaths, snippets: bundle.wsSnippets, probes };
     }, { admin: true }],
     ['POST', '/api/panels/:id/console', async (ctx) => {
       consoleOn();

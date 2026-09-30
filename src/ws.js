@@ -71,6 +71,38 @@ export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutM
   });
 }
 
+/** Диагностика одного адреса WebSocket: статус ответа на Upgrade, заголовки, начало тела или первые байты после 101. Не бросает. */
+export function probeWebSocket(urlStr, { headers = {}, insecure = false, timeoutMs = 3500, listenMs = 700 } = {}) {
+  return new Promise((resolve) => {
+    let u; try { u = new URL(urlStr); } catch { return resolve({ error: 'некорректный адрес' }); }
+    const secure = u.protocol === 'wss:' || u.protocol === 'https:';
+    const mod = secure ? https : http;
+    const key = crypto.randomBytes(16).toString('base64');
+    let done = false; const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const req = mod.request({
+      host: u.hostname, port: u.port || (secure ? 443 : 80), path: u.pathname + u.search, method: 'GET',
+      headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13', ...headers },
+      agent: false, rejectUnauthorized: !insecure, timeout: timeoutMs,
+    });
+    const pick = (h) => Object.fromEntries(['server', 'content-type', 'location', 'www-authenticate', 'sec-websocket-protocol', 'via', 'x-powered-by'].filter((k) => h[k]).map((k) => [k, String(h[k]).slice(0, 120)]));
+    req.on('timeout', () => { req.destroy(); finish({ error: 'таймаут: панель не ответила на запрос Upgrade (путь молча игнорируется)' }); });
+    req.on('error', (e) => finish({ error: e.code ?? e.message }));
+    req.on('response', (res) => {
+      let body = ''; res.setEncoding('utf8');
+      res.on('data', (c) => { if (body.length < 300) body += c; });
+      res.on('end', () => finish({ status: res.statusCode, headers: pick(res.headers), body: body.slice(0, 300).replace(/\s+/g, ' ') }));
+      res.on('error', () => finish({ status: res.statusCode, headers: pick(res.headers) }));
+    });
+    req.on('upgrade', (res, socket, head) => {
+      const chunks = head?.length ? [Buffer.from(head)] : [];
+      socket.on('data', (d) => { if (Buffer.concat(chunks).length < 600) chunks.push(d); });
+      socket.on('error', () => {});
+      setTimeout(() => { socket.destroy(); finish({ status: 101, upgraded: true, headers: pick(res.headers), firstBytes: Buffer.concat(chunks).toString('utf8').replace(/[\x00-\x1f]+/g, ' ').slice(0, 300) }); }, listenMs);
+    });
+    req.end();
+  });
+}
+
 /** Кандидаты адресов WebSocket логов: точный путь зависит от версии Easypanel, поэтому пробуем по очереди. */
 export function logSocketCandidates(baseUrl, { project, name, token, paths }) {
   const u = new URL(baseUrl);
