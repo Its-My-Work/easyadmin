@@ -174,12 +174,12 @@ await step('каталог Easypanel: поиск, карточка, неподд
   await p.waitForSelector('.toast.success:has-text("развёрнуто")', { timeout: 8000 });
   await p.goto(U + '#/services'); await p.waitForSelector('tr.row:has-text("cat-demo-db")', { timeout: 8000 });
 });
-await step('логи и консоль в одном потоке: логи идут, терминал подключается сам, вывод в том же списке', async () => {
+await step('логи и консоль в одном потоке: логи идут, команда подключает терминал, вывод в том же списке', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'worker' }).first().click(); await p.waitForSelector('.drawer.in');
   await p.click('.drawer .dtab:has-text("Логи и консоль")');
   await p.waitForSelector('.logview .ll:has-text("line one")', { timeout: 8000 }); // логи потекли
-  await p.waitForSelector('.drawer :text("Терминал подключён")', { timeout: 12000 }); // подключился без нажатий
+  await p.click('.drawer button:has-text("Подключить терминал")'); await p.waitForSelector('.drawer :text("Терминал подключён")', { timeout: 12000 }); // подключение по кнопке
   await p.fill('.term-input', 'echo hi-e2e-console'); await p.press('.term-input', 'Enter');
   await p.waitForSelector('.logview .ll.cmd:has-text("echo hi-e2e-console")');
   await p.waitForSelector('.logview .ll.out:text-is("hi-e2e-console")', { timeout: 6000 });

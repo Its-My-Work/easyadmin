@@ -104,7 +104,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
   const re = h('button', { class: 'btn sm ghost', onclick: connectLogs }, icon('refresh', 13), 'Переподключить');
 
   // у compose-сервиса несколько контейнеров: выбор, в каком открыть терминал (у одного контейнера список скрыт)
-  const contSel = h('select', { class: 'input', 'aria-label': 'Контейнер', hidden: true, onchange: () => connectTerm() }); // другой контейнер — переподключение
+  const contSel = h('select', { class: 'input', 'aria-label': 'Контейнер', hidden: true, onchange: () => { if (term.connected) connectTerm(); } }); // другой контейнер — переподключение, если терминал уже подключён
   const loadContainers = async () => {
     try {
       const r = await get(`/api/panels/${s.panelId}/console/containers?${new URLSearchParams(ref)}`);
@@ -112,7 +112,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
       contSel.hidden = r.containers.length < 2;
     } catch { /* панель без списка контейнеров — терминал возьмёт первый */ }
   };
-  const input = h('input', { class: 'input mono term-input', placeholder: 'команда и Enter · ↑↓ история', autocomplete: 'off', spellcheck: 'false', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
+  const input = h('input', { class: 'input mono term-input', placeholder: 'команда и Enter — подключит терминал · ↑↓ история', autocomplete: 'off', spellcheck: 'false', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
   const info = h('div', { class: 'stack-sm' });
   const termBtn = h('button', { class: 'btn sm', onclick: async () => { if (termBtn.dataset.on) { await term.stop(); setTerm(false, 'Терминал отключён'); } else connectTerm(); } });
   const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => send('\x03') }, 'Ctrl+C');
@@ -127,7 +127,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
 
   state.onLeave = () => { es?.close(); term.stop(); };
   connectLogs();
-  if (admin) { setTerm(false, 'Терминал: подключение…'); loadContainers().then(connectTerm); } // терминал сервиса подключается сам, в один поток с логами
+  if (admin) { setTerm(false, 'Терминал не подключён'); loadContainers(); }
   return h('div', { class: 'stack' },
     h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr, re),
     h('div', { class: 'inline' }, logStatus, admin ? h('span', { class: 'muted small' }, '·') : null, admin ? termStatus : null, h('span', { class: 'spacer' }), count),
