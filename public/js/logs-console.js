@@ -15,7 +15,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
   const termStatus = h('span', { class: 'muted small' });
   const count = h('span', { class: 'muted small' });
   const els = new WeakMap();
-  let es = null, paused = false, follow = true, filter = '', buffer = [], all = [];
+  let es = null, follow = true, filter = '', all = [];
   let tpartial = null, pendingEcho = null, hist = [], hi = -1;
 
   const cls = (l) => (/\b(error|fatal|panic|exception|fail(ed)?)\b/i.test(l) ? 'err' : /\bwarn(ing)?\b/i.test(l) ? 'warn' : '');
@@ -25,7 +25,6 @@ export function logsConsole({ s, ref, base, state, admin }) {
   const push = (it) => {
     all.push(it);
     if (all.length > MAX) { const old = all.shift(); els.get(old)?.remove(); }
-    if (paused) { buffer.push(it); count.textContent = `на паузе, накоплено ${buffer.length}`; return; }
     if (shown(it)) view.append(row(it));
     count.textContent = `${all.length} строк`; stick();
   };
@@ -113,14 +112,12 @@ export function logsConsole({ s, ref, base, state, admin }) {
   };
 
   /* ---- элементы ---- */
-  const pauseBtn = h('button', { class: 'btn sm', onclick: () => {
-    paused = !paused; pauseBtn.replaceChildren(icon(paused ? 'play' : 'stop', 13), paused ? 'Продолжить' : 'Пауза');
-    if (!paused) { const b = buffer; buffer = []; b.forEach((it) => shown(it) && view.append(row(it))); count.textContent = `${all.length} строк`; stick(); }
-  } }, icon('stop', 13), 'Пауза');
+  // «Обновить»: строки логов стираются и читаются заново (свежий хвост); команды терминала и их вывод остаются
+  const refreshBtn = h('button', { class: 'btn sm', title: 'Перечитать логи сервиса', onclick: () => { all = all.filter((it) => it.k !== 'log'); redraw(); count.textContent = `${all.length} строк`; retry = 0; replaySeen = null; connectLogs(); } }, icon('refresh', 13), 'Обновить');
   const followBtn = h('button', { class: 'btn sm on', title: 'Прокручивать к новым строкам', onclick: () => { follow = !follow; followBtn.classList.toggle('on', follow); stick(); } }, icon('down', 13), 'Следить');
   const q = h('input', { class: 'input', placeholder: 'Фильтр логов…', oninput: () => { filter = q.value.toLowerCase(); redraw(); } });
   const dl = h('button', { class: 'btn sm ghost', title: 'Скачать', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([all.map((it) => (it.k === 'cmd' ? `$ ${it.text}` : it.text)).join('\n')], { type: 'text/plain' })), download: `${s.name}.log` }); document.body.append(a); a.click(); a.remove(); } }, icon('download', 13));
-  const clr = h('button', { class: 'btn sm ghost', onclick: () => { all = []; buffer = []; tpartial = null; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
+  const clr = h('button', { class: 'btn sm ghost', onclick: () => { all = []; tpartial = null; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
 
   // у compose-сервиса несколько контейнеров: выбор, в каком открыть терминал (у одного контейнера список скрыт)
   const contSel = h('select', { class: 'input', 'aria-label': 'Контейнер', hidden: true, onchange: () => { if (term.connected) connectTerm(); } }); // другой контейнер — переподключение, если терминал уже подключён
@@ -148,7 +145,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
   connectLogs();
   if (admin) { setTerm(false, 'Терминал не подключён'); loadContainers(); }
   return h('div', { class: 'stack' },
-    h('div', { class: 'inline' }, q, pauseBtn, followBtn, dl, clr),
+    h('div', { class: 'inline' }, q, refreshBtn, followBtn, dl, clr),
     h('div', { class: 'inline' }, logStatus, admin ? h('span', { class: 'muted small' }, '·') : null, admin ? termStatus : null, h('span', { class: 'spacer' }), count),
     view,
     admin ? h('div', { class: 'stack-sm' },

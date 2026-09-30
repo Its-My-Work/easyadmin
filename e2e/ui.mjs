@@ -224,7 +224,7 @@ await step('live logs tab', async () => {
   await p.waitForSelector('.logview .ll:has-text("tick")');
   await p.fill('.drawer input[placeholder="Фильтр логов…"]', 'json'); await p.waitForTimeout(200);
   const n = await p.locator('.logview .ll').count(); if (n !== 1) throw new Error('filter shows ' + n);
-  await p.fill('.drawer input[placeholder="Фильтр логов…"]', ''); await p.click('.drawer button:has-text("Пауза")'); await p.waitForTimeout(150);
+  await p.fill('.drawer input[placeholder="Фильтр логов…"]', ''); await p.click('.drawer button:has-text("Обновить")'); await p.waitForSelector('.logview .ll:has-text("line one")', { timeout: 8000 });
   await p.screenshot({ path: 'v3-logs.png' }); await p.keyboard.press('Escape');
 });
 await step('email channel form', async () => {
