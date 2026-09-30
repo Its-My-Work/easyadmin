@@ -25,7 +25,7 @@ const ensureTerm = () => {
   if (S.term) return S.term;
   S.term = createTerminal({ panelId: () => S.panelId, onOut: addOut, onState: (st) => {
     if (st.state === 'connecting') { S.on = false; S.msg = 'Подключение…'; S.cls = 'muted'; S.err = S.warn = null; }
-    else if (st.state === 'on') { S.on = true; S.msg = `● Подключено · ${st.path} · ${st.detected ? st.framing : 'формат не определён'}`; S.cls = st.detected ? 'ok-text' : 'warn-text'; S.warn = st.detected ? null : st; S.err = null; }
+    else if (st.state === 'on') { S.on = true; S.msg = '● Подключено'; S.cls = st.detected ? 'ok-text' : 'warn-text'; S.warn = st.detected ? null : st; S.err = null; }
     else if (st.state === 'off') { S.on = false; S.msg = st.message || 'Отключено'; S.cls = st.failed ? 'danger-text' : 'muted'; }
     else { S.on = false; S.msg = 'Не удалось подключиться'; S.cls = 'danger-text'; S.err = st; }
     apply();

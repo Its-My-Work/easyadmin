@@ -77,7 +77,7 @@ export function logsConsole({ s, ref, base, state, admin }) {
     termBtn.disabled = false;
     if (st.state === 'on') {
       tpartial = null;
-      setTerm(true, `Терминал подключён · ${st.container ? `${st.container} · ` : ''}${st.path} · ${st.detected ? st.framing : 'формат не определён'}`, st.detected ? 'ok-text' : 'warn-text');
+      setTerm(true, st.container ? `Терминал подключён · ${st.container}` : 'Терминал подключён', st.detected ? 'ok-text' : 'warn-text');
       if (!st.detected) info.append(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('div', null, 'Соединение есть, но панель не ответила на пробную команду. Введите команду и посмотрите, отвечает ли терминал; если нет — переподключитесь.', st.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, st.transcript.join('\n'))) : null)));
     } else if (st.state === 'off') setTerm(false, st.message || 'Терминал отключён', st.failed ? 'danger-text' : 'muted');
     else { setTerm(false, 'Не удалось подключиться', 'danger-text'); info.append(errorCallout(st)); }
