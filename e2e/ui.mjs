@@ -174,22 +174,22 @@ await step('каталог Easypanel: поиск, карточка, неподд
   await p.waitForSelector('.toast.success:has-text("развёрнуто")', { timeout: 8000 });
   await p.goto(U + '#/services'); await p.waitForSelector('tr.row:has-text("cat-demo-db")', { timeout: 8000 });
 });
-await step('логи и консоль в одном потоке: логи идут, команда подключает терминал, вывод в том же списке', async () => {
+await step('вкладки «Логи» и «Консоль»: логи идут и фильтруются, терминал подключается по кнопке, вывод в своём окне', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'worker' }).first().click(); await p.waitForSelector('.drawer.in');
-  await p.click('.drawer .dtab:has-text("Логи и консоль")');
+  await p.click('.drawer .dtab:has-text("Логи")');
   await p.waitForSelector('.logview .ll:has-text("line one")', { timeout: 8000 }); // логи потекли
-  await p.click('.drawer button:has-text("Подключить терминал")'); await p.waitForSelector('.drawer :text("Терминал подключён")', { timeout: 12000 }); // подключение по кнопке
+  if ((await p.locator('.term-input').count()) !== 0) throw new Error('терминал не должен быть на вкладке «Логи»');
+  await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.term-big');
+  await p.click('.drawer button:has-text("Подключить терминал")'); await p.waitForSelector('.drawer :text("Подключено")', { timeout: 12000 }); // подключение по кнопке
   await p.fill('.term-input', 'echo hi-e2e-console'); await p.press('.term-input', 'Enter');
-  await p.waitForSelector('.logview .ll.cmd:has-text("echo hi-e2e-console")');
-  await p.waitForSelector('.logview .ll.out:text-is("hi-e2e-console")', { timeout: 6000 });
-  if ((await p.locator('.logview .ll:has-text("tick")').count()) < 1) throw new Error('логи пропали после подключения терминала');
+  await p.waitForFunction(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo hi-e2e-console') && t.split('\n').some((l) => l.trim() === 'hi-e2e-console'); }, null, { timeout: 6000 });
   await p.selectOption('.term-quick', 'pwd'); if ((await p.inputValue('.term-input')) !== 'pwd') throw new Error('быстрая команда не подставилась');
-  await p.fill('.term-input', 'ls 123'); await p.press('.term-input', 'Enter'); await p.waitForSelector('.logview .ll.out:has-text("ls 123: not found")', { timeout: 6000 }); // цифры не переключают вкладки
-  if (!(await p.locator('.drawer .dtab.active').innerText()).includes('Логи')) throw new Error('ввод цифр переключил вкладку');
-  await p.fill('.logview ~ * input.search, .drawer input[placeholder="Фильтр логов…"]', 'tick'); await p.waitForTimeout(200);
-  if ((await p.locator('.logview .ll.out').count()) < 1) throw new Error('фильтр логов скрыл вывод команд');
-  await p.click('.drawer button:has-text("Отключить терминал")'); await p.waitForSelector('.drawer :text("Терминал отключён")');
+  await p.fill('.term-input', 'ls 123'); await p.press('.term-input', 'Enter'); await p.waitForFunction(() => document.querySelector('.term-big')?.textContent.includes('ls 123: not found'), null, { timeout: 6000 });
+  if (!(await p.locator('.drawer .dtab.active').innerText()).includes('Консоль')) throw new Error('ввод цифр переключил вкладку');
+  await p.click('.drawer .dtab:has-text("Логи")'); await p.waitForSelector('.logview .ll:has-text("tick")'); // логи на месте
+  await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.term-big');
+  if (!(await p.locator('.term-big').innerText()).includes('hi-e2e-console')) throw new Error('вывод консоли пропал при переключении вкладок');
   await p.keyboard.press('Escape');
 });
 await step('консоль сервера: пункт меню, подключение, команда, вывод, отключение', async () => {

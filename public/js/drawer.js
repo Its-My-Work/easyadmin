@@ -3,7 +3,8 @@ import { runServiceAction, svcBadge, typeChip } from './components.js';
 import { clear, confirmDialog, field, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
 import { can, favorites, isDb, pushRecent, refresh, store, subscribe, svcKey, toggleFavorite } from './store.js';
-import { logsConsole } from './logs-console.js';
+import { logsView } from './logs-console.js';
+import { consoleView } from './service-console.js';
 import { BUILDS, SOURCES, sourceFields, repoLabel, sourceKind, splitRepoUrl } from './source-form.js';
 import { cloneModal, saveTemplateModal } from './views2.js';
 
@@ -90,7 +91,7 @@ export function openService(s) {
   current.unsub = subscribe(renderHead);
 
   const tabs = [
-    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', can('admin') ? 'Логи и консоль' : 'Логи']]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
+    ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', 'Логи'], ...(can('admin') ? [['console', 'Консоль']] : [])]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
     ['resources', 'Ресурсы'], ...(s.type === 'app' && !ro ? [['source', 'Источник']] : []),
     ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
   ];
@@ -138,7 +139,7 @@ export function openService(s) {
     const svc = d.service || {};
     clear(body);
     if (d.warnings?.length) body.append(h('div', { class: 'callout warn' }, icon('alert'), h('div', null, d.warnings.join('; '))));
-    const views = { overview, env, logs, domains, storage, resources, source, raw, danger, automation };
+    const views = { overview, env, logs, console: console_, domains, storage, resources, source, raw, danger, automation };
     body.append(views[state.tab](svc, d));
   }
 
@@ -295,8 +296,9 @@ export function openService(s) {
       h('p', { class: 'muted small' }, 'У сервиса один источник: активный раскрыт, остальные свёрнуты. Применение другого источника заменит текущий. После смены источника выполните деплой.'));
   }
 
-  /* ---- Логи и консоль (один поток) ---- */
-  function logs() { return logsConsole({ s, ref, base, state, admin: can('admin') }); }
+  /* ---- Логи и Консоль: две вкладки ---- */
+  function logs() { return logsView({ s, ref, base, state }); }
+  function console_() { return consoleView({ s, ref, state }); }
 
   function automation() {
     const box = h('div', { class: 'stack' });
