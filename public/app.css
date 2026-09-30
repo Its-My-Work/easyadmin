@@ -313,3 +313,13 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .term-bar { display: flex; align-items: center; gap: 8px; } .term-prompt { font-family: var(--mono, ui-monospace, monospace); font-weight: 700; color: var(--accent); }
 .term-bar .term-input { flex: 1; border-radius: 10px; border-top: 1px solid var(--border2); }
 .term.term-big { min-height: 50vh; max-height: 62vh; border-radius: 10px 10px 0 0; } .term-bar + * { margin-top: 0; }
+/* таблица сервисов на узком экране: имя целиком (с переносом), проект под ним, статус и действия компактнее */
+@media (max-width: 900px) {
+  .svc-tbl th, .svc-tbl td { padding-left: 8px; padding-right: 8px; }
+  .svc-tbl .w-check { width: 36px; } .svc-tbl .c-name { width: auto; }
+  .svc-tbl .c-status { width: 104px; } .svc-tbl .w-actions { width: 104px; }
+  .svc-tbl .svc-name { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .svc-tbl .svc-name > b, .svc-tbl .svc-name > * { flex: none; max-width: 100%; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .svc-tbl .badge { padding: 2px 8px; }
+  .svc-tbl .qa { gap: 0; }
+}
