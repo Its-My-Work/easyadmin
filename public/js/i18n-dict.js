@@ -339,6 +339,7 @@ export const EN = [
   ['Терминал не подключён', 'Terminal not connected'],
   ['Терминал отключён', 'Terminal disconnected'],
   ['Терминал подключён', 'Terminal connected'],
+  ['команда и Enter · ↑↓ история', 'command and Enter · ↑↓ history'],
   ['Терминал подключён · {0}', 'Terminal connected · {0}'],
   ['Терминал: подключение…', 'Terminal: connecting…'],
   ['Удаляет неиспользуемые образы. Работающие сервисы не затрагиваются.', 'Removes unused images. Running services are not affected.'],

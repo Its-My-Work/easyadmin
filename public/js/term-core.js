@@ -15,6 +15,8 @@ export function createTerminal({ panelId, onOut, onState }) {
     if (cid && remote) { const id = cid; cid = null; try { await del(`/api/console/${id}`); } catch { /* уже закрыт */ } }
     cid = null;
   };
+  // закрытие или обновление вкладки: сеанс на сервере иначе висит до 10 минут простоя и занимает лимит консолей
+  window.addEventListener('pagehide', () => { if (cid) { try { fetch(`/api/console/${cid}`, { method: 'DELETE', keepalive: true, credentials: 'same-origin', headers: { 'X-Requested-With': 'easyadmin' } }); } catch { /* уходим */ } } });
   const connect = async (body = {}) => {
     await stop(); onState({ state: 'connecting' });
     try {
