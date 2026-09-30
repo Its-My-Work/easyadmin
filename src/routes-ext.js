@@ -207,12 +207,25 @@ export function extraRoutes(d) {
       if (ctx.body.path) { need(/^\/[A-Za-z0-9_\/-]{1,80}$/.test(String(ctx.body.path)), 'Некорректный путь WebSocket'); paths = [String(ctx.body.path)]; }
       else {
         const { wsPaths } = await discoverBundle(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => ({ wsPaths: [] }));
-        const related = wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x));
+        // хост и контейнер — разные терминалы: в режиме сервиса пути хоста не пробуем (иначе поднимется лишняя привилегированная оболочка хоста), и наоборот
+        const related = wsPaths.filter((x) => /console|terminal|exec|shell|tty/i.test(x) && (server ? !/container|service/i.test(x) : !/host|server|node|system/i.test(x)));
         // для сервера сначала пути со словами server/host/node, для сервиса — service/container
         const first = related.filter((x) => (server ? /server|host|node|system/i : /service|container|app/i).test(x));
         paths = [...new Set([...first, ...(server ? config.serverConsolePaths : config.consolePaths), ...related])];
       }
-      const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths });
+      // /ws/containerShell работает с конкретным контейнером (id) и программой (base64): берём запущенный контейнер сервиса
+      let extra = {};
+      if (!server && (!ctx.body.path || /containerShell$/.test(ctx.body.path))) {
+        const service = `${r.project}_${r.name}`;
+        const list = await c.query('projects.getDockerContainers', { service }).catch(() => null);
+        const running = (Array.isArray(list) ? list : []).filter((x) => (x.Id ?? x.id) && (x.State ?? x.state ?? 'running') === 'running');
+        const want = ctx.body.container == null ? null : String(ctx.body.container);
+        const pick = want ? running.find((x) => (x.Id ?? x.id) === want) : running[0];
+        if (want && !pick) throw new HttpError(404, 'Контейнер не найден среди запущенных контейнеров сервиса');
+        if (pick) extra = { container: pick.Id ?? pick.id, command: Buffer.from('command -v bash >/dev/null 2>&1 && exec bash || exec sh').toString('base64') };
+        else if (ctx.body.path) throw new HttpError(409, 'У сервиса нет запущенных контейнеров');
+      }
+      const urls = consoleCandidates(c.base, { project: r.project, name: r.name, type: r.type, token: c.token, paths, extra });
       try {
         const s = await hub.open({ userId: ctx.user.id, urls, headers: { Authorization: `Bearer ${c.token}`, Origin: new URL(c.base).origin }, insecure: !!row.insecure_tls, framing: ctx.body.framing });
         audit(ctx, { action: 'console.open', panel: row, target: label, detail: `${s.path} · ${s.framing}` });

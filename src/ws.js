@@ -17,7 +17,7 @@ export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutM
       headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13', ...headers },
       agent: false, rejectUnauthorized: !insecure, timeout: timeoutMs,
     });
-    const ee = new EventEmitter();
+    const ee = new EventEmitter(); ee.early = [];
     ee.on('error', () => {}); // ошибка сокета до подключения слушателя не должна ронять процесс
     req.on('timeout', () => { req.destroy(new Error('таймаут рукопожатия')); });
     req.on('error', reject);
@@ -55,7 +55,10 @@ export function openWebSocket(urlStr, { headers = {}, insecure = false, timeoutM
           if (opcode === 10) continue;
           if (opcode === 1 || opcode === 2 || opcode === 0) {
             frag.push(payload);
-            if (fin) { ee.emit('message', Buffer.concat(frag).toString('utf8')); frag = []; }
+            if (fin) {
+              const text = Buffer.concat(frag).toString('utf8'); frag = [];
+              if (ee.listenerCount('message')) ee.emit('message', text); else ee.early.push(text); // приглашение оболочки часто приходит раньше, чем вызывающий подпишется
+            }
           }
         }
       };

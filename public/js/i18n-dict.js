@@ -283,6 +283,8 @@ export const EN = [
   ['Изменить…', 'Change…'],
   ['Команды выполняются внутри контейнера этого сервиса. В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.', 'Commands run inside this service’s container. The log records opening and closing a session and the number of commands; the commands themselves are not stored.'],
   ['Консоль отключена (EASYADMIN_CONSOLE=off)', 'The console is disabled (EASYADMIN_CONSOLE=off)'],
+  ['Контейнер не найден среди запущенных контейнеров сервиса', 'The container is not among the service\'s running containers'],
+  ['У сервиса нет запущенных контейнеров', 'The service has no running containers'],
   ['Консоль', 'Console'],
   ['Найдено в интерфейсе панели — нажмите, чтобы подставить:', 'Found in the panel UI — click to use:'],
   ['Найти путь в интерфейсе панели', 'Find the path in the panel UI'],

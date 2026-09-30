@@ -21,12 +21,19 @@ export const FRAMINGS = {
   'json-command': (d) => JSON.stringify({ command: d }),
 };
 
+/**
+ * Форматы, которые пробуются автоматически, — только корректный JSON. Терминал Easypanel делает JSON.parse каждого кадра
+ * без обработки ошибок: голый текст (формат raw) роняет весь процесс панели. Поэтому raw — только по явному выбору.
+ * Родной формат панели ({"input": …} → {"output": …}) идёт первым.
+ */
+export const AUTO_FRAMINGS = ['json-input-key', 'json-input', 'json-stdin', 'json-data', 'json-command'];
+
 const MAX_BUFFER = 200_000;
 const MAX_INPUT = 16_384;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Адреса WebSocket терминала (несколько вариантов имён параметров — лишние панель игнорирует). */
-export function consoleCandidates(baseUrl, { project, name, type, token, paths }) {
+export function consoleCandidates(baseUrl, { project, name, type, token, paths, extra = {} }) {
   const u = new URL(baseUrl);
   const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
   return paths.map((p) => {
@@ -37,13 +44,14 @@ export function consoleCandidates(baseUrl, { project, name, type, token, paths }
       url.searchParams.set('serviceName', name);
       if (type) url.searchParams.set('type', type);
     }
+    for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v); // например container и command для /ws/containerShell
     url.searchParams.set('token', token);
     url.searchParams.set('cols', '120'); url.searchParams.set('rows', '30');
     return url.toString();
   });
 }
 
-export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs = 60 * 60_000 } = {}) {
+export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs = 60 * 60_000, readyMs = 10_000 } = {}) {
   const sessions = new Map();
 
   const sweep = setInterval(() => {
@@ -61,26 +69,34 @@ export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs 
     sessions.delete(s.id);
   }
 
+  /** Ждёт первый вывод (приглашение оболочки): пока панель поднимает контейнер терминала, ввод теряется. */
+  async function waitReady(s, ms) {
+    for (let t = 0; t < ms && !s.closed && !s.transcript.length; t += 100) await sleep(100);
+  }
+
   async function detectFraming(s) {
+    await waitReady(s, readyMs);
     await sleep(300); // баннер/приглашение
-    for (const name of Object.keys(FRAMINGS)) {
+    for (const name of AUTO_FRAMINGS) {
       if (s.closed) return null;
       const a = 100 + crypto.randomInt(800); const b = 100 + crypto.randomInt(800);
       const marker = `__EA${a + b}__`;
       s.ws.send(FRAMINGS[name](`echo __EA$((${a}+${b}))__\n`));
-      for (let i = 0; i < 5; i++) { await sleep(120); if (s.buffer.includes(marker)) return name; if (s.closed) return null; }
+      for (let i = 0; i < 8; i++) { await sleep(150); if (s.buffer.includes(marker)) return name; if (s.closed) return null; }
     }
     return null;
   }
 
   function attach(userId, ws, path) {
     const s = { id: crypto.randomBytes(12).toString('hex'), userId, ws, path, framing: 'raw', detected: false, buffer: '', transcript: [], subs: new Set(), commands: 0, createdAt: Date.now(), lastUsed: Date.now(), closed: false, reason: null };
-    ws.on('message', (m) => {
+    const onMessage = (m) => {
       if (s.transcript.length < 20) s.transcript.push(String(m).slice(0, 300));
       const text = outputText(m);
       s.buffer = (s.buffer + text).slice(-MAX_BUFFER);
       emit(s, 'out', { text });
-    });
+    };
+    ws.on('message', onMessage);
+    for (const m of ws.early ?? []) onMessage(m); // кадры, пришедшие до подписки
     ws.on('error', (e) => emit(s, 'status', { state: 'error', message: e.message }));
     ws.on('close', () => end(s, s.reason ?? 'Соединение закрыто панелью'));
     return s;
@@ -118,6 +134,7 @@ export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs 
     for (const s of cands) if (s !== chosen && !s.closed) { s.reason = 'не выбран'; s.subs.clear(); try { s.ws.close(); } catch { /* закрыт */ } s.closed = true; }
     if (!chosen) throw new ConsoleError('Панель закрыла соединение во время подключения', 502, { attempts, transcript: cands.flatMap((c) => c.transcript).slice(0, 20) });
     sessions.set(chosen.id, chosen);
+    if (chosen.framing === 'json-input-key') { try { chosen.ws.send(JSON.stringify({ resize: [120, 30] })); } catch { /* закрыт */ } } // родной формат панели понимает {"resize":[колонки, строки]}
     chosen.buffer = ''; // пробная команда и её вывод не нужны пользователю
     return { id: chosen.id, path: chosen.path, framing: chosen.framing, detected: chosen.detected, transcript: chosen.transcript, attempts };
   }
