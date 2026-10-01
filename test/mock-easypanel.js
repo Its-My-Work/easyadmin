@@ -168,7 +168,9 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
     const trpcErr = (message, code, httpStatus) => message === '' ? send(httpStatus, { error: { json: { code: -32603, data: { code, httpStatus, path: proc } } } }) : flatErrors ? send(httpStatus, { json: { defined: false, code, status: httpStatus, message } }) : send(httpStatus, { error: { json: { message, code: -32001, data: { code, httpStatus, path: proc } } } });
     if (proc === 'auth.login' && req.method === 'POST') return send(200, { result: { data: { json: { token } } } });
-    if (req.headers.authorization !== `Bearer ${token}`) return trpcErr('Unauthorized', 'UNAUTHORIZED', 401);
+    const bearer = req.headers.authorization;
+    const authed = bearer === `Bearer ${token}` || bearer === 'Bearer sess-token' || ps.state.users.some((u) => u.apiToken && bearer === `Bearer ${u.apiToken}`);
+    if (!authed && !proc.startsWith('setup.')) return trpcErr('Unauthorized', 'UNAUTHORIZED', 401);
     let input;
     if (req.method === 'GET') { const q = url.searchParams.get('input'); input = q ? JSON.parse(q).json : undefined; }
     else { const chunks = []; for await (const c of req) chunks.push(c); input = JSON.parse(Buffer.concat(chunks).toString() || '{}').json; }

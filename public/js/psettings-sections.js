@@ -124,7 +124,7 @@ function dockerProgress(p, from, to, reload) {
 async function updateDocker(p, st, reload) {
   const to = st.dockerUpdate?.latest; const from = st.dockerVersion;
   const ok = await confirmDialog({ title: `${t('Обновить Docker')}: ${from} → ${to}`, danger: true, confirmText: 'Обновить Docker', typeToConfirm: p.name,
-    message: `${t('Docker будет обновлён на самом сервере. На время обновления Docker перезапустится: ВСЕ сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут и поднимутся заново. Выполняйте это в удобное время и после резервных копий. Обновление идёт отдельным процессом на сервере (apt или dnf/yum) и продолжится, даже если связь пропадёт.')} ${t('Панель')}: «${p.name}».` });
+    message: `${t('Docker будет обновлён на самом сервере. На время обновления Docker перезапустится: ВСЕ сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут и поднимутся заново. Выполняйте это в удобное время и после резервных копий. Обновление идёт отдельным процессом на сервере (apt) и продолжится, даже если связь пропадёт.')} ${t('Панель')}: «${p.name}».` });
   if (!ok) return;
   try { const r = await post(`/api/panels/${p.id}/pdocker/update`, { confirm: p.name }); toast(t('Обновление Docker запущено'), 'success'); dockerProgress(p, r.from, r.to, reload); } catch (e) { toast(e.message, 'error', 9000); }
 }
@@ -148,7 +148,7 @@ export function system(p, entry, go) {
       card('Обновления', 'Обновление скачивает свежий образ Easypanel и перезапускает панель — она будет недоступна несколько минут. Сервисы продолжают работать.',
         kv('Версия Easypanel', st.version ? h('span', null, st.version, ' ', st.updateAvailable ? badge('есть обновление', 'warn') : badge('актуальная', 'ok')) : '—'),
         kv('Версия Docker', st.dockerVersion ? h('span', null, st.dockerVersion, ' ', st.dockerUpdate?.available ? badge(`доступна ${st.dockerUpdate.latest}`, 'warn') : badge('актуальная', 'ok')) : '—'),
-        st.dockerUpdate?.available ? h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Обновление Docker перезапускает Docker: все сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут. Работает на Debian/Ubuntu (apt) и RHEL-семействе (dnf/yum) с Docker из репозитория Docker.')) : null,
+        st.dockerUpdate?.available ? h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Обновление Docker перезапускает Docker: все сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут. Работает на Ubuntu и Debian (apt) с Docker из репозитория Docker.')) : null,
         dockerNote,
         h('div', { class: 'inline psf-foot' }, h('button', { class: 'btn sm', onclick: draw }, icon('refresh', 13), 'Проверить снова'),
           dockerBtn,

@@ -5,6 +5,7 @@ import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, re
 import { allServices, can, panelById, refresh, store } from './store.js';
 import { lang, setLang, t } from './i18n.js';
 import { sourcePicker } from './source-form.js';
+import { installWizard } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
 import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard } from './views2.js';
 
@@ -415,7 +416,8 @@ export function panelForm(p) {
       return r.ok ? tk : null;
     } catch (e) { result.className = 'test-result err'; result.textContent = `✗ ${e.message}`; return null; }
   };
-  const body = h('div', { class: 'stack' }, field('Название', name), field('Адрес панели', url, 'Например https://panel.example.com или http://1.2.3.4:3000'),
+  let mh = null;
+  const body = h('div', { class: 'stack' }, !edit && can('admin') ? h('div', { class: 'callout compact' }, icon('server', 14), h('span', { class: 'small' }, 'Нет панели? Установите Easypanel на новый сервер по SSH — EasyAdmin сделает всё сам.'), h('button', { class: 'btn sm', type: 'button', onclick: () => { mh?.close(); installWizard(); } }, 'Установить новую…')) : null, field('Название', name), field('Адрес панели', url, 'Например https://panel.example.com или http://1.2.3.4:3000'),
     tokenBox, loginBox, mode,
     h('div', { class: 'grid-2' }, field('Теги', tags, 'Через запятую'), field('Цвет', swatches)),
     h('label', { class: 'check' }, insecure, 'Не проверять TLS-сертификат (самоподписанный)'), result);
@@ -428,5 +430,5 @@ export function panelForm(p) {
       if (edit) await put(`/api/panels/${p.id}`, payload); else await post('/api/panels', payload);
       toast(edit ? 'Сохранено' : 'Панель подключена', 'success'); refresh(true);
     } }];
-  modal({ title: edit ? `Панель · ${p.name}` : 'Подключить панель Easypanel', body, actions });
+  mh = modal({ title: edit ? `Панель · ${p.name}` : 'Подключить панель Easypanel', body, actions });
 }

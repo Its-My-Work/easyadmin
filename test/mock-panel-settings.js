@@ -10,7 +10,7 @@ const LICENSES = {
   lemonFull: { lemon: { valid: true, meta: { product_id: 108143 } }, portal: null },
 };
 
-export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2.36.0', license = 'full', portalAvailable = false, hideLicense = false } = {}) {
+export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2.36.0', license = 'full', portalAvailable = false, hideLicense = false, fresh = false } = {}) {
   const st = {
     panelDomain: { customPanelDomain: null, defaultPanelDomain: 'mock.easypanel.host', serveOnIp: true },
     serviceDomain: { customServiceDomain: null, defaultServiceDomain: 'mock.easypanel.host' },
@@ -20,7 +20,7 @@ export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2
     errorPage: { customCss: null, hideLinks: null, hideLogo: null }, customCode: { customCode: null },
     metrics: null, logs: null, config: '', env: 'CF_TOKEN=secret-value\n',
     builders: [{ Current: true, Name: 'default', Nodes: [{ Status: 'running' }] }],
-    users: [{ id: 'u1', email: 'owner@example.com', admin: true, apiToken: 'owner-token', createdAt: 1 }, { id: 'u2', email: 'dev@example.com', admin: false, apiToken: null, createdAt: 2, twoFactorSecret: 'x' }],
+    users: fresh ? [] : [{ id: 'u1', email: 'owner@example.com', admin: true, apiToken: 'owner-token', createdAt: 1 }, { id: 'u2', email: 'dev@example.com', admin: false, apiToken: null, createdAt: 2, twoFactorSecret: 'x' }],
     nodes: [{ ID: 'n1', Description: { Hostname: 'main' }, Spec: { Role: 'manager' }, Status: { State: 'ready' }, ManagerStatus: { Leader: true } }, { ID: 'n2', Description: { Hostname: 'w1' }, Spec: { Role: 'worker' }, Status: { State: 'ready' } }],
     providers: [{ id: 'p1', name: 'Backups', type: 's3', bucket: 'b1', region: 'eu', accessKeyId: 'AKIA', secretAccessKey: 'shh' }],
     channels: [{ id: 'c1', name: 'Ops', events: ['deploy'], target: { type: 'slack', url: 'https://hooks.example/x' } }],
@@ -28,7 +28,7 @@ export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2
     dbBackups: [{ id: 'b1', projectName: 'web', serviceName: 'pg', databaseName: 'app', enabled: true, schedule: '0 2 * * *', retention: 7, storageProviderId: 'p1', storageProviderPath: 'pg' }],
     volBackups: [{ id: 'v1', projectName: 'web', serviceName: 'site', volumeName: 'data', enabled: true, schedule: '0 3 * * *', storageProviderId: 'p1', storageProviderPath: 'site', storageProviderName: 'Backups' }],
     actions: [{ id: 'a1', type: 'backup', status: 'done', projectName: 'web', serviceName: 'pg', description: 'Backup app', meta: { path: 'pg/2026-09-30.sql.gz', databaseName: 'app', storageProviderId: 'p1' } }, { id: 'a2', type: 'deploy', status: 'done', projectName: 'web', serviceName: 'pg' }],
-    notified: [], twoFactor: false, changed: [], license: structuredClone(typeof license === 'string' ? LICENSES[license] : license), portalAvailable,
+    setupComplete: !fresh, setupInput: null, notified: [], twoFactor: false, changed: [], license: structuredClone(typeof license === 'string' ? LICENSES[license] : license), portalAvailable,
   };
   const ent = () => entitlements(st.license.lemon, st.license.portal).features;
   const guard = (name, fn) => (i) => { if (reject.includes(name)) throw bad(`rejected ${name}`); st.changed.push(name); return fn(i ?? {}); };
@@ -125,6 +125,15 @@ export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2
   const nodes = procs['cluster.listNodes']; procs['cluster.listNodes'] = () => (ent().cluster ? nodes() : null);
   const wc = procs['cluster.addWorkerCommand']; procs['cluster.addWorkerCommand'] = () => (ent().cluster ? wc() : null);
   Object.assign(procs, {
+    'setup.getStatus': () => ({ isComplete: st.setupComplete }),
+    'setup.setup': (i) => {
+      if (st.setupComplete) throw bad('Setup is already completed');
+      if (i.terms !== true) throw bad('You need to agree with our Terms and Conditions');
+      if (!i.email || String(i.password ?? '').length < 8 || !i.source) throw bad('Invalid input');
+      st.setupComplete = true; st.setupInput = { email: i.email, source: i.source, subscribe: i.subscribe, passwordLength: i.password.length };
+      st.users.push({ id: 's1', email: i.email, admin: true, apiToken: null, createdAt: Date.now() });
+      return { token: 'sess-token' };
+    },
     'lemonLicense.getLicensePayload': () => { if (hideLicense) throw Object.assign(new Error('No procedure'), { code: 'NOT_FOUND' }); return st.license.lemon; },
     'portalLicense.getLicensePayload': () => { if (hideLicense) throw Object.assign(new Error('No procedure'), { code: 'NOT_FOUND' }); return st.license.portal; },
     'lemonLicense.activate': guard('lemonLicense.activate', (i) => { if (String(i.licenseKey).startsWith('GOOD')) st.license.lemon = { valid: true, meta: { product_id: 108139 } }; return null; }), // неверный ключ панель молча игнорирует

@@ -38,7 +38,7 @@ export function redactSecrets(v) {
 const LEVEL = { viewer: 0, operator: 1, admin: 2 };
 export const ROLES = Object.keys(LEVEL);
 
-export function createApp({ config, db, key, fetchImpl }) {
+export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs }) {
   const manager = createManager({ db, key, config });
   const alerts = createAlerts({ db, key, config, fetchImpl });
   const oidc = createOidc({ config, fetchImpl });
@@ -112,6 +112,18 @@ export function createApp({ config, db, key, fetchImpl }) {
   };
   const svcRef = (b) => ({ type: b.type, project: nameOf(b.project, 'project'), name: nameOf(b.name, 'service') });
   const asHttp = (e) => (e instanceof HttpError ? e : new HttpError(502, e.message));
+  /** Добавляет панель в базу (общая часть ручного добавления и установки по SSH). */
+  function addPanelRow(b) {
+    const url = normalizeUrl(b.url);
+    const token = str(b.token, 'Укажите API-токен', 4000);
+    const pos = db.prepare('SELECT COALESCE(MAX(position),0)+1 p FROM panels').get().p;
+    const id = db.prepare('INSERT INTO panels (name, url, token_enc, insecure_tls, color, tags, notes, position, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(str(b.name, 'Укажите название', 80), url, manager.sealToken(token), b.insecureTls ? 1 : 0,
+        HEX.test(b.color) ? b.color : '#6366f1', cleanTags(b.tags), String(b.notes ?? '').slice(0, 1000), pos, now()).lastInsertRowid;
+    const row = manager.getRow(Number(id));
+    manager.snapshot(row.id, { force: true }).catch(() => {});
+    return row;
+  }
 
   function provisionOidcUser(p) {
     let u = db.prepare('SELECT * FROM users WHERE oidc_sub = ?').get(p.sub);
@@ -377,16 +389,8 @@ export function createApp({ config, db, key, fetchImpl }) {
     }, { admin: true }],
 
     ['POST', '/api/panels', async (ctx) => {
-      const b = ctx.body;
-      const url = normalizeUrl(b.url);
-      const token = str(b.token, 'Укажите API-токен', 4000);
-      const pos = db.prepare('SELECT COALESCE(MAX(position),0)+1 p FROM panels').get().p;
-      const id = db.prepare('INSERT INTO panels (name, url, token_enc, insecure_tls, color, tags, notes, position, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-        .run(str(b.name, 'Укажите название', 80), url, manager.sealToken(token), b.insecureTls ? 1 : 0,
-          HEX.test(b.color) ? b.color : '#6366f1', cleanTags(b.tags), String(b.notes ?? '').slice(0, 1000), pos, now()).lastInsertRowid;
-      const row = manager.getRow(Number(id));
+      const row = addPanelRow(ctx.body);
       audit(ctx, { action: 'panel.add', panel: row });
-      manager.snapshot(row.id, { force: true }).catch(() => {});
       return manager.publicPanel(row);
     }, { admin: true }],
 
@@ -553,7 +557,7 @@ export function createApp({ config, db, key, fetchImpl }) {
       return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
 
-    ...extraRoutes({ db, key, config, fetchImpl, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
+    ...extraRoutes({ db, key, config, fetchImpl, ssh, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
   ]);
 
   const decryptOf = (row) => manager.clientFor(row).token;

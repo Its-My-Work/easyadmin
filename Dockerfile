@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package.json ./
 COPY src ./src
 COPY public ./public
-RUN mkdir /data && chown node:node /data
+RUN apk add --no-cache openssh-client && mkdir /data && chown node:node /data
 USER node
 VOLUME /data
 EXPOSE 3100
