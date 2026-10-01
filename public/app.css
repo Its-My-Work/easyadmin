@@ -349,3 +349,6 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
   .audit-detail { max-width: none; white-space: normal; overflow: visible; }
 }
 .audit-bar .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; } .audit-bar .seg::-webkit-scrollbar { display: none; }
+
+.svc-panel-m { display: none; } @media (max-width: 900px) { .svc-tbl .svc-panel-m { display: block; font-size: 12px; } .svc-panel-m .panel-chip { color: var(--muted); } }
+.svc-panel-m .panel-chip { font-weight: 500; }
