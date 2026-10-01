@@ -337,3 +337,15 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 @media (max-width: 900px) { .psf { padding: 14px; } .psf-foot .btn { flex: 1 1 auto; } }
 .psf-logo { width: 56px; height: 36px; object-fit: contain; border-radius: 8px; background: #fff; padding: 4px; border: 1px solid var(--border2); flex: none; } .psf-logo.dark { background: #0c0f1a; } .psf-logo.empty { display: inline-block; background: var(--panel2); border-style: dashed; }
 .psf-logorow { flex-wrap: nowrap; min-width: 0; }
+
+/* журнал действий: на узком экране строка — карточка (действие, панель, объект, время и пользователь), а не обрезанная таблица */
+.a-name { font-weight: 650; } .audit-detail { max-width: 420px; }
+@media (max-width: 900px) {
+  .audit-tbl thead { display: none; } .audit-tbl, .audit-tbl tbody { display: block; }
+  .audit-tbl tr { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'act st' 'panel panel' 'obj obj' 'time user'; gap: 4px 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .audit-tbl tr:last-child { border-bottom: 0; } .audit-tbl td { padding: 0; border: 0; display: block; min-width: 0; }
+  .audit-tbl .a-act { grid-area: act; } .audit-tbl .a-st { grid-area: st; justify-self: end; } .audit-tbl .a-panel { grid-area: panel; } .audit-tbl .a-obj { grid-area: obj; overflow-wrap: anywhere; }
+  .audit-tbl .a-obj:empty { display: none; } .audit-tbl .a-time { grid-area: time; font-size: 12px; } .audit-tbl .a-user { grid-area: user; justify-self: end; font-size: 12px; color: var(--muted); }
+  .audit-detail { max-width: none; white-space: normal; overflow: visible; }
+}
+.audit-bar .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; } .audit-bar .seg::-webkit-scrollbar { display: none; }
