@@ -79,8 +79,8 @@ await step('settings: канал уведомлений + бэкап', async () 
   await p.screenshot({ path: 'v2-settings.png', fullPage: true });
 });
 await step('бэкапы: настройки, копия системы, данные, обзор', async () => {
-  await p.goto(U + '#/backups/settings'); await p.waitForSelector('.card:has(h4:has-text("Пароль копий"))');
-  await p.fill('.card:has(h4:has-text("Пароль копий")) input[type=password]', 'correct horse battery'); await p.click('button:has-text("Сохранить")'); await p.waitForSelector('.toast.success');
+  await p.goto(U + '#/backups/settings'); await p.waitForSelector('.card:has(h4:has-text("Пароль копии системы"))');
+  await p.fill('.card:has(h4:has-text("Пароль копии системы")) input[type=password]', 'correct horse battery'); await p.click('button:has-text("Сохранить")'); await p.waitForSelector('.toast.success');
   await p.goto(U + '#/backups/system'); await p.waitForSelector('button:has-text("Создать копию сейчас")');
   await p.click('button:has-text("Создать копию сейчас")'); await p.waitForSelector('.list-item .mono', { timeout: 15000 });
   await p.click('button[aria-label="Проверить копию"]'); await p.waitForSelector('.modal'); await p.click('.modal button:has-text("Продолжить")');
@@ -93,7 +93,9 @@ await step('бэкапы: настройки, копия системы, дан�
   await p.screenshot({ path: 'v2-backups.png' });
   await p.click('.seg-btn:text-is("Не настроено")'); await p.waitForTimeout(200);
   const bad = await p.locator('.tbl tbody tr:has(.badge.err)').count(); if (!bad) throw new Error('нет строк «Не настроено»');
-  await p.locator('.tbl button:has-text("Настроить")').first().click(); await p.waitForSelector('.modal:has-text("Расписание Easypanel")'); await p.keyboard.press('Escape');
+  await p.locator('.tbl button:has-text("Настроить")').first().click(); await p.waitForSelector('.modal:has-text("Расписание Easypanel")'); await p.waitForSelector('.modal:has-text("Копии данных EasyAdmin")');
+  await p.click('.modal-foot button:has-text("Включить защиту")'); await p.waitForSelector('.toast');
+  await p.goto(U + '#/backups/data'); await p.waitForSelector('.card:has(h4:has-text("Расписание Easypanel"))'); await p.waitForSelector('.card:has(h4:has-text("Копии данных EasyAdmin"))');
 });
 await step('drawer nav: вертикальное меню без горизонтальной прокрутки, цифры переключают разделы', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');

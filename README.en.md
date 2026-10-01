@@ -149,16 +149,21 @@ Settings → “Backups”. A `.eabak` file is encrypted with a password (scrypt
 - Storage: the `data/backups` folder or any S3-compatible storage (SigV4, no dependencies).
 - “Verify backup” decrypts and checks integrity. “Restore system” stages the database and restarts EasyAdmin; the previous database is kept in `before-restore-*`. “Restore a service” creates one service from the backup on a chosen panel.
 - On a new server: put the file in `data/backups/`, create an admin and restore.
-- The password cannot be recovered — store it separately.
+- The system copy password cannot be recovered — store it separately.
 
-### Database and volume data (experimental)
+### Database and volume data
 
-The same card has a “Database and volume data” block: Postgres/MySQL/MariaDB/Mongo dumps and volume copies (all services or selected). A script on the panel’s own server makes them (a separate systemd process started through the host console); the data never passes through EasyAdmin. Database passwords stay in the container: the dump reads them from its environment.
+The “Data” tab is the one place to choose **what** to back up (all services or selected) and **how**. There are two methods; turn them on separately or together (the copies then go to two different places). The schedule and the number of copies are shared.
+
+**Easypanel schedule.** EasyAdmin creates the backup schedules in the panels itself (as if you had set them up by hand in the service’s “Backups” tab), updates them when the settings change and removes them when a service leaves the scope or the method is turned off. The panel makes and stores the copies in its own storage; databases are restored from the service card. The storage is chosen per panel (a single one is picked automatically). Your own schedules in the panels are left alone: if a database or volume already has its own enabled schedule, a second one is not created. Easypanel needs a license for database schedules — without it those services are skipped (use EasyAdmin copies for them). The sync runs after the settings are saved and then every few hours; such schedules are marked “auto” in the overview.
+
+**EasyAdmin data copies.** Postgres/MySQL/MariaDB/Mongo/Redis dumps and volume copies. A script on the panel’s own server makes them (a separate systemd process started through the host console); the data never passes through EasyAdmin. Database passwords stay in the container: the dump reads them from its environment.
 
 - Databases and volumes inside compose stacks are found automatically (by container labels); Redis is dumped as RDB.
 - Volumes: “as is”, “pause” (docker pause) or “stop” while copying; the service always comes back (even on failure).
 - Destination: a folder on the panel’s server (default `/var/backups/easyadmin`) or the S3 configured in EasyAdmin (the server uploads via temporary signed links, S3 keys are never sent to it; large volumes go in parts).
-- Backup-password encryption (AES-256), rotation by copy count, free-space check, failure notification.
+- Rotation by copy count, free-space check, failure notification.
+- Database and volume copies are **not** password-encrypted (neither are Easypanel schedules): keep them where access is restricted — folder permissions, S3-side or disk encryption. The password is only for the copy of the EasyAdmin system itself. Old `.enc` files (made by earlier versions with a password) can still be restored — the hint shows the decryption command.
 - “Data backups” → “How to restore” shows restore commands. Volumes are copied live — stop the service for consistency.
 
 ## Contributing and license

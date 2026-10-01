@@ -149,13 +149,60 @@ export function systemTab() {
 }
 
 /* ---------------- вкладка «Данные» ---------------- */
+const scopeIds = (f) => (f.mode === 'all' ? store.panels.map((p) => p.id) : [...new Set(f.keys.map((k) => Number(k.split('|')[0])))]);
+const openPanelStorage = () => { try { localStorage.setItem('ea-pset-section', 'infra'); } catch { /* приватный режим */ } };
+const methodCard = (title, text, on, onToggle, body) => h('section', { class: 'card stack' },
+  h('div', { class: 'card-head' }, h('h4', null, title), h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: on, onchange: (e) => onToggle(e.target.checked) }), 'Включено')),
+  h('p', { class: 'muted small' }, text), on ? body : null);
+
+/** Итог последней сверки расписаний Easypanel с политикой: по каждой панели, что создано, обновлено, удалено и что не вышло. */
+export function epReport(last) {
+  if (!last) return h('div', { class: 'muted small' }, 'Расписания в панелях ещё не создавались.');
+  const bad = last.panels.filter((p) => p.error).length;
+  return h('div', { class: 'stack-sm' },
+    h('div', { class: `callout compact ${bad ? 'err' : ''}` }, icon(bad ? 'alert' : 'activity', 14), h('span', { class: 'small' }, `${t('Последняя сверка')}: ${fmtTime(last.ts)}${bad ? ` · ${t('панелей с ошибкой')}: ${bad}` : ''}`)),
+    ...last.panels.map((p) => h('div', { class: 'small' }, h('b', null, p.name), ` — ${t('создано')} ${p.created}, ${t('обновлено')} ${p.updated}, ${t('удалено')} ${p.removed}`,
+      p.error ? h('div', { class: 'danger-text' }, p.error) : null, ...p.notes.map((n) => h('div', { class: 'muted' }, n)))));
+}
+
+/** Хранилище копий в каждой панели: единственное берётся само, из нескольких нужно выбрать, без хранилищ — сначала добавить его в панели. */
+function storageRows(info, f) {
+  if (!info) return h('div', { class: 'skeleton', style: { height: '40px' } });
+  if (!info.length) return h('div', { class: 'muted small' }, 'Выберите сервисы выше — для их панелей появится выбор хранилища.');
+  return h('div', { class: 'stack-sm' }, h('div', { class: 'small muted' }, 'Куда панели складывают копии'), ...info.map((p) => {
+    if (p.error) return warn(`${p.name}: ${p.error}`);
+    if (!p.providers.length) return warn(`${p.name}: ${t('в панели нет хранилища бэкапов')}. `, h('a', { href: `#/panel/${p.panelId}/settings`, onclick: openPanelStorage }, t('Добавить хранилище')));
+    const cur = f.providers[p.panelId] ?? (p.providers.length === 1 ? p.providers[0].id : '');
+    return h('div', { class: 'list-item' }, h('b', null, p.name), h('span', { class: 'spacer' }),
+      p.providers.length === 1 ? h('span', { class: 'muted small' }, p.providers[0].name || p.providers[0].id)
+        : h('select', { class: 'input', onchange: (e) => { f.providers[p.panelId] = e.target.value; } }, cur ? null : h('option', { value: '' }, t('— выберите —')), p.providers.map((x) => h('option', { value: x.id, selected: x.id === cur }, x.name || x.id))));
+  }));
+}
+
 export function dataTab() {
   return tabShell((d, reload) => {
-    const s = d.settings; const f = { ...s.data, keys: [...s.data.keys] };
+    const s = d.settings; const f = { ...s.data, keys: [...s.data.keys], methods: { ...s.data.methods }, providers: { ...s.data.providers } };
     const view = h('div', { class: 'stack' });
     const progress = h('div'); progress.append(dataProgress());
     const filesBox = h('div', { class: 'stack-sm' });
-    const patch = () => ({ data: { mode: f.mode, keys: f.keys, dest: f.dest, dir: f.dir, encrypt: f.encrypt, keep: f.keep, minFreeMb: f.minFreeMb, consistency: f.consistency } });
+    const epBox = h('div', { class: 'stack-sm' }); let epKey = null;
+    const patch = () => ({ data: { mode: f.mode, keys: f.keys, dest: f.dest, dir: f.dir, keep: f.keep, minFreeMb: f.minFreeMb, consistency: f.consistency, methods: f.methods, providers: Object.fromEntries(Object.entries(f.providers).filter(([, v]) => v)) } });
+    /** Список хранилищ панелей из охвата и итог последней сверки; перечитывается, когда охват изменился. */
+    const drawEp = async (force) => {
+      if (!f.methods.easypanel || f.mode === 'none') return;
+      const ids = scopeIds(f); const key = ids.join(','); if (!force && key === epKey) return; epKey = key;
+      clear(epBox).append(storageRows(null, f));
+      try { const r = await get(`/api/backups/ep${ids.length ? `?panel=${ids.join(',')}` : ''}`); clear(epBox).append(storageRows(r.panels, f), r.managed || r.last ? epReport(r.last) : null); }
+      catch (e) { clear(epBox).append(h('div', { class: 'callout err compact' }, icon('alert', 14), e.message)); }
+    };
+    /** Приводит расписания в панелях к настройкам; вызывается после сохранения и по кнопке. */
+    const syncEp = async () => {
+      try {
+        const r = await post('/api/backups/ep/sync'); const sum = r.panels.reduce((a, p) => ({ c: a.c + p.created, u: a.u + p.updated, d: a.d + p.removed }), { c: 0, u: 0, d: 0 });
+        toast(`${t('Расписания Easypanel')}: ${t('создано')} ${sum.c}, ${t('обновлено')} ${sum.u}, ${t('удалено')} ${sum.d}`, r.ok ? 'success' : 'error', r.ok ? 4000 : 9000);
+      } catch (e) { toast(e.message, 'error', 9000); }
+    };
+    const apply = async () => { if (await saveSettings(patch())) { if (f.methods.easypanel || s.data.methods.easypanel) await syncEp(); reload(); } };
     const showFiles = async () => {
       clear(filesBox).append(h('div', { class: 'skeleton', style: { height: '60px' } }));
       try {
@@ -167,32 +214,39 @@ export function dataTab() {
       } catch (e) { clear(filesBox).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
     };
     const paint = () => {
+      const both = f.methods.easyadmin && f.methods.easypanel;
       clear(view).append(
-        h('p', { class: 'muted small' }, 'Дамп базы (Postgres, MySQL, MariaDB, Mongo, Redis) и копия томов снимаются прямо на сервере панели и не проходят через EasyAdmin. Базы и тома внутри compose-стеков тоже копируются; тома самих баз не копируются — для них есть дамп. Копию данных восстанавливают вручную по подсказке.'),
+        h('p', { class: 'muted small' }, 'Защита баз и томов в одном месте: выберите сервисы и включите один или оба способа. Расписание и число копий общие — меняйте их здесь и на вкладке «Настройки», EasyAdmin сам приведёт к ним расписания в панелях.'),
         scheduleNote(s),
-        seg(f.mode, [['none', 'Не копировать'], ['all', 'Все сервисы'], ['selected', 'Выбранные']], (v) => { f.mode = v; paint(); }),
+        h('div', null, h('div', { class: 'small muted' }, 'Что копировать'),
+          seg(f.mode, [['none', 'Не копировать'], ['all', 'Все сервисы'], ['selected', 'Выбранные']], (v) => { f.mode = v; paint(); drawEp(); })),
         f.mode === 'selected' ? h('div', { class: 'stack-sm' }, store.panels.map((p) => h('details', { class: 'diag', open: f.keys.some((k) => k.startsWith(`${p.id}|`)) }, h('summary', null, h('b', null, p.name)),
-          h('div', { class: 'chips', style: { marginTop: '6px' } }, (p.tree?.projects ?? []).flatMap((pr) => pr.services.filter((sv) => sv.type !== 'compose').map((sv) => { const k = `${p.id}|${pr.name}|${sv.name}`; return h('label', { class: 'chip clickable' }, h('input', { type: 'checkbox', checked: f.keys.includes(k), onchange: (e) => { f.keys = e.target.checked ? [...f.keys, k] : f.keys.filter((x) => x !== k); } }), ` ${pr.name}/${sv.name}`); })))))) : null,
-        f.mode !== 'none' ? h('div', { class: 'stack' },
-          h('div', null, h('div', { class: 'small muted' }, 'Куда сохранять данные'), seg(f.dest, [['host', 'На сервер панели'], ['s3', 'В S3']], (v) => { f.dest = v; paint(); }),
-            h('div', { class: 'small muted' }, f.dest === 'host' ? 'Файлы остаются на сервере каждой панели. Это не спасает от потери самого сервера.' : 'Сервер панели загружает файл сам по временным ссылкам; ключи S3 на него не передаются. Большие тома загружаются частями.'),
-            f.dest === 's3' && !s3Ready(s) ? warn(t('Хранилище S3 не настроено. Заполните его на вкладке «Настройки».')) : null),
-          f.dest === 'host' ? field('Папка на сервере панели', h('input', { class: 'input mono', value: f.dir, oninput: (e) => { f.dir = e.target.value; } })) : null,
-          h('div', { class: 'grid-2' }, field('Сколько копий хранить (на каждый источник)', h('input', { class: 'input', type: 'number', min: 1, max: 30, value: f.keep, oninput: (e) => { f.keep = Number(e.target.value); } })),
-            field('Свободного места не меньше, МБ', h('input', { class: 'input', type: 'number', min: 0, value: f.minFreeMb, oninput: (e) => { f.minFreeMb = Number(e.target.value); } }), 'Если места меньше, копирование не начнётся.')),
-          h('div', null, h('div', { class: 'small muted' }, 'Тома во время копирования'), seg(f.consistency, [['none', 'Как есть'], ['pause', 'Приостановить'], ['stop', 'Остановить']], (v) => { f.consistency = v; paint(); }),
-            h('div', { class: 'small muted' }, f.consistency === 'none' ? 'Копия «на живую»: быстро, но файлы могут измениться во время копирования.' : f.consistency === 'pause' ? 'Сервис замораживается (docker pause) на время копирования тома и затем продолжает работу — данные согласованы, соединения не рвутся.' : 'Сервис останавливается на время копирования тома и затем запускается снова — самый надёжный вариант, но с простоем.')),
-          h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.encrypt, onchange: (e) => { f.encrypt = e.target.checked; } }), 'Шифровать паролем копии (AES-256)'),
-          f.encrypt && !s.hasPassword ? warn(t('Для шифрования нужен пароль копии — задайте его на вкладке «Настройки».')) : null) : null,
-        s.dataLast ? h('div', { class: `callout compact ${s.dataLast.ok ? '' : 'err'}` }, icon(s.dataLast.ok ? 'activity' : 'alert', 14), h('span', { class: 'small' }, `${t('Данные')}: ${fmtTime(s.dataLast.ts)} · ${t('файлов')}: ${s.dataLast.files}${s.dataLast.failed ? ` · ${t('ошибок')}: ${s.dataLast.failed}` : ''}`)) : null,
-        h('div', { class: 'inline' }, h('button', { class: 'btn primary', onclick: () => saveSettings(patch(), reload) }, 'Сохранить'),
-          f.mode !== 'none' ? h('button', { class: 'btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { if (await saveSettings(patch())) { await post('/api/backups/data/run'); toast(t('Копирование данных запущено'), 'success'); progress.replaceChildren(dataProgress(() => { reload(); })); } } catch (er) { toast(er.message, 'error', 9000); } b.disabled = false; } }, icon('database', 14), 'Копировать данные сейчас') : null),
-        progress,
-        h('h4', null, 'Копии данных'),
-        h('div', null, h('button', { class: 'btn sm', onclick: showFiles }, icon('layers', 13), 'Показать копии'), h('span', { class: 'muted small', style: { marginLeft: '10px' } }, t('Список запрашивается у серверов панелей, поэтому загружается по кнопке.'))),
-        filesBox);
+          h('div', { class: 'chips', style: { marginTop: '6px' } }, (p.tree?.projects ?? []).flatMap((pr) => pr.services.filter((sv) => sv.type !== 'compose' || f.methods.easyadmin).map((sv) => { const k = `${p.id}|${pr.name}|${sv.name}`; return h('label', { class: 'chip clickable' }, h('input', { type: 'checkbox', checked: f.keys.includes(k), onchange: (e) => { f.keys = e.target.checked ? [...f.keys, k] : f.keys.filter((x) => x !== k); drawEp(); } }), ` ${pr.name}/${sv.name}`); })))))) : null,
+        f.mode === 'none' ? null : h('div', { class: 'stack' },
+          methodCard('Расписание Easypanel', 'EasyAdmin создаёт расписания в самих панелях — так же, как если бы вы настроили их вручную во вкладке «Бэкапы» сервиса. Копии делает и хранит панель; базы восстанавливаются из карточки сервиса. Подходит для баз Postgres, MySQL, MariaDB, Mongo и для приложений с томами. Свои расписания в панелях EasyAdmin не трогает.', f.methods.easypanel, (v) => { f.methods.easypanel = v; epKey = null; paint(); drawEp(true); }, h('div', { class: 'stack-sm' },
+            epBox, h('div', null, h('button', { class: 'btn sm', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; if (await saveSettings(patch())) { await syncEp(); drawEp(true); } b.disabled = false; } }, icon('refresh', 13), 'Сохранить и сверить расписания')),
+            h('div', { class: 'small muted' }, 'Время запуска — по часам сервера той панели. Расписания, созданные EasyAdmin, при сверке приводятся к этим настройкам: правьте их здесь, а не в панели.'))),
+          methodCard('Копии данных EasyAdmin', 'Дамп базы (Postgres, MySQL, MariaDB, Mongo, Redis) или копия томов снимается прямо на сервере панели и не проходит через EasyAdmin. Базы и тома внутри compose-стеков тоже копируются; тома самих баз не копируются — для них есть дамп. Восстанавливают вручную по подсказке.', f.methods.easyadmin, (v) => { f.methods.easyadmin = v; paint(); }, h('div', { class: 'stack' },
+            h('div', null, h('div', { class: 'small muted' }, 'Куда сохранять данные'), seg(f.dest, [['host', 'На сервер панели'], ['s3', 'В S3']], (v) => { f.dest = v; paint(); }),
+              h('div', { class: 'small muted' }, f.dest === 'host' ? 'Файлы остаются на сервере каждой панели. Это не спасает от потери самого сервера.' : 'Сервер панели загружает файл сам по временным ссылкам; ключи S3 на него не передаются. Большие тома загружаются частями.'),
+              f.dest === 's3' && !s3Ready(s) ? warn(t('Хранилище S3 не настроено. Заполните его на вкладке «Настройки».')) : null),
+            f.dest === 'host' ? field('Папка на сервере панели', h('input', { class: 'input mono', value: f.dir, oninput: (e) => { f.dir = e.target.value; } })) : null,
+            field('Свободного места не меньше, МБ', h('input', { class: 'input', type: 'number', min: 0, value: f.minFreeMb, oninput: (e) => { f.minFreeMb = Number(e.target.value); } }), 'Если места меньше, копирование не начнётся.'),
+            h('div', null, h('div', { class: 'small muted' }, 'Тома во время копирования'), seg(f.consistency, [['none', 'Как есть'], ['pause', 'Приостановить'], ['stop', 'Остановить']], (v) => { f.consistency = v; paint(); }),
+              h('div', { class: 'small muted' }, f.consistency === 'none' ? 'Копия «на живую»: быстро, но файлы могут измениться во время копирования.' : f.consistency === 'pause' ? 'Сервис замораживается (docker pause) на время копирования тома и затем продолжает работу — данные согласованы, соединения не рвутся.' : 'Сервис останавливается на время копирования тома и затем запускается снова — самый надёжный вариант, но с простоем.')))),
+          both ? h('div', { class: 'callout compact' }, icon('shield', 14), h('span', { class: 'small' }, 'Включены оба способа: копии лягут в два разных места, и потеря одного хранилища не оставит без данных.')) : null,
+          !f.methods.easyadmin && !f.methods.easypanel ? warn(t('Не выбран ни один способ — сервисы копироваться не будут.')) : null,
+          field('Сколько копий хранить', h('input', { class: 'input', type: 'number', min: 1, max: 30, value: f.keep, oninput: (e) => { f.keep = Number(e.target.value); } }), 'Одно число для обоих способов (у расписаний Easypanel для томов — как задано в панели).'),
+          h('div', { class: 'callout compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Копии баз и томов паролем не шифруются: храните их там, куда доступ ограничен (права на папку, шифрование на стороне S3 или диска). Пароль нужен только копии самой системы EasyAdmin.'))),
+        s.dataLast ? h('div', { class: `callout compact ${s.dataLast.ok ? '' : 'err'}` }, icon(s.dataLast.ok ? 'activity' : 'alert', 14), h('span', { class: 'small' }, `${t('Копии EasyAdmin')}: ${fmtTime(s.dataLast.ts)} · ${t('файлов')}: ${s.dataLast.files}${s.dataLast.failed ? ` · ${t('ошибок')}: ${s.dataLast.failed}` : ''}`)) : null,
+        h('div', { class: 'inline' }, h('button', { class: 'btn primary', onclick: apply }, 'Сохранить'),
+          f.mode !== 'none' && f.methods.easyadmin ? h('button', { class: 'btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { if (await saveSettings(patch())) { await post('/api/backups/data/run'); toast(t('Копирование данных запущено'), 'success'); progress.replaceChildren(dataProgress(() => { reload(); })); } } catch (er) { toast(er.message, 'error', 9000); } b.disabled = false; } }, icon('database', 14), 'Копировать данные сейчас') : null),
+        f.methods.easyadmin ? progress : null,
+        f.methods.easyadmin ? h('div', { class: 'stack-sm' }, h('h4', null, 'Копии данных EasyAdmin'),
+          h('div', null, h('button', { class: 'btn sm', onclick: showFiles }, icon('layers', 13), 'Показать копии'), h('span', { class: 'muted small', style: { marginLeft: '10px' } }, t('Список запрашивается у серверов панелей, поэтому загружается по кнопке.'))),
+          filesBox) : null);
     };
-    paint();
+    paint(); drawEp(true);
     return view;
   });
 }
@@ -204,19 +258,20 @@ export function backupSettingsTab() {
     const view = h('div', { class: 'stack' });
     const paint = () => {
       clear(view).append(
-        h('p', { class: 'muted small' }, 'Эти настройки общие для вкладок «Система» и «Данные»: когда делать копии, куда загружать в S3 и каким паролем шифровать.'),
+        h('p', { class: 'muted small' }, 'Эти настройки общие для вкладок «Система» и «Данные»: когда делать копии (то же расписание EasyAdmin переносит в расписания Easypanel), куда загружать в S3 и пароль копии системы.'),
         h('section', { class: 'card stack' }, h('div', { class: 'card-head' }, h('h4', null, 'Расписание'),
           h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.enabled, onchange: (e) => { f.enabled = e.target.checked; saveSettings({ enabled: f.enabled }, reload); } }), 'По расписанию')),
           h('div', { class: 'grid-2' }, field('Как часто', seg(f.every, [['daily', 'Каждый день'], ['weekly', 'Раз в неделю']], (v) => { f.every = v; paint(); })),
-            field('Во сколько (час)', h('input', { class: 'input', type: 'number', min: 0, max: 23, value: f.hour, oninput: (e) => { f.hour = Number(e.target.value); } }), `${t('По времени сервера EasyAdmin')}: ${pad2(s.serverTime.hour)}:${pad2(s.serverTime.minute)} (${s.serverTime.tz}). ${t('Пояс меняется в «Настройки → Время сервера».')}`))),
+            field('Во сколько (час)', h('input', { class: 'input', type: 'number', min: 0, max: 23, value: f.hour, oninput: (e) => { f.hour = Number(e.target.value); } }), `${t('По времени сервера EasyAdmin')}: ${pad2(s.serverTime.hour)}:${pad2(s.serverTime.minute)} (${s.serverTime.tz}). ${t('Пояс меняется в «Настройки → Время сервера».')} ${t('У расписаний Easypanel время — по часам сервера панели.')}`))),
         h('section', { class: 'card stack' }, h('h4', null, 'Хранилище S3'),
           h('p', { class: 'muted small' }, 'Нужно, если системные копии хранятся в S3 или копии данных сохраняются в S3.'),
           h('div', { class: 'grid-2' }, field('Адрес (endpoint)', h('input', { class: 'input mono', value: f.s3.endpoint, placeholder: 'https://s3.example.com', oninput: (e) => { f.s3.endpoint = e.target.value; } })), field('Регион', h('input', { class: 'input mono', value: f.s3.region, oninput: (e) => { f.s3.region = e.target.value; } }))),
           h('div', { class: 'grid-2' }, field('Бакет', h('input', { class: 'input mono', value: f.s3.bucket, oninput: (e) => { f.s3.bucket = e.target.value; } })), field('Папка в бакете', h('input', { class: 'input mono', value: f.s3.prefix, oninput: (e) => { f.s3.prefix = e.target.value; } }))),
           h('div', { class: 'grid-2' }, field('Access key', h('input', { class: 'input mono', value: f.s3.accessKey, autocomplete: 'off', oninput: (e) => { f.s3.accessKey = e.target.value; } })), field('Secret key', h('input', { class: 'input mono', type: 'password', autocomplete: 'new-password', placeholder: s.s3.hasSecret ? t('задан — оставьте пустым, чтобы не менять') : '', oninput: (e) => { f.s3.secretKey = e.target.value; } }))),
           h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.s3.pathStyle, onchange: (e) => { f.s3.pathStyle = e.target.checked; } }), 'Адресация path-style (MinIO, большинство совместимых хранилищ)')),
-        h('section', { class: 'card stack' }, h('h4', null, 'Пароль копий'),
-          field('Пароль копии', h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: s.hasPassword ? t('задан — оставьте пустым, чтобы не менять') : t('не короче 8 символов'), oninput: (e) => { f.password = e.target.value; } }), 'Без пароля копию не открыть. Запишите его отдельно: восстановить пароль нельзя.')),
+        h('section', { class: 'card stack' }, h('h4', null, 'Пароль копии системы'),
+          h('p', { class: 'muted small' }, 'Нужен только для копии самого EasyAdmin (вкладка «Система»): в ней лежат ключ приложения и токены панелей, поэтому она всегда шифруется. Копии баз и томов и расписания Easypanel этим паролем не защищаются.'),
+          field('Пароль копии', h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: s.hasPassword ? t('задан — оставьте пустым, чтобы не менять') : t('не короче 8 символов'), oninput: (e) => { f.password = e.target.value; } }), 'Без пароля копию системы не открыть. Запишите его отдельно: восстановить пароль нельзя.')),
         h('div', { class: 'inline' }, h('button', { class: 'btn primary', onclick: () => saveSettings({ every: f.every, hour: f.hour, s3: { endpoint: f.s3.endpoint, region: f.s3.region, bucket: f.s3.bucket, prefix: f.s3.prefix, accessKey: f.s3.accessKey, secretKey: f.s3.secretKey || undefined, pathStyle: f.s3.pathStyle }, ...(f.password ? { password: f.password } : {}) }, reload) }, 'Сохранить')));
     };
     paint();

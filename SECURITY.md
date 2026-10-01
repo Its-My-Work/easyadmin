@@ -15,13 +15,14 @@ EasyAdmin is an administration tool with powerful access. Access to EasyAdmin is
 
 - it stores Easypanel API tokens (encrypted with AES-256-GCM using `EASYADMIN_SECRET` or `data/secret.key`);
 - the **host console**, **panel installation over SSH**, **Docker updates** and **data backups** run commands as root on managed servers;
-- backups contain the application key and panel configurations (environment variables) — they are encrypted with the backup password, which cannot be recovered.
+- the system backup (`.eabak`) contains the application key and panel configurations (environment variables) — it is encrypted with the backup password, which cannot be recovered;
+- database and volume copies (EasyAdmin data copies and Easypanel schedules) are **not** encrypted by EasyAdmin: restrict access to their storage (folder permissions, S3-side or disk encryption).
 
 EasyAdmin даёт права на серверы: доступ к нему равен доступу к серверам. Что важно:
 
 - Не выставляйте EasyAdmin в открытый интернет без HTTPS-прокси; включите `EASYADMIN_SECURE_COOKIES=true`.
 - Включите 2FA для администраторов, ограничьте доступ по сети или через SSO.
-- Храните `EASYADMIN_SECRET` и пароль резервных копий отдельно от самих копий.
+- Храните `EASYADMIN_SECRET` и пароль копии системы отдельно от самих копий; копии баз и томов паролем не шифруются — ограничьте доступ к их хранилищу.
 - Роль `viewer` не видит секреты; `operator` не управляет пользователями и системными настройками.
 
 ## Supported versions / Поддерживаемые версии
