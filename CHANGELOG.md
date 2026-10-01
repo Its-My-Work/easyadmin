@@ -17,6 +17,7 @@
 - Removed the explanatory banner from the server console page.
 - **Rename and move a service** (service card → “Name and project”): uses Easypanel’s own rename (stop → rename/move → start, the original is started back on failure) and updates EasyAdmin’s schedules, webhooks, load history and backup scope. Compose stacks are not supported.
 - **Service history** is a single list of all events with a “Log” button on deployments; panel timestamps without a time zone are now read as UTC (they were shifted by the EasyAdmin time zone, so a deployment could show up twice).
+- Service card → **Overview** is compact: facts in two columns (panel, project and type are already in the card header), domains as chips, shorter notes box and smaller action buttons.
 - **Backups → Overview** is compact: a slim stats strip, one line per service, services grouped by panel.
 - Header: language switch, profile and sign-out moved next to the server time; the sidebar footer is gone.
 - Settings: removed the informational blocks about backups, personal settings and the CI/CD webhooks card (webhooks live in the service’s “Automation” tab).

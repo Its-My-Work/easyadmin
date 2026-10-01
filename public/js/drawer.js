@@ -168,27 +168,28 @@ export function openService(s) {
   /* ---- Обзор ---- */
   function overview(svc, d) {
     const domainsList = asList(d.domains);
-    const notes = h('textarea', { class: 'input', rows: 4, placeholder: 'Заметки о сервисе…' }, pick(svc, 'notes') ?? '');
-    const kv = (k, v) => { if (v == null) return null; const str = String(v); return h('div', { class: 'kv' }, h('span', null, k), str.length > 44 ? h('b', { class: 'clip', title: str, onclick: (e) => e.currentTarget.classList.toggle('open') }, str) : h('b', null, str)); };
+    const notes = h('textarea', { class: 'input', rows: 2, placeholder: 'Заметки о сервисе…' }, pick(svc, 'notes') ?? '');
+    // компактный «факт»: подпись над значением, длинное значение растягивается на всю ширину, полный текст — в подсказке
+    const fact = (k, v) => { if (v == null || v === '') return null; const str = String(v); return h('div', { class: `fact ${str.length > 34 ? 'wide' : ''}` }, h('span', null, k), h('b', { title: str }, str)); };
     const statsBox = h('div');
     get(`${base}/service-stats?project=${encodeURIComponent(s.project)}&name=${encodeURIComponent(s.name)}`).then(({ stats }) => {
       const flat = Object.entries(stats && typeof stats === 'object' ? stats : {}).filter(([, v]) => typeof v === 'number' || typeof v === 'string').slice(0, 8);
-      if (flat.length) statsBox.append(h('div', { class: 'card flat' }, h('h4', { style: { marginBottom: '6px' } }, 'Ресурсы сейчас'), ...flat.map(([k, v]) => kv(k, typeof v === 'number' ? Math.round(v * 100) / 100 : v))));
+      if (flat.length) statsBox.append(h('div', { class: 'card flat' }, h('h4', null, 'Ресурсы сейчас'), h('div', { class: 'facts' }, ...flat.map(([k, v]) => fact(k, typeof v === 'number' ? Math.round(v * 100) / 100 : v)))));
     }).catch(() => {});
     const src = svc.source;
+    // панель, проект и тип уже в шапке карточки, число доменов, томов и портов — в счётчиках вкладок
+    const facts = [
+      fact('Источник', src ? t(SOURCES.find(([id]) => id === sourceKind(src))?.[1] ?? '') : undefined), fact('Образ', pick(src, 'image')),
+      fact('Репозиторий', ['github', 'git'].includes(sourceKind(src || {})) ? `${repoLabel(src)}${splitRepoUrl(src.repo).token ? ' 🔑' : ''}` : undefined),
+      fact('Сборка', svc.build?.type ? `${(BUILDS.find(([id]) => id === svc.build.type) ?? [, svc.build.type])[1]}${svc.build.file ? ` (${svc.build.file})` : ''}` : undefined)].filter(Boolean);
     return h('div', { class: 'stack' },
-      h('div', { class: 'card flat' },
-        kv('Панель', s.panel.name), kv('Проект', s.project), kv('Тип', s.type),
-        kv('Источник', src ? t(SOURCES.find(([id]) => id === sourceKind(src))?.[1] ?? '') : undefined), kv('Образ', pick(src, 'image')),
-        kv('Репозиторий', ['github', 'git'].includes(sourceKind(src || {})) ? `${repoLabel(src)}${splitRepoUrl(src.repo).token ? ' 🔑' : ''}` : undefined),
-        kv('Сборка', svc.build?.type ? `${(BUILDS.find(([id]) => id === svc.build.type) ?? [, svc.build.type])[1]}${svc.build.file ? ` (${svc.build.file})` : ''}` : undefined),
-        ...[['Доменов', domainsList.length], ['Томов', asList(d.mounts).length], ['Портов', asList(d.ports).length]].filter(([, n]) => n > 0).map(([l, n]) => kv(l, n))), // нулевые счётчики не показываем
-      domainsList.length ? h('div', { class: 'stack-sm' }, h('h4', null, 'Домены'), domainsList.map((x) => h('a', { class: 'link-row', href: `${x.https === false ? 'http' : 'https'}://${x.host}`, target: '_blank', rel: 'noopener' }, icon('globe', 14), x.host, icon('external', 12)))) : null,
+      facts.length ? h('div', { class: 'card flat' }, h('div', { class: 'facts' }, ...facts)) : null,
+      domainsList.length ? h('div', { class: 'dom-chips' }, h('span', { class: 'muted small' }, t('Домены')), ...domainsList.map((x) => h('a', { class: 'chip clickable', href: `${x.https === false ? 'http' : 'https'}://${x.host}`, target: '_blank', rel: 'noopener' }, icon('globe', 12), x.host, icon('external', 11)))) : null,
       statsBox,
       field('Заметки', notes),
-      ro ? null : h('div', { class: 'inline' }, h('button', { class: 'btn primary', onclick: () => op('notes', { notes: notes.value }) }, 'Сохранить заметки'),
-        can('admin') ? h('button', { class: 'btn', onclick: () => cloneModal({ ...s, ...live() }) }, icon('copy', 14), 'Клонировать…') : null,
-        can('admin') ? h('button', { class: 'btn', onclick: () => saveTemplateModal({ ...s, ...live() }) }, icon('layers', 14), 'Сохранить как шаблон') : null));
+      ro ? null : h('div', { class: 'inline' }, h('button', { class: 'btn sm primary', onclick: () => op('notes', { notes: notes.value }) }, 'Сохранить заметки'),
+        can('admin') ? h('button', { class: 'btn sm ghost', onclick: () => cloneModal({ ...s, ...live() }) }, icon('copy', 13), 'Клонировать…') : null,
+        can('admin') ? h('button', { class: 'btn sm ghost', onclick: () => saveTemplateModal({ ...s, ...live() }) }, icon('layers', 13), 'Сохранить как шаблон') : null));
   }
 
   /* ---- Окружение ---- */
