@@ -353,8 +353,7 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [timeCard(), loadSettingsCard(), channelsCard(), hooksCard(), backupsLink()] : []),
-    h('a', { class: 'callout link-callout', href: '#/profile' }, icon('users', 16), h('div', null, h('b', null, 'Личные настройки'), h('p', null, 'Пароль, двухфакторная аутентификация, сессии, язык и тема — в профиле.'))));
+    ...(can('admin') ? [timeCard(), loadSettingsCard(), channelsCard(), hooksCard()] : []));
   return page;
 }
 async function move(i, d) {
@@ -363,8 +362,6 @@ async function move(i, d) {
   refresh(true);
 }
 
-/** Резервные копии переехали в отдельный раздел меню — здесь только ссылка. */
-const backupsLink = () => h('a', { class: 'callout link-callout', href: '#/backups' }, icon('database', 16), h('div', null, h('b', null, 'Резервные копии'), h('p', null, 'Теперь отдельный раздел «Бэкапы»: обзор того, что копируется, копии данных баз и томов, копия самого EasyAdmin и общие настройки.')));
 
 export function languageCard() {
   const btn = (code, label) => h('button', { class: `btn ${lang === code ? 'on' : ''}`, onclick: () => setLang(code) }, label);
