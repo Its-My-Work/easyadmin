@@ -5,10 +5,11 @@ import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, re
 import { allServices, can, panelById, refresh, store } from './store.js';
 import { lang, setLang, t } from './i18n.js';
 import { sourcePicker } from './source-form.js';
-import { installWizard } from './panel-install.js';
+import { installFlow } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
 import { loadSettingsCard, loadTab } from './load-tab.js';
-import { backupsCard } from './backups-card.js';
+import { timeCard } from './time-card.js';
+import { actionLabel } from './action-names.js';
 import { channelsCard, cleanAllModal, hooksCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
@@ -199,7 +200,7 @@ async function destroyProject(p, pr) {
 }
 
 /**
- * Создание сервиса. С панелью (p) — со страницы панели; без неё — со страницы «Все сервисы» (панель выбирается в окне).
+ * Создание сервиса. С панелью (p) — со страницы панели; без неё — со страницы «Сервисы» (панель выбирается в окне).
  * Проект можно выбрать из существующих или ввести новый — он будет создан автоматически.
  */
 export function newService(p, project, { preferPanel } = {}) {
@@ -254,7 +255,7 @@ function systemMenu(p) {
     item('Перезагрузить сервер', 'Сервер целиком уйдёт в перезагрузку.', 'reboot', true, p.name)), actions: [{ label: 'Закрыть', kind: 'ghost' }] });
 }
 
-/* ======================= Все сервисы ======================= */
+/* ======================= Сервисы ======================= */
 const allFilter = { q: '', type: 'all', status: 'all', panel: 'all' };
 export function servicesPage() {
   const wrap = h('div');
@@ -268,7 +269,7 @@ export function servicesPage() {
   const count = h('span', { class: 'muted' });
   const filters = serviceFilters(allFilter, draw, { showPanels: true });
   draw();
-  return h('div', { class: 'page' }, pageHead('Все сервисы', count, can('admin') ? h('button', { class: 'btn primary', onclick: () => newService(null, undefined, { preferPanel: allFilter.panel }) }, icon('plus', 15), 'Новый сервис') : null), h('div', { class: 'stack' }, filters, wrap));
+  return h('div', { class: 'page' }, pageHead('Сервисы', count, can('admin') ? h('button', { class: 'btn primary', onclick: () => newService(null, undefined, { preferPanel: allFilter.panel }) }, icon('plus', 15), 'Новый сервис') : null), h('div', { class: 'stack' }, filters, wrap));
 }
 
 import { toggleSelect } from './components.js';
@@ -278,36 +279,7 @@ function selectAll(rows) {
 }
 
 /* ======================= Журнал ======================= */
-export const ACTION_NAMES = { 'service.deploy': 'Деплой', 'service.restart': 'Перезапуск', 'service.start': 'Запуск', 'service.stop': 'Остановка', 'service.destroy': 'Удаление сервиса', 'service.create': 'Создание сервиса', 'service.env': 'Правка env', 'project.create': 'Создание проекта', 'project.destroy': 'Удаление проекта', 'panel.add': 'Панель добавлена', 'panel.update': 'Панель изменена', 'panel.remove': 'Панель удалена', 'service.clone': 'Клонирование', 'service.sourceImage': 'Смена образа', 'system.prune': 'Docker prune', 'system.cleanupImages': 'Очистка образов', 'bulk.env': 'Массово: env', 'bulk.image': 'Массово: образ', 'template.save': 'Шаблон сохранён', 'hook.create': 'Вебхук создан', 'hook.deploy': 'Деплой по вебхуку', 'backup.download': 'Скачан бэкап', 'user.2fa_on': '2FA включена', 'user.2fa_off': '2FA отключена', 'channel.add': 'Канал уведомлений', 'cert.reissue': 'Перевыпуск сертификата', 'profile.update': 'Профиль изменён', 'session.revoke': 'Сессия завершена', 'session.revoke_others': 'Остальные сессии завершены', 'user.create': 'Пользователь создан', 'user.update': 'Пользователь изменён', 'user.delete': 'Пользователь удалён', 'user.sessions_revoked': 'Сессии пользователя завершены', 'user.password_changed': 'Пароль изменён', login: 'Вход', 'login.sso': 'Вход через SSO' };
-const OP_NAMES = { env: 'Правка env', resources: 'Изменение ресурсов', sourceImage: 'Смена образа', sourceGithub: 'Смена источника (GitHub)', sourceGit: 'Смена источника (Git)', domainAdd: 'Домен добавлен', domainUpdate: 'Домен изменён', domainDelete: 'Домен удалён',
-  portAdd: 'Порт открыт', portUpdate: 'Порт изменён', portDelete: 'Порт удалён', mountAdd: 'Монтирование добавлено', mountUpdate: 'Монтирование изменено', mountDelete: 'Монтирование удалено', notes: 'Заметки изменены' };
-const PSET_TITLES = { panelDomain: 'Домен панели', serviceDomain: 'Базовый домен сервисов', letsEncryptEmail: 'E-mail Let’s Encrypt', telemetry: 'Телеметрия', dailyCleanup: 'Ночная очистка Docker', googleAnalytics: 'Google Analytics', githubToken: 'Токен GitHub',
-  brandingBasic: 'Название и цвет сервера', brandingLinks: 'Ссылки в интерфейсе', errorPages: 'Страницы ошибок', customCode: 'Свой код в интерфейсе', metrics: 'Расширенные метрики', logsAgg: 'Сбор логов' };
-const ACTION_NAMES_EXTRA = {
-  'panel.user.create': 'Пользователь Easypanel создан', 'panel.user.update': 'Пользователь Easypanel изменён', 'panel.user.destroy': 'Пользователь Easypanel удалён', 'panel.user.token.generate': 'API-токен пользователя выдан', 'panel.user.token.revoke': 'API-токен пользователя отозван',
-  'panel.account.credentials': 'Смена e-mail и пароля аккаунта', 'panel.2fa.configure': '2FA: настройка', 'panel.2fa.enable': '2FA в панели включена', 'panel.2fa.disable': '2FA в панели отключена',
-  'panel.notify.create': 'Канал уведомлений панели создан', 'panel.notify.update': 'Канал уведомлений панели изменён', 'panel.notify.destroy': 'Канал уведомлений панели удалён', 'panel.notify.test': 'Тест уведомления панели', 'panel.action.kill': 'Действие панели остановлено',
-  'storage.provider.create': 'Хранилище бэкапов создано', 'storage.provider.update': 'Хранилище бэкапов изменено', 'storage.provider.delete': 'Хранилище бэкапов удалено',
-  'backup.db.create': 'Расписание бэкапа базы создано', 'backup.db.update': 'Расписание бэкапа базы изменено', 'backup.db.delete': 'Расписание бэкапа базы удалено', 'backup.db.run': 'Бэкап базы запущен', 'backup.db.restore': 'База восстановлена из бэкапа',
-  'backup.volume.create': 'Расписание бэкапа тома создано', 'backup.volume.update': 'Расписание бэкапа тома изменено', 'backup.volume.delete': 'Расписание бэкапа тома удалено', 'backup.volume.run': 'Бэкап тома запущен',
-  'builder.create': 'Билдер Docker создан', 'builder.use': 'Билдер Docker выбран', 'builder.stop': 'Билдер Docker остановлен', 'builder.remove': 'Билдер Docker удалён',
-  'traefik.config.set': 'Traefik: конфигурация изменена', 'traefik.env.set': 'Traefik: переменные окружения изменены', 'branding.logo': 'Логотип интерфейса панели', 'cluster.node.remove': 'Узел кластера удалён',
-  'license.lemon.activate': 'Лицензия активирована (ключ)', 'license.lemon.order': 'Лицензия активирована (заказ)', 'license.portal.activate': 'Лицензия активирована (Portal)', 'license.lemon.deactivate': 'Лицензия Lemon деактивирована', 'license.portal.deactivate': 'Лицензия Portal деактивирована',
-  'docker.update.start': 'Обновление Docker запущено', 'panel.install.check': 'Проверка сервера для установки', 'panel.install.start': 'Установка Easypanel запущена', 'panel.install.done': 'Easypanel установлена', 'panel.install.failed': 'Установка Easypanel не удалась',
-  'system.cleanupBuilder': 'Очистка кэша сборки', 'system.refreshServerIp': 'Обновление IP сервера', 'system.restartTraefik': 'Перезапуск Traefik', 'system.updatePanel': 'Обновление Easypanel', 'system.restartPanel': 'Перезапуск Easypanel', 'system.reboot': 'Перезагрузка сервера',
-  'console.open': 'Консоль открыта', 'console.close': 'Консоль закрыта',
-};
-/** Человекочитаемое название действия из журнала (service.*, bulk.*, schedule.* и т. д.). */
-export function actionLabel(action) {
-  if (ACTION_NAMES[action]) return ACTION_NAMES[action];
-  if (ACTION_NAMES_EXTRA[action]) return ACTION_NAMES_EXTRA[action];
-  if (String(action).startsWith('psettings.')) { const k = String(action).slice(10); return `${t('Настройка панели')}: ${t(PSET_TITLES[k] ?? k)}`; }
-  const [ns, rest] = String(action).split('.');
-  if (ns === 'service' && OP_NAMES[rest]) return OP_NAMES[rest];
-  if (ns === 'bulk') return `Массово: ${actionLabel(`service.${rest}`)}`;
-  if (ns === 'schedule') return rest === 'add' ? 'Расписание создано' : `Расписание: ${actionLabel(`service.${rest}`)}`;
-  return action;
-}
+export { actionLabel };
 /* ---- журнал действий: фильтры ---- */
 const AUDIT_CATS = [['', 'Все действия'], ['service.,bulk.,project.', 'Сервисы и проекты'], ['panel.', 'Панели'], ['psettings.,panel.user,panel.notify,panel.2fa,panel.account,storage.,backup.,builder.,traefik.,branding.,license.,docker.,cluster.,system.,panel.install', 'Настройки Easypanel'], ['cert.', 'Сертификаты'], ['schedule.', 'Расписания'],
   ['user.,profile.,session.', 'Пользователи и профиль'], ['login,login.sso', 'Входы'], ['template.,hook.,channel.,backup.,raw.', 'Шаблоны, вебхуки, каналы, бэкап']];
@@ -358,7 +330,7 @@ export function auditPage() {
       const objectOf = (r) => (r.target && r.target !== r.panelName ? r.target : '');
       clear(box).append(rows.length ? h('table', { class: 'tbl audit-tbl' }, h('thead', null, h('tr', null, ['Время', 'Пользователь', 'Действие', 'Панель', 'Сервис / объект', ''].map((x) => h('th', null, x)))),
         h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'muted nowrap a-time' }, fmtTime(r.ts)), h('td', { class: 'a-user' }, r.username ?? '—'),
-          h('td', { class: 'a-act' }, h('b', { class: 'a-name' }, actionLabel(r.action)), r.detail ? h('div', { class: `small audit-detail ${r.ok ? 'muted' : 'danger-text'}`, title: r.detail }, r.detail) : null),
+          h('td', { class: 'a-act' }, h('b', { class: 'a-name' }, actionLabel(r.action)), r.detail ? h('div', { class: `small audit-detail ${r.ok ? 'muted' : 'danger-text open'}`, title: r.ok ? 'Нажмите, чтобы показать целиком' : null, onclick: r.ok ? (e) => e.currentTarget.classList.toggle('open') : null }, r.detail) : null),
           h('td', { class: 'a-panel' }, panelCell(r)), h('td', { class: 'mono small a-obj' }, objectOf(r) ? h('span', null, h('span', { class: 'muted a-objlbl' }, `${t('Объект')}: `), objectOf(r)) : ''),
           h('td', { class: 'a-st' }, r.ok ? h('span', { class: 'badge ok' }, 'ок') : h('span', { class: 'badge err', title: r.detail }, 'ошибка')))))) : empty('Ничего не найдено', 'Измените фильтры.'));
     }).catch((e) => { if (my === seq) clear(box).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); });
@@ -381,7 +353,7 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [loadSettingsCard(), channelsCard(), hooksCard(), backupsCard()] : []),
+    ...(can('admin') ? [timeCard(), loadSettingsCard(), channelsCard(), hooksCard(), backupsLink()] : []),
     h('a', { class: 'callout link-callout', href: '#/profile' }, icon('users', 16), h('div', null, h('b', null, 'Личные настройки'), h('p', null, 'Пароль, двухфакторная аутентификация, сессии, язык и тема — в профиле.'))));
   return page;
 }
@@ -390,6 +362,9 @@ async function move(i, d) {
   await Promise.all([put(`/api/panels/${a.id}`, { position: i + d + 1 }), put(`/api/panels/${b.id}`, { position: i + 1 })]);
   refresh(true);
 }
+
+/** Резервные копии переехали в отдельный раздел меню — здесь только ссылка. */
+const backupsLink = () => h('a', { class: 'callout link-callout', href: '#/backups' }, icon('database', 16), h('div', null, h('b', null, 'Резервные копии'), h('p', null, 'Теперь отдельный раздел «Бэкапы»: обзор того, что копируется, копии данных баз и томов, копия самого EasyAdmin и общие настройки.')));
 
 export function languageCard() {
   const btn = (code, label) => h('button', { class: `btn ${lang === code ? 'on' : ''}`, onclick: () => setLang(code) }, label);
@@ -437,11 +412,26 @@ export function panelForm(p) {
       return r.ok ? tk : null;
     } catch (e) { result.className = 'test-result err'; result.textContent = `✗ ${e.message}`; return null; }
   };
-  let mh = null;
-  const body = h('div', { class: 'stack' }, !edit && can('admin') ? h('div', { class: 'callout compact' }, icon('server', 14), h('span', { class: 'small' }, 'Нет панели? Установите Easypanel на новый сервер по SSH — EasyAdmin сделает всё сам.'), h('button', { class: 'btn sm', type: 'button', onclick: () => { mh?.close(); installWizard(); } }, 'Установить новую…')) : null, field('Название', name), field('Адрес панели', url, 'Например https://panel.example.com или http://1.2.3.4:3000'),
+  let mh = null; let flow = null;
+  const connectBox = h('div', { class: 'stack' }, field('Название', name), field('Адрес панели', url, 'Например https://panel.example.com или http://1.2.3.4:3000'),
     tokenBox, loginBox, mode,
     h('div', { class: 'grid-2' }, field('Теги', tags, 'Через запятую'), field('Цвет', swatches)),
     h('label', { class: 'check' }, insecure, 'Не проверять TLS-сертификат (самоподписанный)'), result);
+  // новую панель можно либо подключить (есть адрес и токен), либо сначала установить на чистый сервер по SSH — форма меняется переключателем
+  const installBox = h('div', { class: 'stack', hidden: true });
+  const canInstall = !edit && can('admin');
+  const seg = h('div', { class: 'seg seg-wide', role: 'tablist' });
+  let pane = 'connect';
+  const setPane = (v) => {
+    pane = v;
+    connectBox.hidden = v !== 'connect'; installBox.hidden = v !== 'install';
+    const foot = mh?.el.querySelector('.modal-foot'); if (foot) foot.hidden = v === 'install'; // у установки свои кнопки в шагах мастера
+    if (v === 'install' && !flow) flow = installFlow(installBox, { close: () => mh.close() });
+    drawSeg();
+  };
+  const drawSeg = () => clear(seg).append(...[['connect', 'Подключить Easypanel'], ['install', 'Установить и подключить Easypanel']].map(([v, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': pane === v ? 'true' : 'false', class: `seg-btn ${pane === v ? 'active' : ''}`, onclick: () => setPane(v) }, l)));
+  drawSeg();
+  const body = h('div', { class: 'stack' }, canInstall ? seg : null, connectBox, installBox);
   const actions = [
     ...(edit ? [{ label: 'Удалить', kind: 'danger', close: false, onClick: async (close) => { if (await confirmDialog({ title: 'Удалить панель?', message: `«${p.name}» будет отключена от EasyAdmin. Сама панель и сервисы не затрагиваются.`, danger: true, confirmText: 'Удалить' })) { await del(`/api/panels/${p.id}`); toast('Панель удалена', 'success'); close(); go('#/'); refresh(true); } return false; } }] : []),
     { label: 'Проверить', close: false, onClick: async () => { await test(); return false; } },
@@ -451,5 +441,5 @@ export function panelForm(p) {
       if (edit) await put(`/api/panels/${p.id}`, payload); else await post('/api/panels', payload);
       toast(edit ? 'Сохранено' : 'Панель подключена', 'success'); refresh(true);
     } }];
-  mh = modal({ title: edit ? `Панель · ${p.name}` : 'Подключить панель Easypanel', body, actions });
+  mh = modal({ title: edit ? `Панель · ${p.name}` : 'Добавить панель Easypanel', body, actions, wide: canInstall, onClose: () => flow?.dispose() });
 }

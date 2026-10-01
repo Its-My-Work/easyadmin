@@ -1,5 +1,5 @@
 import { get, post } from './api.js';
-import { clear, confirmDialog, h, host, icon, modal, toast } from './dom.js';
+import { clear, confirmDialog, h, host, icon, modal, spinner, toast } from './dom.js';
 import { STATUS, TYPE_LABEL, allServices, can, favorites, isDb, notify, refresh, store, svcKey } from './store.js';
 
 export const statusBadge = (status) => {
@@ -35,6 +35,33 @@ const ACTION_TEXT = {
   restart: ['Перезапуск', 'Сервис перезапущен'], destroy: ['Удаление', 'Сервис удалён'],
 };
 
+/** Действия, которые выполняются прямо сейчас: svcKey → действие. По нему кнопки показывают кружок вместо значка. */
+const busy = new Map();
+export const busyAction = (s) => busy.get(svcKey(s));
+const paintBusy = (key) => document.querySelectorAll('.qa[data-key]').forEach((el) => { if (el.dataset.key === key) el._fill?.(); });
+
+const TERMINAL = /succe|done|complet|finish|\bok\b|fail|error|cancel|kill|abort|stop/i;
+const FAILED = /fail|error/i;
+const isActive = (x) => !!x.status && !TERMINAL.test(x.status) && !x.finishedAt;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const deployItems = async (s) => {
+  const r = await get(`/api/panels/${s.panelId}/service/history?${new URLSearchParams({ type: s.type, project: s.project, name: s.name })}`);
+  return r.items.filter((x) => x.source === 'panel' && /deploy/i.test(x.kind) && x.id);
+};
+/** Деплой в панели идёт в фоне: ждём, пока новое действие по сервису (его нет среди известных до запуска) не завершится. Возвращает его статус или null, если проследить не удалось. */
+async function waitDeploy(s, known, { pollMs = 2000, maxMs = 600_000, giveUpPolls = 5 } = {}) {
+  const t0 = Date.now(); let misses = 0;
+  await wait(Math.min(1500, pollMs));
+  while (Date.now() - t0 < maxMs) {
+    let list; try { list = await deployItems(s); } catch { return null; }
+    const fresh = list.find((x) => !known.has(x.id));
+    if (fresh && !isActive(fresh)) return fresh.status || 'done';
+    if (!fresh && ++misses >= giveUpPolls) return null; // панель не показала новый деплой — не гадаем
+    await wait(pollMs);
+  }
+  return null;
+}
+
 export async function runServiceAction(s, action) {
   if (action === 'destroy') {
     const ok = await confirmDialog({
@@ -44,27 +71,45 @@ export async function runServiceAction(s, action) {
     });
     if (!ok) return false;
   }
+  const key = svcKey(s);
+  if (busy.has(key)) return false; // уже что-то выполняется
   const [ing, done] = ACTION_TEXT[action];
   toast(`${ing}: ${s.name}…`);
+  busy.set(key, action); paintBusy(key);
   try {
+    const known = action === 'deploy' ? await deployItems(s).then((l) => new Set(l.map((x) => x.id))).catch(() => null) : null;
     await post(`/api/panels/${s.panelId}/service/action`, { type: s.type, project: s.project, name: s.name, action });
-    toast(`${done}: ${s.name}`, 'success');
-    refresh(true, { silent: true });
+    let tracked = null;
+    if (known) {
+      tracked = await waitDeploy(s, known);
+      if (tracked && FAILED.test(tracked)) { toast(`${s.name}: деплой завершился с ошибкой — лог во вкладке «История»`, 'error', 9000); await refresh(true, { silent: true }); return false; }
+    }
+    toast(`${tracked ? 'Деплой завершён' : done}: ${s.name}`, 'success');
+    await refresh(true, { silent: true });
     return true;
   } catch (e) { toast(`${s.name}: ${e.message}`, 'error', 7000); return false; }
+  finally { busy.delete(key); paintBusy(key); }
 }
 
-/** Компактные кнопки быстрых действий. */
+/** Компактные кнопки быстрых действий. Пока действие выполняется, его значок заменён кружком, остальные кнопки неактивны. */
 export function quickActions(s) {
   if (!can('operator')) return h('span');
-  const btn = (action, ic, title, cls = '') => h('button', {
-    class: `btn icon ghost sm ${cls}`, title, 'aria-label': title,
-    onclick: (e) => { e.stopPropagation(); runServiceAction(s, action); },
-  }, icon(ic, 15));
-  return h('div', { class: 'qa' },
-    isDb(s.type) ? h('span', { class: 'qa-gap' }) : btn('deploy', 'rocket', 'Деплой'),
-    btn('restart', 'rotate', 'Перезапустить'),
-    s.enabled ? btn('stop', 'stop', 'Остановить') : btn('start', 'play', 'Запустить'));
+  const key = svcKey(s);
+  const el = h('div', { class: 'qa', 'data-key': key });
+  el._fill = () => {
+    const running = busy.get(key);
+    const btn = (action, ic, title) => {
+      const on = running === action;
+      return h('button', { class: `btn icon ghost sm ${on ? 'busy' : ''}`, title: on ? `${ACTION_TEXT[action][0]}…` : title, 'aria-label': title, disabled: !!running && !on,
+        onclick: (e) => { e.stopPropagation(); if (!running) runServiceAction(s, action); } }, on ? spinner(15) : icon(ic, 15));
+    };
+    el.replaceChildren(
+      isDb(s.type) ? h('span', { class: 'qa-gap' }) : btn('deploy', 'rocket', 'Деплой'),
+      btn('restart', 'rotate', 'Перезапустить'),
+      s.enabled ? btn('stop', 'stop', 'Остановить') : btn('start', 'play', 'Запустить'));
+  };
+  el._fill();
+  return el;
 }
 
 /* ---------------- выбор и массовые действия ---------------- */

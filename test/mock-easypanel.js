@@ -55,10 +55,18 @@ export function fakeShell(socket, url, socketFraming, opts = {}) {
   });
 }
 
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {}, hostExec = null, tableData = null, containersNeedService = false } = {}) {
+export function createMockPanel({ deployMs = 0, token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {}, hostExec = null, tableData = null, containersNeedService = false } = {}) {
   const ps = makePanelSettings(psettings); let tableCalls = 0;
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
+  // действия панели (деплои) — для вкладки «История» сервиса и ожидания конца деплоя
+  const actions = [];
+  const addAction = (type, i) => {
+    const a = { id: `act${actions.length + 1}`, type, projectName: i.projectName, serviceName: i.serviceName, status: deployMs ? 'running' : 'success', createdAt: new Date().toISOString(), logs: ['Pulling image…', 'Building…', deployMs ? 'Deploying…' : 'Done'] };
+    actions.unshift(a);
+    if (deployMs) setTimeout(() => { a.status = 'success'; a.finishedAt = new Date().toISOString(); a.logs.push('Done'); }, deployMs).unref();
+    return a;
+  };
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
   const need = (s) => { if (!s) throw Object.assign(new Error('Service not found'), { code: 'NOT_FOUND' }); return s; };
   const ok = (v) => v ?? null;
@@ -110,7 +118,6 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'domains.updateDomain': (i) => { const s = need(find(i)); const d = s.domains.find((x) => x.id === i.id); if (!d) throw Object.assign(new Error('Domain not found'), { code: 'NOT_FOUND' }); Object.assign(d, { host: i.host, https: i.https, port: i.port, path: i.path }); return null; },
     'mounts.deleteMount': (i) => { const s = need(find(i)); s.mounts = s.mounts.filter((m) => m.id !== i.id); return null; },
     'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
-    'actions.listActions': () => [],
     'certificates.listCertificates': () => certs,
     ...(weirdKey ? { 'settings.getInstanceGitIdentity': () => ({ pub: weirdKey }) } : {}),
     ...(sshKey ? { 'settings.getSshPublicKey': () => ({ publicKey: sshKey }) } : {}),
@@ -135,6 +142,9 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'settings.cleanupDockerImages': () => null,
     'settings.restartEasypanel': () => null,
     ...ps.procs,
+    // деплои, сделанные через эту имитацию, + действия из настроек панели
+    'actions.listActions': (i) => [...actions.filter((a) => !i.projectName || (a.projectName === i.projectName && a.serviceName === i.serviceName)).map(({ logs, ...a }) => a), ...ps.procs['actions.listActions'](i)],
+    'actions.getAction': (i) => actions.find((x) => x.id === i.id) ?? ps.procs['actions.getAction'](i),
     // monitorOld.getMonitorTableData: свой список контейнеров (tableData) или по контейнеру на сервис; сетевые счётчики растут с каждым запросом
     'monitorOld.getMonitorTableData': () => {
       tableCalls += 1;
@@ -154,7 +164,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
       procs[`services.${type}.enableService`] = (i) => { need(find(i)).enabled = true; return null; };
       procs[`services.${type}.disableService`] = (i) => { need(find(i)).enabled = false; return null; };
     } else {
-      procs[`services.${type}.deployService`] = (i) => { need(find(i)).enabled = true; return null; };
+      procs[`services.${type}.deployService`] = (i) => { need(find(i)).enabled = true; addAction('deploy', i); return null; };
       procs[`services.${type}.startService`] = (i) => { need(find(i)).enabled = true; return null; };
       procs[`services.${type}.stopService`] = (i) => { need(find(i)).enabled = false; return null; };
       procs[`services.${type}.restartService`] = (i) => { need(find(i)).enabled = true; return null; };

@@ -68,7 +68,8 @@ await step('расписание появляется сразу, даже ес�
 await step('inventory images + certs', async () => {
   await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row', { timeout: 15000 }); await p.screenshot({ path: 'v2-images.png' });
   await p.click('.seg button:has-text("Сертификаты")'); await p.waitForSelector('.badge:has-text("дн.")'); await p.screenshot({ path: 'v2-certs.png' });
-  await p.locator('button:has-text("Перевыпустить")').first().click(); await p.waitForSelector('.modal:has-text("Let’s Encrypt")'); await p.keyboard.press('Escape');
+  await p.locator('button[aria-label="Перевыпустить"]').first().click(); await p.waitForSelector('.modal:has-text("Let’s Encrypt")'); await p.keyboard.press('Escape');
+  await p.locator('button[aria-label="Удалить сертификат"]').first().click(); await p.waitForSelector('.modal:has-text("Удалить сертификат?")'); await p.click('.modal-foot button:has-text("Отмена")'); // кнопки без текста, рядом
 });
 await step('settings: канал уведомлений + бэкап', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card');
@@ -76,14 +77,23 @@ await step('settings: канал уведомлений + бэкап', async () 
   await p.fill('.modal input[placeholder="Команда DevOps"]', 'CI'); await p.fill('.modal input[placeholder="https://example.com/hook"]', 'http://127.0.0.1:9/x');
   await p.click('.modal-foot button:has-text("Сохранить")'); await p.waitForSelector('.list-item:has-text("CI")');
   await p.screenshot({ path: 'v2-settings.png', fullPage: true });
-  await p.waitForSelector('.card:has(h3:has-text("Резервные копии"))');
-  await p.fill('.card:has(h3:has-text("Резервные копии")) input[type=password]', 'correct horse battery');
-  await p.click('.card:has(h3:has-text("Резервные копии")) button:has-text("Создать копию сейчас")');
-  await p.waitForSelector('.card:has(h3:has-text("Резервные копии")) .list-item .mono', { timeout: 15000 });
-  await p.click('.card:has(h3:has-text("Резервные копии")) button[aria-label="Проверить копию"]'); await p.waitForSelector('.modal'); await p.click('.modal button:has-text("Продолжить")');
+});
+await step('бэкапы: настройки, копия системы, данные, обзор', async () => {
+  await p.goto(U + '#/backups/settings'); await p.waitForSelector('.card:has(h4:has-text("Пароль копий"))');
+  await p.fill('.card:has(h4:has-text("Пароль копий")) input[type=password]', 'correct horse battery'); await p.click('button:has-text("Сохранить")'); await p.waitForSelector('.toast.success');
+  await p.goto(U + '#/backups/system'); await p.waitForSelector('button:has-text("Создать копию сейчас")');
+  await p.click('button:has-text("Создать копию сейчас")'); await p.waitForSelector('.list-item .mono', { timeout: 15000 });
+  await p.click('button[aria-label="Проверить копию"]'); await p.waitForSelector('.modal'); await p.click('.modal button:has-text("Продолжить")');
   await p.waitForSelector('.modal:has-text("Копия в порядке")'); await p.keyboard.press('Escape');
-  await p.click('.card:has(h3:has-text("Резервные копии")) .seg-btn:text-is("Выбранные") >> nth=1'); await p.waitForSelector('.card:has(h3:has-text("Резервные копии")) details.diag');
-  await p.click('.card:has(h3:has-text("Резервные копии")) .seg-btn:text-is("В S3 (хранилище выше)")'); await p.waitForSelector('.card:has(h3:has-text("Резервные копии")) input[placeholder="https://s3.example.com"]');
+  await p.goto(U + '#/backups/data'); await p.waitForSelector('.seg-btn:text-is("Выбранные")');
+  await p.click('.seg-btn:text-is("Выбранные")'); await p.waitForSelector('details.diag');
+  await p.click('.seg-btn:text-is("Все сервисы")'); await p.waitForSelector('.seg-btn:text-is("В S3")'); await p.click('.seg-btn:text-is("В S3")'); await p.waitForSelector('text=Хранилище S3 не настроено');
+  await p.goto(U + '#/backups'); await p.waitForSelector('.kpis .kpi'); await p.waitForSelector('.tbl tbody tr');
+  const rows = await p.locator('.tbl tbody tr').count(); if (rows < 5) throw new Error('в обзоре мало сервисов: ' + rows);
+  await p.screenshot({ path: 'v2-backups.png' });
+  await p.click('.seg-btn:text-is("Не настроено")'); await p.waitForTimeout(200);
+  const bad = await p.locator('.tbl tbody tr:has(.badge.err)').count(); if (!bad) throw new Error('нет строк «Не настроено»');
+  await p.locator('.tbl button:has-text("Настроить")').first().click(); await p.waitForSelector('.modal:has-text("Расписание Easypanel")'); await p.keyboard.press('Escape');
 });
 await step('drawer nav: вертикальное меню без горизонтальной прокрутки, цифры переключают разделы', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
@@ -105,7 +115,7 @@ await step('drawer nav: вертикальное меню без горизон�
   await p.waitForSelector('.drawer .list-item:has-text("/data2")');
   await p.screenshot({ path: 'v4-drawer.png' }); await p.keyboard.press('Escape');
 });
-await step('новый сервис со страницы «Все сервисы» (с новым проектом)', async () => {
+await step('новый сервис со страницы «Сервисы» (с новым проектом)', async () => {
   await p.goto(U + '#/services'); await p.waitForSelector('.tbl');
   await p.click('button:has-text("Новый сервис")'); await p.waitForSelector('.modal');
   await p.selectOption('.modal select >> nth=0', { label: 'Стейджинг' });
@@ -287,7 +297,7 @@ await step('вкладка «Нагрузка»: графики, таблица,
   await p.click('.card-head label.check input'); await p.waitForTimeout(200);
   await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Мониторинг нагрузки"))');
   await p.click('.card:has(h3:has-text("Мониторинг нагрузки")) .seg-btn:text-is("Чувствительные")'); await p.waitForTimeout(400);
-  const act = await p.textContent('.card:has(h3:has-text("Мониторинг нагрузки")) .seg-btn.active >> nth=1'); if (!act.includes('Чувствительные')) throw new Error('уровень не сохранился: ' + act);
+  const act = await p.textContent('.card:has(h3:has-text("Мониторинг нагрузки")) .seg-btn.active >> nth=2'); if (!act.includes('Чувствительные')) throw new Error('уровень не сохранился: ' + act);
 });
 await step('форма нового сервиса: поля в ряд выровнены', async () => {
   await p.goto(U + '#/services'); await p.waitForSelector('.tbl');
@@ -304,6 +314,61 @@ await step('palette favorites', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'cache' }).first().click(); await p.waitForSelector('.drawer.in'); await p.click('.drawer .star'); await p.keyboard.press('Escape');
   await p.keyboard.press('Control+k'); await p.waitForSelector('.pal-item'); const first = await p.textContent('.pal-item >> nth=0'); if (!first.includes('cache')) throw new Error('first=' + first); await p.keyboard.press('Escape');
+});
+await step('меню: порядок пунктов, «Сервисы», время сервера в шапке', async () => {
+  await p.goto(U + '#/'); await p.waitForSelector('.nav-item');
+  const nav = (await p.locator('.nav-item').allInnerTexts()).map((x) => x.trim()).join(',');
+  if (nav !== 'Обзор,Консоль,Сервисы,Инвентарь,Шаблоны,Расписания,Журнал,Бэкапы,Пользователи,Настройки') throw new Error('меню: ' + nav);
+  const t0 = await p.locator('.server-clock b').innerText(); await p.waitForTimeout(1300);
+  const t1 = await p.locator('.server-clock b').innerText(); if (t0 === t1) throw new Error('часы не идут: ' + t0);
+});
+await step('настройки: часовой пояс сервера и интервал замеров нагрузки', async () => {
+  await p.goto(U + '#/settings'); await p.waitForSelector('.tz-now');
+  await p.selectOption('.card:has(.tz-now) select', 'Asia/Vladivostok'); await p.click('.card:has(.tz-now) button:has-text("Сохранить")'); await p.waitForTimeout(1200);
+  const title = await p.locator('.server-clock').getAttribute('title'); if (!/Vladivostok/.test(title)) throw new Error('пояс не применился: ' + title);
+  await p.selectOption('.card:has(.tz-now) select', 'UTC'); await p.click('.card:has(.tz-now) button:has-text("Сохранить")'); await p.waitForTimeout(800);
+  await p.click('.card:has-text("Как часто замерять") .seg-btn:text-is("5 мин")'); await p.waitForTimeout(500);
+  const on = await p.textContent('.card:has-text("Как часто замерять") .seg-btn.active >> nth=0'); if (!on.includes('5 мин')) throw new Error('интервал не сохранился: ' + on);
+  await p.click('.card:has-text("Как часто замерять") .seg-btn:text-is("1 мин")');
+});
+await step('канал уведомлений: список событий не пустой', async () => {
+  await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Уведомления"))');
+  await p.click('button:has-text("Добавить канал")'); await p.waitForSelector('.modal .checklist label');
+  const n = await p.locator('.modal .checklist label').count(); if (n < 5) throw new Error('событий: ' + n);
+  await p.keyboard.press('Escape');
+});
+await step('«Добавить панель»: переключатель «Подключить» / «Установить и подключить»', async () => {
+  await p.goto(U + '#/'); await p.waitForSelector('.panel-card'); await p.click('button:has-text("Добавить панель")'); await p.waitForSelector('.modal .seg-wide');
+  const fits = await p.evaluate(() => [...document.querySelectorAll('.seg-wide .seg-btn')].every((b) => b.scrollWidth <= b.clientWidth + 1)); if (!fits) throw new Error('подпись обрезана');
+  await p.waitForSelector('.modal input[placeholder="Прод EU"]');
+  await p.click('.modal .seg-btn:has-text("Установить и подключить")'); await p.waitForSelector('.modal :text("Адрес сервера")');
+  if (!(await p.locator('.modal-foot').isHidden())) throw new Error('кнопки подключения видны в режиме установки');
+  await p.click('.modal .seg-btn:has-text("Подключить Easypanel")'); await p.waitForSelector('.modal input[placeholder="Прод EU"]'); await p.keyboard.press('Escape');
+});
+await step('история сервиса: деплой, лог; на кнопках кружок, пока действие идёт', async () => {
+  await p.goto(U + '#/services'); await p.waitForSelector('.tbl');
+  const row = p.locator('tr.row', { hasText: 'shop' }).filter({ hasText: 'api' }).first();
+  await row.locator('.qa button[aria-label="Деплой"]').click(); await p.waitForSelector('.qa .spinner', { timeout: 3000 });
+  await p.waitForSelector('.qa .spinner', { state: 'detached', timeout: 20000 });
+  await row.click(); await p.waitForSelector('.drawer.in'); await p.click('.drawer .dtab:has-text("История")'); await p.waitForSelector('.hist-row');
+  await p.locator('.hist-row.link').first().click(); await p.waitForSelector('.hist-log'); await p.waitForTimeout(400);
+  const log = await p.locator('.hist-log').innerText(); if (!/Pulling image/.test(log)) throw new Error('лог: ' + log);
+  await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
+});
+await step('журнал: текст ошибки виден целиком', async () => {
+  await p.evaluate(() => fetch('/api/panels/1/service/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'easyadmin' }, body: JSON.stringify({ type: 'app', project: 'no', name: 'such', action: 'deploy' }) }));
+  await p.goto(U + '#/audit'); await p.waitForSelector('.audit-tbl'); await p.click('.seg-btn:has-text("Ошибки")'); await p.waitForTimeout(500);
+  const d = p.locator('.audit-detail.open').first(); const clipped = await d.evaluate((el) => getComputedStyle(el).whiteSpace !== 'pre-wrap' || getComputedStyle(el).textOverflow === 'ellipsis');
+  if (clipped) throw new Error('ошибка обрезана');
+});
+await step('страница не прыгает вверх при фоновом обновлении', async () => {
+  await p.setViewportSize({ width: 1440, height: 520 });
+  await p.goto(U + '#/services'); await p.waitForSelector('.tbl'); await p.evaluate(() => window.scrollTo(0, 250)); await p.waitForTimeout(200);
+  const y0 = await p.evaluate(() => window.scrollY); if (y0 < 100) throw new Error('страница не прокрутилась: ' + y0);
+  await p.evaluate(() => { window.__ys = []; const f = () => { window.__ys.push(window.scrollY); requestAnimationFrame(f); }; f(); });
+  for (let i = 0; i < 3; i++) { await p.click('.topbar .btn.icon[aria-label="Обновить"]'); await p.waitForTimeout(500); }
+  const min = Math.min(...(await p.evaluate(() => window.__ys))); if (min < y0 - 2) throw new Error(`прокрутка сбросилась: ${y0} → ${min}`);
+  await p.setViewportSize({ width: 1440, height: 900 });
 });
 console.log(errors.join('\n') || 'no console errors');
 await b.close();

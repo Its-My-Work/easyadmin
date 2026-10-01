@@ -10,6 +10,8 @@ import { HttpError, RawResponse, SECURITY_HEADERS, StreamResponse } from './http
 import { extractLines, logSocketCandidates, openWebSocket } from './ws.js';
 import { applyConfig, extractConfig, mergeEnv, parseEnvLines } from './templates.js';
 import { psettingsRoutes } from './panel-settings.js';
+import { backupOverviewRoutes } from './backup-overview.js';
+import { applyTimezone, currentTimezone, getSavedTimezone, saveTimezone, validTz } from './timezone.js';
 import { extrasRoutes } from './panel-extras.js';
 import { licenseRoutes } from './panel-license.js';
 import { installRoutes } from './installer.js';
@@ -108,11 +110,19 @@ export function extraRoutes(d) {
 
   /* ---------------- настройки (язык уведомлений) ---------------- */
   const settingsRoutes = [
-    ['GET', '/api/settings', () => ({ notifyLang: alerts.getLang() }), { admin: true }],
+    ['GET', '/api/settings', () => ({ notifyLang: alerts.getLang(), timezone: currentTimezone(), timezoneSaved: getSavedTimezone(db) }), { admin: true }],
     ['PUT', '/api/settings', (ctx) => {
       if (ctx.body.notifyLang !== undefined) { need(['ru', 'en'].includes(ctx.body.notifyLang), 'Language: ru or en'); alerts.setLang(ctx.body.notifyLang); }
-      return { notifyLang: alerts.getLang() };
+      if (ctx.body.timezone !== undefined) {
+        need(validTz(ctx.body.timezone), 'Неизвестный часовой пояс');
+        const before = currentTimezone();
+        saveTimezone(db, ctx.body.timezone); applyTimezone(ctx.body.timezone);
+        audit(ctx, { action: 'settings.timezone', target: 'часовой пояс', detail: `${before} → ${ctx.body.timezone}` });
+      }
+      return { notifyLang: alerts.getLang(), timezone: currentTimezone(), timezoneSaved: getSavedTimezone(db) };
     }, { admin: true }],
+    // время сервера для шапки интерфейса — доступно любому вошедшему пользователю
+    ['GET', '/api/time', () => ({ now: now(), tz: currentTimezone() })],
   ];
 
   /* ---------------- диагностика ответов панели ---------------- */
@@ -272,6 +282,52 @@ export function extraRoutes(d) {
       const row = panelOr404(ctx.params.id); const q = ctx.url.searchParams;
       try { return { stats: await manager.clientFor(row).query('monitor.getServiceStats', { projectName: nameOf(q.get('project'), 'project'), serviceName: nameOf(q.get('name'), 'service') }) }; } catch (e) { throw asHttp(e); }
     }],
+  ];
+
+  /* ---------------- история сервиса: действия панели (деплои и т. д.) + записи журнала EasyAdmin ---------------- */
+  const tsOf = (a) => { const v = a.createdAt ?? a.created_at ?? a.startedAt ?? a.started_at ?? a.date ?? a.time ?? a.ts; const n = typeof v === 'number' ? v : Date.parse(v); return Number.isFinite(n) ? n : null; };
+  /** Текст лога из ответа панели: в разных версиях это logs / log / output… — строка или массив строк/объектов. */
+  const LOG_KEYS = ['logs', 'log', 'output', 'stdout', 'buildLogs', 'deployLogs', 'result', 'message', 'error'];
+  const logText = (x) => {
+    if (typeof x === 'string') return x;
+    if (Array.isArray(x)) return x.map((i) => (typeof i === 'string' ? i : i && typeof i === 'object' ? (i.message ?? i.text ?? i.line ?? i.log ?? i.data ?? JSON.stringify(i)) : String(i))).join('\n');
+    return '';
+  };
+  const findLog = (a) => { if (!a || typeof a !== 'object') return ''; for (const k of LOG_KEYS) { const t = logText(a[k]).trim(); if (t) return t; } return ''; };
+  const sameService = (a, project, name) => {
+    const svc = a.serviceName ?? a.service ?? a.name;
+    const proj = a.projectName ?? a.project;
+    if (typeof svc !== 'string') return false;
+    return (svc === name && (!proj || proj === project)) || svc === `${project}_${name}`;
+  };
+  const serviceHistoryRoutes = [
+    ['GET', '/api/panels/:id/service/history', async (ctx) => {
+      const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
+      const q = ctx.url.searchParams; const project = nameOf(q.get('project'), 'project'); const name = nameOf(q.get('name'), 'service');
+      const items = [];
+      let actionsError = null;
+      try {
+        const raw = await manager.clientFor(row).query('actions.listActions', { limit: 100, projectName: project, serviceName: name });
+        const list = Array.isArray(raw) ? raw : Array.isArray(raw?.actions) ? raw.actions : [];
+        for (const a of list.slice(0, 1000)) {
+          if (!a || typeof a !== 'object' || !sameService(a, project, name)) continue;
+          items.push({ source: 'panel', id: String(a.id ?? a._id ?? ''), kind: String(a.type ?? a.name ?? 'action'), status: String(a.status ?? a.state ?? ''), ts: tsOf(a), finishedAt: tsOf({ createdAt: a.finishedAt ?? a.finished_at ?? a.endedAt }), hasLog: !!(a.id ?? a._id) });
+        }
+      } catch (e) { actionsError = e.message; }
+      const like = `${project}/${name}`;
+      for (const r of db.prepare('SELECT ts, username, action, ok, detail FROM audit WHERE panel_id = ? AND (target = ? OR target LIKE ?) ORDER BY id DESC LIMIT 200').all(row.id, like, `${like} (%`)) {
+        items.push({ source: 'easyadmin', ts: r.ts, user: r.username, action: r.action, ok: !!r.ok, detail: r.detail });
+      }
+      items.sort((x, y) => (y.ts ?? 0) - (x.ts ?? 0));
+      return { items: items.slice(0, 300), actionsError };
+    }, { min: 'operator' }],
+    ['GET', '/api/panels/:id/service/history/:actionId', async (ctx) => {
+      const row = panelOr404(ctx.params.id); assertPanel(ctx, row.id);
+      try {
+        const action = await manager.clientFor(row).query('actions.getAction', { id: ctx.params.actionId });
+        return { log: findLog(action) || null, action };
+      } catch (e) { throw asHttp(e); }
+    }, { min: 'operator' }],
   ];
 
   /* ---------------- шаблоны и клонирование ---------------- */
@@ -530,13 +586,16 @@ export function extraRoutes(d) {
   async function imagesOf(row, force) {
     const hit = imageCache.get(row.id);
     if (!force && hit && now() - hit.at < 300_000) return hit.items;
-    const svcs = (await treeOf(row)).flatMap((p) => p.services).filter((s) => s.type === 'app');
+    // все сервисы панели: приложения, базы данных и compose-стеки (у баз образ лежит в самом сервисе, у compose — источник)
+    const svcs = (await treeOf(row)).flatMap((p) => p.services);
     const c = manager.clientFor(row);
     const items = await mapLimit(svcs, 5, async (s) => {
       try {
-        const src = (await inspectService(c, { type: 'app', project: s.project, name: s.name })).service?.source;
-        return { project: s.project, name: s.name, type: src?.type ?? 'unknown', image: src?.image ?? null, ...repoInfo(src) };
-      } catch (e) { return { project: s.project, name: s.name, type: 'error', error: e.message }; }
+        const svc = (await inspectService(c, { type: s.type, project: s.project, name: s.name })).service;
+        const src = svc?.source;
+        const image = src?.image ?? (typeof svc?.image === 'string' && svc.image ? svc.image : null);
+        return { project: s.project, name: s.name, kind: s.type, type: src?.type ?? (image ? 'image' : s.type), image, ...repoInfo(src) };
+      } catch (e) { return { project: s.project, name: s.name, kind: s.type, type: 'error', error: e.message }; }
     });
     imageCache.set(row.id, { at: now(), items });
     return items;
@@ -625,6 +684,19 @@ export function extraRoutes(d) {
     return null;
   }
   const reissueRoutes = [
+    ['POST', '/api/panels/:id/certs/delete', async (ctx) => {
+      const row = panelOr404(ctx.params.id);
+      const domain = str(ctx.body.domain, 'Укажите домен', 253);
+      need(/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(domain), 'Некорректный домен');
+      try {
+        const item = (await certsOf(row)).find((x) => x.domain === domain || x.domain.split(', ')[0] === domain);
+        need(item, 'Сертификат не найден на панели');
+        const raw = item.raw && typeof item.raw === 'object' ? item.raw : {};
+        await mutateAudited(ctx, row, 'cert.delete', domain, () => firstOk(manager.clientFor(row), 'certificates.removeCertificate', [raw, { domain }, { domain: { main: domain } }, { main: domain }, { name: domain }]));
+        tlsCache.delete(domain);
+        return { ok: true };
+      } catch (e) { throw asHttp(e); }
+    }, { admin: true }],
     ['POST', '/api/panels/:id/certs/reissue', async (ctx) => {
       const row = panelOr404(ctx.params.id);
       const domain = str(ctx.body.domain, 'Укажите домен', 253);
@@ -684,5 +756,5 @@ export function extraRoutes(d) {
   };
   const certTimer = setInterval(checkCerts, 6 * 3600_000); certTimer.unref();
 
-  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...loadRoutes(d), ...backupApiRoutes({ ...d, treeOf }), ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes];
+  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...loadRoutes(d), ...backupApiRoutes({ ...d, treeOf }), ...backupOverviewRoutes({ ...d, treeOf }), ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...serviceHistoryRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes];
 }

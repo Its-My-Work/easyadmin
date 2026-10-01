@@ -1,18 +1,22 @@
 import { del, get, post } from './api.js';
-import { clear, confirmDialog, field, h, icon, modal, toast } from './dom.js';
+import { clear, confirmDialog, field, h, icon, toast } from './dom.js';
 import { t } from './i18n.js';
 import { refresh } from './store.js';
 
-/* Мастер «Установить новую панель»: SSH-доступ → отпечаток сервера → проверка → параметры → установка с ходом выполнения. */
+/* Установка новой панели (режим формы «Добавить панель»): SSH-доступ → отпечаток сервера → проверка → параметры → установка с ходом выполнения. */
 const COLORS = ['#7c83ff', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#a855f7', '#64748b'];
 const ICON = { ok: '✓', warn: '⚠', error: '✕', pending: '•', running: '…' };
 const CLS = { ok: 'ok-text', warn: 'warn-text', error: 'danger-text', pending: 'muted', running: 'muted' };
 
-export function installWizard() {
-  const box = h('div', { class: 'stack' });
-  let handle = null; let ticket = null; let pollTimer = null; let closed = false;
+/**
+ * Установка Easypanel на новый сервер. Рисует шаги в переданный блок box (форма «Добавить панель», режим «Установить и подключить»).
+ * close — закрыть окно целиком; возвращает dispose(): остановить опрос и погасить неиспользованный билет при закрытии окна.
+ */
+export function installFlow(box, { close: closeModal }) {
+  let ticket = null; let pollTimer = null; let closed = false;
   const S = { host: '', port: '22', user: 'root', mode: 'password', password: '', key: '', passphrase: '', fp: '', keys: [], color: COLORS[0] };
-  const close = () => { closed = true; clearTimeout(pollTimer); if (ticket) { del(`/api/installs/ticket/${ticket}`).catch(() => {}); ticket = null; } handle?.close(); };
+  const dispose = () => { closed = true; clearTimeout(pollTimer); if (ticket) { del(`/api/installs/ticket/${ticket}`).catch(() => {}); ticket = null; } };
+  const close = () => { dispose(); closeModal(); };
   const err = h('div', { class: 'danger-text small' });
   const btn = (label, kind, onclick) => h('button', { class: `btn ${kind ?? ''}`, onclick: async (e) => { const b = e.currentTarget; b.disabled = true; err.textContent = ''; try { await onclick(); } catch (x) { err.textContent = x.message; } finally { b.disabled = false; } } }, label);
   const view = (...nodes) => clear(box).append(...nodes, err);
@@ -112,6 +116,6 @@ export function installWizard() {
     tick();
   };
 
-  handle = modal({ title: 'Установить новую панель Easypanel', body: box, actions: [], wide: true, onClose: () => { closed = true; clearTimeout(pollTimer); if (ticket) del(`/api/installs/ticket/${ticket}`).catch(() => {}); } });
   stepServer();
+  return { dispose };
 }
