@@ -18,6 +18,7 @@ import { installRoutes } from './installer.js';
 import { loadRoutes } from './load-monitor.js';
 import { backupRoutes as backupApiRoutes } from './backups.js';
 import { moveRoutes } from './service-move.js';
+import { parseTs } from './ts.js';
 
 const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
 
@@ -286,7 +287,7 @@ export function extraRoutes(d) {
   ];
 
   /* ---------------- история сервиса: действия панели (деплои и т. д.) + записи журнала EasyAdmin ---------------- */
-  const tsOf = (a) => { const v = a.createdAt ?? a.created_at ?? a.startedAt ?? a.started_at ?? a.date ?? a.time ?? a.ts; const n = typeof v === 'number' ? v : Date.parse(v); return Number.isFinite(n) ? n : null; };
+  const tsOf = (a) => parseTs(a.createdAt ?? a.created_at ?? a.startedAt ?? a.started_at ?? a.date ?? a.time ?? a.ts);
   /** Текст лога из ответа панели: в разных версиях это logs / log / output… — строка или массив строк/объектов. */
   const LOG_KEYS = ['logs', 'log', 'output', 'stdout', 'buildLogs', 'deployLogs', 'result', 'message', 'error'];
   const logText = (x) => {

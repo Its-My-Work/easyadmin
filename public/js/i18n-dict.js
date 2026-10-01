@@ -1461,6 +1461,7 @@ export const EN = [
   ['{0} · {1}: расписание создано, но найти его не удалось — им придётся управлять вручную', '{0} · {1}: the schedule was created but could not be found — you will have to manage it by hand'],
   ['создано {0}, обновлено {1}, удалено {2}', 'created {0}, updated {1}, removed {2}'],
   /* --- переименование и перенос сервиса --- */
+  ['Все события сервиса. У деплоя можно открыть лог.', 'All service events. A deployment’s log can be opened.'],
   ['Имя и проект', 'Name and project'],
   ['Compose-сервисы переименовать и перенести нельзя', 'Compose services cannot be renamed or moved'],
   ['Имена томов и сетей стека завязаны на проект и сервис. Чтобы сменить имя, создайте стек заново.', 'The names of the stack’s volumes and networks are tied to the project and service. To change the name, create the stack again.'],

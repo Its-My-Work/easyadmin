@@ -38,9 +38,7 @@ function openLog(base, item, name) {
 
 /** Вкладка «История»: все события по сервису — действия панели (с логами деплоя) и операции, сделанные через EasyAdmin. */
 export function historyView({ s, ref, base, state }) {
-  const f = { kind: 'all' };
   const list = h('div', { class: 'hist-list' }, h('div', { class: 'skeleton', style: { height: '120px' } }));
-  const seg = h('div', { class: 'seg' });
   let items = []; let actionsError = null; let timer = null; let gone = false;
   state.onLeave = () => { gone = true; clearTimeout(timer); };
 
@@ -60,11 +58,12 @@ export function historyView({ s, ref, base, state }) {
     if (x.source === 'panel') {
       const k = x.kind.toLowerCase();
       const ic = Object.entries(KIND_ICON).find(([key]) => k.includes(key))?.[1] ?? 'activity';
-      const label = actionLabel(`service.${k}`);
+      const known = Object.keys(KIND_ICON).find((key) => k.includes(key)); // у панели деплой называется «deployment»
+      const label = known ? actionLabel(`service.${known}`) : actionLabel(`service.${k}`);
       return h('div', { class: `list-item ${x.hasLog ? 'link' : ''} hist-row`, onclick: x.hasLog ? () => openLog(base, x, s.name) : null },
         h('div', { class: 'hist-main' }, icon(ic, 16), h('div', null, h('b', null, label === `service.${k}` ? x.kind : label),
           h('div', { class: 'muted small' }, [x.ts ? fmtTime(x.ts) : null, x.user, dur(x.ts, x.finishedAt)].filter(Boolean).join(' · ')))),
-        h('div', { class: 'inline' }, x.status ? h('span', { class: `badge ${tone(x.status)}` }, isActive(x) ? h('i', { class: 'dot' }) : null, statusLabel(x)) : null, x.hasLog ? h('span', { class: 'muted small' }, 'Лог') : null, x.hasLog ? icon('chevron', 14) : null));
+        h('div', { class: 'inline' }, x.status ? h('span', { class: `badge ${tone(x.status)}` }, isActive(x) ? h('i', { class: 'dot' }) : null, statusLabel(x)) : null, x.hasLog ? h('button', { class: 'btn sm ghost', type: 'button', onclick: (e) => { e.stopPropagation(); openLog(base, x, s.name); } }, icon('terminal', 13), 'Лог') : null));
     }
     return h('div', { class: 'list-item hist-row' },
       h('div', { class: 'hist-main' }, icon('edit', 16), h('div', null, h('b', null, actionLabel(x.action)), h('div', { class: 'muted small' }, [fmtTime(x.ts), x.user].filter(Boolean).join(' · ')),
@@ -73,11 +72,7 @@ export function historyView({ s, ref, base, state }) {
   };
 
   const draw = () => {
-    clear(seg).append(...[['all', 'Всё'], ['deploy', 'Деплои'], ['other', 'Другие действия']].map(([v, l]) => h('button', { type: 'button', class: `seg-btn ${f.kind === v ? 'active' : ''}`, onclick: () => { f.kind = v; draw(); } }, l)));
-    const shown = merge(items).filter((x) => {
-      const isDeploy = /deploy/i.test(x.source === 'panel' ? x.kind : x.action);
-      return f.kind === 'all' || (f.kind === 'deploy' ? isDeploy : !isDeploy);
-    });
+    const shown = merge(items);
     clear(list).append(...(shown.length ? shown.map(row) : [empty('Событий пока нет', 'Здесь появятся деплои, перезапуски, правки настроек и другие действия по этому сервису.')]));
     if (actionsError) list.prepend(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, `${t('История панели недоступна')}: ${actionsError}`)));
   };
@@ -93,7 +88,6 @@ export function historyView({ s, ref, base, state }) {
   };
   load();
   return h('div', { class: 'stack' },
-    h('div', { class: 'inline' }, seg, h('span', { class: 'spacer' }), h('button', { class: 'btn sm ghost', onclick: () => load() }, icon('refresh', 14), 'Обновить')),
-    h('p', { class: 'muted small' }, 'Деплои и другие действия панели вместе с операциями из EasyAdmin. Нажмите на деплой, чтобы открыть его лог.'),
+    h('div', { class: 'inline' }, h('p', { class: 'muted small' }, 'Все события сервиса. У деплоя можно открыть лог.'), h('span', { class: 'spacer' }), h('button', { class: 'btn sm ghost', onclick: () => load() }, icon('refresh', 14), 'Обновить')),
     list);
 }
