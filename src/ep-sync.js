@@ -95,7 +95,7 @@ export function createEpSync({ db, manager, getRaw, setRaw, load, audit, now = (
         targets = kind === 'db' ? listOf(await client.query('databaseBackups.getServiceDatabases', sel), 'databases').map(nameOf) : listOf(await client.query('volumeBackups.listVolumeMounts', sel), 'mounts').map(nameOf);
         targets = [...new Set(targets.filter(Boolean))];
       } catch (e) { next.push(...mine); rep.notes.push(`${label}: ${e.message}`); return; }
-      if (kind === 'db' && !targets.length) rep.notes.push(`${label}: в сервисе нет баз данных для копирования`);
+      if (!targets.length) rep.notes.push(kind === 'db' ? `${label}: в сервисе нет баз данных для копирования` : `${label}: нет томов для копирования — Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются`);
       for (const m of mine) if (!targets.includes(m.target) && !(await drop(m, label))) next.push(m);
       for (const t of targets) {
         const want = { enabled: cfg.enabled, schedule: cronOf(cfg), storageProviderId: prov.id, storageProviderPath: `${safe(s.project)}/${safe(s.name)}/${safe(t)}`, [op.field]: t, ...(kind === 'db' ? { retention: cfg.data.keep } : {}) };

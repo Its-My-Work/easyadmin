@@ -1460,6 +1460,8 @@ export const EN = [
   ['{0} · {1}: уже есть своё расписание Easypanel — оставлено как есть', '{0} · {1}: there is already your own Easypanel schedule — left as is'],
   ['{0} · {1}: расписание создано, но найти его не удалось — им придётся управлять вручную', '{0} · {1}: the schedule was created but could not be found — you will have to manage it by hand'],
   ['создано {0}, обновлено {1}, удалено {2}', 'created {0}, updated {1}, removed {2}'],
+  ['У сервиса нет томов: Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются.', 'The service has no volumes: Easypanel only backs up volumes (Volume mount); file and bind mounts are not supported.'],
+  ['{0}: нет томов для копирования — Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются', '{0}: no volumes to back up — Easypanel only backs up volumes (Volume mount); file and bind mounts are not supported'],
 ];
 
 /* ------------------------------------------------------------------ */
