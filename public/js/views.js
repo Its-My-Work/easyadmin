@@ -8,7 +8,7 @@ import { sourcePicker } from './source-form.js';
 import { installWizard } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
 import { loadSettingsCard, loadTab } from './load-tab.js';
-import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard } from './views2.js';
+import { backupCard, channelsCard, cleanAllModal, hooksCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
 
@@ -95,7 +95,6 @@ export function panelPage(id, sub) {
     st ? h('div', { class: 'statstrip' },
       meter('CPU', st.cpu, `${st.cpus ?? '?'} ядер · load ${st.load?.[0] ?? '—'}`), meter('RAM', st.memPct, `${Math.round((st.memUsedMb ?? 0) / 102.4) / 10} / ${Math.round((st.memTotalMb ?? 0) / 102.4) / 10} ГБ`),
       meter('Диск', st.diskPct, `${gb(st.diskUsedGb)} / ${gb(st.diskTotalGb)}`), h('div', { class: 'meter' }, h('div', { class: 'meter-top' }, h('span', null, 'Аптайм'), h('b', null, uptime(st.uptime))), h('div', { class: 'meter-extra' }, `Сеть ↓${Math.round(st.netIn ?? 0)} ↑${Math.round(st.netOut ?? 0)} МБ`))) : null,
-    tab === 'services' && !down ? historyCard(p) : null,
     h('div', { class: 'tabs page-tabs' }, tabs.map(([t, l]) => h('a', { class: `tab ${tab === t ? 'active' : ''}`, href: `#/panel/${p.id}${t === 'services' ? '' : '/' + t}` }, l))),
     content);
   if (tab === 'services') content.append(servicesTab(p));

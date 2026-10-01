@@ -23,7 +23,7 @@ await step('dashboard tags + health', async () => {
   await p.click('.chip-btn:has-text("Все")'); await p.waitForTimeout(200);
   await p.waitForSelector('.list-item:has-text("Сбой")'); await p.screenshot({ path: 'v2-dash.png' });
 });
-await step('panel history sparklines', async () => { await p.click('.nav-panel >> nth=0'); await p.waitForSelector('.sparks svg', { timeout: 5000 }); await p.screenshot({ path: 'v2-panel.png' }); });
+await step('panel page opens', async () => { await p.click('.nav-panel >> nth=0'); await p.waitForSelector('.project', { timeout: 5000 }); });
 await step('clean-all modal', async () => { await p.goto(U + '#/'); await p.click('button:has-text("Очистка Docker")'); await p.waitForSelector('.modal .checklist'); await p.click('.modal-foot button:has-text("Отмена")'); });
 await step('bulk env modal', async () => {
   await p.goto(U + '#/services'); await p.waitForSelector('.tbl');

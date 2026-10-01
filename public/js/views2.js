@@ -6,43 +6,6 @@ import { locale, t } from './i18n.js';
 import { TYPE_LABEL, allServices, can, isDb, panelById, refresh, store } from './store.js';
 
 const pageHead = (title, ...actions) => h('div', { class: 'page-head' }, h('h1', null, title), h('div', { class: 'inline' }, actions));
-const SVG = 'http://www.w3.org/2000/svg';
-
-/* ======================= графики нагрузки ======================= */
-export function sparkline(points, key, { color = 'var(--accent)', label }) {
-  const vals = points.map((p) => p[key]).filter((v) => v != null);
-  const last = vals.at(-1);
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 200 44'); svg.setAttribute('preserveAspectRatio', 'none');
-  if (points.length > 1) {
-    const t0 = points[0].ts, t1 = points.at(-1).ts || t0 + 1;
-    const xy = points.filter((p) => p[key] != null).map((p) => [((p.ts - t0) / (t1 - t0 || 1)) * 200, 42 - (Math.min(100, p[key]) / 100) * 40]);
-    const line = document.createElementNS(SVG, 'polyline');
-    line.setAttribute('points', xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '));
-    line.setAttribute('fill', 'none'); line.setAttribute('stroke', color); line.setAttribute('stroke-width', '1.6'); line.setAttribute('vector-effect', 'non-scaling-stroke');
-    const area = document.createElementNS(SVG, 'polygon');
-    area.setAttribute('points', `0,44 ${xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')} 200,44`);
-    area.setAttribute('fill', color); area.setAttribute('opacity', '.12');
-    svg.append(area, line);
-  }
-  return h('div', { class: 'spark' }, h('div', { class: 'spark-top' }, h('span', null, label), h('b', null, last == null ? '—' : `${Math.round(last)}%`, vals.length ? h('span', { class: 'muted' }, `  макс ${Math.round(Math.max(...vals))}%`) : null)), svg);
-}
-
-export function historyCard(panel) {
-  let hours = 24;
-  const body = h('div', { class: 'sparks' });
-  const draw = async () => {
-    try {
-      const pts = await get(`/api/panels/${panel.id}/history?hours=${hours}`);
-      clear(body).append(...(pts.length > 1
-        ? [sparkline(pts, 'cpu', { label: 'CPU', color: 'var(--accent)' }), sparkline(pts, 'mem', { label: 'RAM', color: 'var(--ok)' }), sparkline(pts, 'disk', { label: 'Диск', color: 'var(--warn)' })]
-        : [h('p', { class: 'muted spark-empty' }, 'История копится — данные появятся через несколько минут работы.')]));
-    } catch (e) { clear(body).append(h('p', { class: 'muted' }, e.message)); }
-  };
-  const seg = h('div', { class: 'seg' }, [[6, '6 ч'], [24, '24 ч'], [168, '7 дн']].map(([v, l]) => h('button', { class: v === hours ? 'on' : '', onclick: (e) => { hours = v; seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === e.currentTarget)); draw(); } }, l)));
-  draw();
-  return h('section', { class: 'card stack' }, h('div', { class: 'card-head', style: { margin: 0 } }, h('h3', null, 'Нагрузка'), seg), body);
-}
 
 /* ======================= клонирование и шаблоны ======================= */
 const STEP_LABEL = (x) => x.step;
