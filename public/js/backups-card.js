@@ -129,7 +129,7 @@ export function backupsCard() {
           seg(f.panels, [['none', 'Не копировать'], ['all', 'Все панели'], ['selected', 'Выбранные']], (v) => { f.panels = v; redraw(); }),
           f.panels === 'selected' ? h('div', { class: 'chips', style: { marginTop: '8px' } }, store.panels.map((p) => h('label', { class: 'chip clickable' }, h('input', { type: 'checkbox', checked: f.panelIds.includes(p.id), onchange: (e) => { f.panelIds = e.target.checked ? [...f.panelIds, p.id] : f.panelIds.filter((x) => x !== p.id); } }), ` ${p.name}`))) : null),
         h('div', { class: 'grid-3' }, field('Как часто', seg(f.every, [['daily', 'Каждый день'], ['weekly', 'Раз в неделю']], (v) => { f.every = v; redraw(); })),
-          field('Во сколько (час)', h('input', { class: 'input', type: 'number', min: 0, max: 23, value: f.hour, oninput: (e) => { f.hour = Number(e.target.value); } })),
+          field('Во сколько (час)', h('input', { class: 'input', type: 'number', min: 0, max: 23, value: f.hour, oninput: (e) => { f.hour = Number(e.target.value); } }), `${t('По времени сервера EasyAdmin')}: ${String(s.serverTime.hour).padStart(2, '0')}:${String(s.serverTime.minute).padStart(2, '0')} (${s.serverTime.tz})`),
           field('Сколько копий хранить', h('input', { class: 'input', type: 'number', min: 1, max: 60, value: f.keep, oninput: (e) => { f.keep = Number(e.target.value); } }))),
         h('div', null, h('div', { class: 'small muted' }, 'Где хранить'), seg(f.storage, [['local', 'На этом сервере'], ['s3', 'S3-хранилище']], (v) => { f.storage = v; redraw(); }),
           f.storage === 'local' ? h('div', { class: 'small muted' }, 'Папка data/backups. Защищает от ошибок, но не от потери сервера — лучше S3 или регулярно скачивайте копии.') : null,

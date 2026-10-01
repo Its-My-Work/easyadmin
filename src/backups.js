@@ -144,7 +144,7 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
 
   const view = () => {
     const c = load(); const l = lastRun();
-    return { enabled: c.enabled, data: c.data, dataLast: lastData(), system: c.system, panels: c.panels, panelIds: c.panelIds, every: c.every, hour: c.hour, keep: c.keep, storage: c.storage, hasPassword: !!c.password, s3: { ...c.s3, secretKey: '', hasSecret: !!c.s3.secretKey }, last: l, local: config.dataDir !== ':memory:' };
+    return { serverTime: { now: now(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', hour: new Date(now()).getHours(), minute: new Date(now()).getMinutes() }, enabled: c.enabled, data: c.data, dataLast: lastData(), system: c.system, panels: c.panels, panelIds: c.panelIds, every: c.every, hour: c.hour, keep: c.keep, storage: c.storage, hasPassword: !!c.password, s3: { ...c.s3, secretKey: '', hasSecret: !!c.s3.secretKey }, last: l, local: config.dataDir !== ':memory:' };
   };
   function update(b) {
     const c = load();

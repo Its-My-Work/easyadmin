@@ -1,8 +1,6 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import https from 'node:https';
 import tls from 'node:tls';
-import path from 'node:path';
 import { decrypt, encrypt, randomToken, sha256 } from './crypto.js';
 import { ACTIONS, SYSTEM_OPS, discoverBundle, discoverProcedures, firstOk, SERVICE_TYPES, inspectService, normalizeTree, redact, runAction, runServiceOp, shapeOf } from './easypanel.js';
 import { EVENT_TYPES } from './alerts.js';
@@ -686,19 +684,5 @@ export function extraRoutes(d) {
   };
   const certTimer = setInterval(checkCerts, 6 * 3600_000); certTimer.unref();
 
-  /* ---------------- бэкап ---------------- */
-  const backupRoutes = [
-    ['GET', '/api/backup', (ctx) => {
-      need(config.dataDir !== ':memory:', 'Бэкап недоступен для БД в памяти');
-      const tmp = path.join(os.tmpdir(), `easyadmin-backup-${randomToken().slice(0, 8)}.db`);
-      try {
-        db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
-        const body = { version: 1, createdAt: now(), db: fs.readFileSync(tmp).toString('base64'), ...(ctx.url.searchParams.get('withKey') === '1' ? { key: key.toString('hex') } : {}) };
-        audit(ctx, { action: 'backup.download' });
-        return new RawResponse(JSON.stringify(body), 'application/json', { 'Content-Disposition': `attachment; filename="easyadmin-backup-${new Date().toISOString().slice(0, 10)}.json"` });
-      } finally { fs.rmSync(tmp, { force: true }); }
-    }, { admin: true }],
-  ];
-
-  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...loadRoutes(d), ...backupApiRoutes({ ...d, treeOf }), ...backupRoutes, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...loadRoutes(d), ...backupApiRoutes({ ...d, treeOf }), ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes];
 }

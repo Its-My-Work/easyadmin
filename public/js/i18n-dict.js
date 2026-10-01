@@ -546,6 +546,7 @@ export const EN = [
   ['Копия «на живую»: быстро, но файлы могут измениться во время копирования.', 'A live copy: fast, but files may change while copying.'],
   ['Сервис замораживается (docker pause) на время копирования тома и затем продолжает работу — данные согласованы, соединения не рвутся.', 'The service is frozen (docker pause) while the volume is copied and then continues — data is consistent and connections stay open.'],
   ['Сервис останавливается на время копирования тома и затем запускается снова — самый надёжный вариант, но с простоем.', 'The service is stopped while the volume is copied and then started again — the most reliable option, but with downtime.'],
+  ['По времени сервера EasyAdmin', 'EasyAdmin server time'],
   /* настройки панели Easypanel */
   ['Доступна новая версия Docker', 'A newer Docker version is available'],
   ['Сгенерированный домен', 'Generated domain'],

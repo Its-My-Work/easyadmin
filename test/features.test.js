@@ -436,12 +436,9 @@ describe('экспорт, бэкап, метрики', () => {
     const { data } = await api('admin', 'GET', '/api/audit?q=schedule');
     assert.ok(data.length > 0 && data.every((a) => /schedule|расписание/i.test(JSON.stringify(a))));
   });
-  test('бэкап содержит БД, ключ — только по запросу', async () => {
-    const plain = (await api('admin', 'GET', '/api/backup')).data;
-    assert.ok(plain.db.length > 100); assert.equal(plain.key, undefined);
-    const withKey = (await api('admin', 'GET', '/api/backup?withKey=1')).data;
-    assert.equal(withKey.key.length, 64);
-    assert.ok(Buffer.from(withKey.db, 'base64').subarray(0, 15).toString() === 'SQLite format 3');
+  test('небезопасной выгрузки базы без шифрования больше нет: /api/backup не существует', async () => {
+    assert.equal((await api('admin', 'GET', '/api/backup')).status, 404);
+    assert.equal((await api('admin', 'GET', '/api/backup?withKey=1')).status, 404);
   });
   test('метрики Prometheus: только с токеном', async () => {
     assert.equal((await fetch(base + '/metrics')).status, 401);

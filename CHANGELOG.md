@@ -9,3 +9,4 @@
 - **Backups**: encrypted EasyAdmin system and panel configurations, schedule, rotation, local or S3 storage, verify and restore (experimental restore).
 - **Data backups** (experimental): database dumps and volumes made on the panel's server, host or S3 destination, compose stacks, Redis, volume consistency (pause/stop), multipart upload for large files.
 - Russian and English interface.
+- Removed the old unencrypted `GET /api/backup` export (it could include the encryption key); use encrypted backups instead. The backup schedule hour is shown against the EasyAdmin server clock.
