@@ -161,7 +161,7 @@ export function openService(s) {
         kv('Источник', src ? t(SOURCES.find(([id]) => id === sourceKind(src))?.[1] ?? '') : undefined), kv('Образ', pick(src, 'image')),
         kv('Репозиторий', ['github', 'git'].includes(sourceKind(src || {})) ? `${repoLabel(src)}${splitRepoUrl(src.repo).token ? ' 🔑' : ''}` : undefined),
         kv('Сборка', svc.build?.type ? `${(BUILDS.find(([id]) => id === svc.build.type) ?? [, svc.build.type])[1]}${svc.build.file ? ` (${svc.build.file})` : ''}` : undefined),
-        kv('Доменов', domainsList.length), kv('Томов', asList(d.mounts).length), kv('Портов', asList(d.ports).length)),
+        ...[['Доменов', domainsList.length], ['Томов', asList(d.mounts).length], ['Портов', asList(d.ports).length]].filter(([, n]) => n > 0).map(([l, n]) => kv(l, n))), // нулевые счётчики не показываем
       domainsList.length ? h('div', { class: 'stack-sm' }, h('h4', null, 'Домены'), domainsList.map((x) => h('a', { class: 'link-row', href: `${x.https === false ? 'http' : 'https'}://${x.host}`, target: '_blank', rel: 'noopener' }, icon('globe', 14), x.host, icon('external', 12)))) : null,
       statsBox,
       field('Заметки', notes),
