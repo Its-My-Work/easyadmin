@@ -36,7 +36,6 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 .nav-panels { display: grid; gap: 1px; }
 .np-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .count { font-size: 11px; padding: 0 6px; border-radius: 99px; background: var(--panel2); } .count.warn { background: rgba(251,191,36,.16); color: var(--warn); }
-.side-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 6px 0; border-top: 1px solid var(--border); }
 .user { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .content { min-width: 0; display: flex; flex-direction: column; }
@@ -393,3 +392,9 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .hist-main { display: flex; gap: 10px; align-items: flex-start; min-width: 0; } .hist-main > .icon { margin-top: 3px; flex: none; color: var(--muted); }
 .hist-row { gap: 12px; } .hist-detail { overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 2px; }
 .hist-log { max-height: 60vh; min-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* шапка: пояс времени, язык, профиль и выход собраны справа */
+.top-sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; flex: none; }
+.topbar .user-chip { gap: 8px; padding: 3px 10px 3px 4px; margin: 0; border-radius: 99px; flex: none; } .topbar .user-chip:hover { background: var(--panel2); }
+.topbar .user-chip b { font-size: 13px; line-height: 1.2; } .topbar .user-chip .small { font-size: 11px; line-height: 1.2; }
+@media (max-width: 900px) { .topbar .user-chip > div:last-child { display: none; } .topbar .user-chip { padding: 3px; } }

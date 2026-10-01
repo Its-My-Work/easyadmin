@@ -53,16 +53,14 @@ function buildShell() {
     h('a', { class: 'logo', href: '#/' }, logoMark(), h('span', null, 'EasyAdmin')),
     nav,
     h('div', { class: 'nav-title' }, h('span', null, 'Панели'), can('admin') ? h('button', { class: 'btn icon ghost sm', title: 'Добавить панель', onclick: () => panelForm() }, icon('plus', 14)) : null),
-    panelsList,
-    h('div', { class: 'side-foot' },
-      h('a', { class: 'user', href: '#/profile', title: 'Профиль', onclick: () => document.body.classList.remove('nav-open') }, avatar(store.user, 32), h('div', null, h('b', null, store.user.displayName || store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
-      langToggle(),
-      h('button', { class: 'btn icon ghost', title: 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16))));
+    panelsList);
   const back = h('div', { class: 'side-back', onclick: () => document.body.classList.remove('nav-open') });
   const top = h('header', { class: 'topbar' },
     h('button', { class: 'btn icon ghost menu-btn', title: 'Свернуть / развернуть меню', onclick: toggleMenu, 'aria-label': 'Меню' }, icon('menu', 18)),
     h('button', { class: 'search-trigger', onclick: openPalette }, icon('search', 15), h('span', null, 'Поиск и команды'), h('kbd', null, navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K')),
-    h('span', { class: 'spacer' }), clock, updated, refreshBtn);
+    h('span', { class: 'spacer' }), clock, updated, refreshBtn, h('span', { class: 'top-sep' }), langToggle(),
+    h('a', { class: 'user user-chip', href: '#/profile', title: 'Профиль' }, avatar(store.user, 30), h('div', null, h('b', null, store.user.displayName || store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
+    h('button', { class: 'btn icon ghost', title: 'Выйти', 'aria-label': 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16)));
   clear(root).append(h('div', { class: 'app' }, sidebar, back, h('div', { class: 'content' }, top, view)));
   shell = { nav, panelsList, view, updated, refreshBtn, clock };
   paintClock();
