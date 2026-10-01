@@ -253,14 +253,14 @@ describe('обновление Docker из EasyAdmin', () => {
     assert.equal((await go('admin', {})).status, 400); assert.equal((await go('admin', { confirm: 'other' })).status, 400); assert.equal(cmds.length, 0, 'без подтверждения команда не выполняется');
     const r = await go('admin', { confirm: 'DK1' });
     assert.equal(r.status, 200, JSON.stringify(r.data)); assert.deepEqual([r.data.started, r.data.from, r.data.to], [true, '29.7.0', '29.8.2']);
-    assert.equal(cmds.length, 1); assert.match(cmds[0], /systemd-run --unit=docker-upgrade-ea/); assert.match(cmds[0], /--only-upgrade docker-ce docker-ce-cli containerd\.io/); assert.match(cmds[0], /is-active --quiet docker-upgrade-ea/, 'повторный запуск защищён');
-    assert.ok(!/\$\{|`/.test(cmds[0].replace(/\$\(\(\d+\+\d+\)\)/g, '')), 'в команде нет подстановок: она не зависит от ввода');
+    assert.equal(cmds.length, 1); assert.match(cmds[0], /systemd-run --unit=docker-upgrade-ea/); assert.match(cmds[0], /docker-ce docker-ce-cli containerd\.io/); assert.match(cmds[0], /--only-upgrade\$PK/); assert.match(cmds[0], /\$PM -y upgrade\$PK/, 'dnf/yum'); assert.match(cmds[0], /is-active --quiet docker-upgrade-ea/, 'повторный запуск защищён');
+    assert.ok(!cmds[0].includes('DK1') && !cmds[0].includes('confirm'), 'команда фиксированная и не зависит от ввода пользователя');
     const log = await auditOf('docker.update'); assert.ok(log.some((a) => a.ok === 1 && /29\.7\.0 → 29\.8\.2/.test(a.detail)));
   });
   test('нет новой версии, ошибка на хосте (не apt) и таймаут консоли — понятные ответы', async () => {
-    const { id, m } = await mk('DK2', { hostExec: (cmd) => `EA_NO_APT\n${marker(cmd, 'FAIL')}` });
+    const { id, m } = await mk('DK2', { hostExec: (cmd) => `EA_NO_PM\n${marker(cmd, 'FAIL')}` });
     const r = await api('admin', 'POST', `/api/panels/${id}/pdocker/update`, { confirm: 'DK2' });
-    assert.equal(r.status, 502); assert.match(r.data.error, /нужен apt/);
+    assert.equal(r.status, 502); assert.match(r.data.error, /нужны apt, dnf или yum/);
     assert.ok((await auditOf('docker.update')).some((a) => a.ok === 1), 'запуск записан');
     // консоль не отвечает на команду
     const quiet = await mk('DK3', { hostExec: () => '' });
@@ -272,5 +272,23 @@ describe('обновление Docker из EasyAdmin', () => {
     const r = await api('admin', 'GET', `/api/panels/${id}/pdocker/log`);
     assert.equal(r.status, 200); assert.equal(r.data.state, 'active'); assert.match(r.data.log, /docker-ce 29\.8\.2/); assert.ok(!r.data.log.includes('state:'));
     assert.equal((await api('op', 'GET', `/api/panels/${id}/pdocker/log`)).status, 403);
+  });
+  test('проверка системы перед обновлением: apt и dnf/yum поддерживаются; другие системы, отсутствие systemd и Docker не из репозитория Docker — с понятной причиной', async () => {
+    const info = (line) => ({ hostExec: (cmd) => (/EA_INFO/.test(cmd) ? `${line}\n${marker(cmd, 'OK')}` : null) });
+    const chk = async (name, line) => { const { id } = await mk(name, info(line)); return (await api('admin', 'GET', `/api/panels/${id}/pdocker/check`)).data; };
+    const ubuntu = await chk('CK1', 'EA_INFO os=ubuntu pm=apt systemd=yes docker_ce=yes'); assert.deepEqual([ubuntu.supported, ubuntu.reason, ubuntu.os, ubuntu.packageManager], [true, null, 'ubuntu', 'apt']);
+    assert.equal((await chk('CK2', 'EA_INFO os=rocky pm=dnf systemd=yes docker_ce=yes')).supported, true);
+    assert.equal((await chk('CK3', 'EA_INFO os=centos pm=yum systemd=yes docker_ce=yes')).supported, true);
+    const alp = await chk('CK4', 'EA_INFO os=alpine pm=none systemd=no docker_ce=no'); assert.equal(alp.supported, false); assert.match(alp.reason, /systemd/);
+    const arch = await chk('CK5', 'EA_INFO os=arch pm=none systemd=yes docker_ce=no'); assert.equal(arch.supported, false); assert.match(arch.reason, /«arch».*apt, dnf или yum/);
+    const snap = await chk('CK6', 'EA_INFO os=ubuntu pm=apt systemd=yes docker_ce=no'); assert.equal(snap.supported, false); assert.match(snap.reason, /docker-ce не найден/);
+    const { id } = await mk('CK7', info('EA_INFO os=ubuntu pm=apt systemd=yes docker_ce=yes'));
+    assert.equal((await api('op', 'GET', `/api/panels/${id}/pdocker/check`)).status, 403);
+    const bad = await mk('CK8', { hostExec: () => 'nothing useful' }); assert.ok([502, 504, 400].includes((await api('admin', 'GET', `/api/panels/${bad.id}/pdocker/check`)).status));
+  });
+  test('обновление на системе без docker-ce отклоняется с причиной, а не «запущено»', async () => {
+    const { id } = await mk('DK5', { hostExec: (cmd) => `EA_NO_CE\n${marker(cmd, 'FAIL')}` });
+    const r = await api('admin', 'POST', `/api/panels/${id}/pdocker/update`, { confirm: 'DK5' });
+    assert.equal(r.status, 502); assert.match(r.data.error, /не из репозитория Docker/);
   });
 });

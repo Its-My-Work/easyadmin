@@ -107,12 +107,23 @@ export function diffText(def, before, after) {
   return parts.join('; ') || 'без изменений';
 }
 
-// Только Debian/Ubuntu (apt) и systemd; пакеты — официальные docker-ce. Команда запускается отдельным юнитом: сеанс консоли умрёт вместе с Docker.
-const DOCKER_UPDATE_SCRIPT = [
-  'command -v apt-get >/dev/null 2>&1 || { echo EA_NO_APT; false; }',
-  'command -v systemd-run >/dev/null 2>&1 || { echo EA_NO_SYSTEMD; false; }',
-  'if systemctl is-active --quiet docker-upgrade-ea 2>/dev/null; then echo EA_RUNNING; false; else systemd-run --unit=docker-upgrade-ea --collect --description="EasyAdmin: Docker upgrade" bash -c \'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin\' 2>&1; fi',
-].join(' && ');
+// Обновление Docker на хосте. Поддерживаются apt (Debian/Ubuntu) и dnf/yum (RHEL-семейство) с пакетами docker-ce из репозитория Docker и systemd.
+// Проверка и обновление — фиксированные команды, ввод пользователя в них не попадает. Обновление идёт отдельным юнитом: сеанс консоли умрёт вместе с Docker.
+const PKGS = 'docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin';
+const DETECT = [
+  'PM=none; command -v apt-get >/dev/null 2>&1 && PM=apt; [ "$PM" = none ] && command -v dnf >/dev/null 2>&1 && PM=dnf; [ "$PM" = none ] && command -v yum >/dev/null 2>&1 && PM=yum',
+  'OS=$(. /etc/os-release 2>/dev/null; echo ${ID:-unknown})',
+  'SD=no; command -v systemd-run >/dev/null 2>&1 && SD=yes',
+  'HAS() { if [ "$PM" = apt ]; then dpkg -s "$1" >/dev/null 2>&1; else rpm -q "$1" >/dev/null 2>&1; fi; }',
+  'CE=no; HAS docker-ce && CE=yes',
+].join('; ');
+const DOCKER_CHECK_SCRIPT = `${DETECT}; echo "EA_INFO os=$OS pm=$PM systemd=$SD docker_ce=$CE"`;
+const DOCKER_UPDATE_SCRIPT = `${DETECT}; PK=""; for p in ${PKGS}; do HAS $p && PK="$PK $p"; done; `
+  + 'if [ "$SD" != yes ]; then echo EA_NO_SYSTEMD; exit 1; fi; if [ "$PM" = none ]; then echo EA_NO_PM; exit 1; fi; if [ "$CE" != yes ]; then echo EA_NO_CE; exit 1; fi; '
+  + 'if systemctl is-active --quiet docker-upgrade-ea 2>/dev/null; then echo EA_RUNNING; exit 1; fi; '
+  + 'if [ "$PM" = apt ]; then CMD="apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade$PK"; else CMD="$PM -y upgrade$PK"; fi; '
+  + 'systemd-run --unit=docker-upgrade-ea --collect --description="EasyAdmin: Docker upgrade" bash -c "$CMD" 2>&1';
+const dockerReason = (i) => (i.systemd !== 'yes' ? 'нужен systemd' : !['apt', 'dnf', 'yum'].includes(i.pm) ? `система «${i.os}» не поддерживается: нужны apt, dnf или yum` : i.docker_ce !== 'yes' ? 'Docker установлен не из репозитория Docker (пакет docker-ce не найден) — обновите его средствами системы' : null);
 
 const SECRET_KEY = /pass|secret|token|key|credential|private|config/i;
 const maskDeep = (v, d = 0) => {
@@ -188,6 +199,14 @@ export function psettingsRoutes(d) {
     }, { admin: true }],
 
     /* ---------- обновление Docker: отдельным юнитом systemd на хосте (он переживёт перезапуск Docker) ---------- */
+    ['GET', '/api/panels/:id/pdocker/check', async (ctx) => {
+      const { row, c } = access(ctx);
+      const r = await call(() => runOnHost(c, row, DOCKER_CHECK_SCRIPT, { timeoutMs: 30_000 }));
+      const m = /EA_INFO (.*)/.exec(r.output); need(m, 'Не удалось определить систему сервера');
+      const info = Object.fromEntries(m[1].trim().split(/\s+/).map((kv) => kv.split('=')));
+      const reason = dockerReason(info);
+      return { supported: !reason, reason, os: info.os ?? null, packageManager: info.pm ?? null };
+    }, { admin: true }],
     ['POST', '/api/panels/:id/pdocker/update', async (ctx) => {
       const { row, c } = access(ctx);
       need(ctx.body?.confirm === row.name, 'Для подтверждения введите название панели');
@@ -195,7 +214,7 @@ export function psettingsRoutes(d) {
       need(info?.updateAvailable === true && info?.latestVersion, 'Новой версии Docker нет');
       const r = await write(ctx, row, 'docker.update.start', row.name, () => runOnHost(c, row, DOCKER_UPDATE_SCRIPT), `${info.version} → ${info.latestVersion}`);
       if (!r.ok) {
-        const why = r.output.includes('EA_NO_APT') ? 'нужен apt (Debian/Ubuntu), обновите Docker вручную' : r.output.includes('EA_NO_SYSTEMD') ? 'нужен systemd' : r.output.includes('EA_RUNNING') ? 'обновление уже выполняется' : r.output.slice(-300) || 'неизвестная ошибка';
+        const why = r.output.includes('EA_NO_PM') ? 'нужны apt, dnf или yum, обновите Docker вручную' : r.output.includes('EA_NO_SYSTEMD') ? 'нужен systemd' : r.output.includes('EA_NO_CE') ? 'Docker установлен не из репозитория Docker — обновите его средствами системы' : r.output.includes('EA_RUNNING') ? 'обновление уже выполняется' : r.output.slice(-300) || 'неизвестная ошибка';
         throw new HttpError(502, `Обновление не запущено: ${why}`);
       }
       return { started: true, from: info.version ?? null, to: info.latestVersion, output: r.output.slice(-300) };
