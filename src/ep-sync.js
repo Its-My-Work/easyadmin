@@ -154,6 +154,8 @@ export function createEpSync({ db, manager, getRaw, setRaw, load, audit, now = (
   return {
     sync, providers, last, managedCount: () => managed().length,
     busy: () => pending > 0,
+    /** Сервис переименован или перенесён: записи о созданных расписаниях следуют за ним. */
+    repoint(panelId, from, to) { setRaw(MANAGED_KEY, JSON.stringify(managed().map((m) => (m.panelId === panelId && m.project === from.project && m.service === from.name ? { ...m, project: to.project, service: to.name } : m)))); },
     /** Ключи «панель:id» расписаний, созданных EasyAdmin (для отметки в обзоре). */
     managedKeys: () => new Set(managed().map((m) => `${m.panelId}:${m.id}`)),
   };
