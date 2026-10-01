@@ -9,6 +9,7 @@ import { createConsoleHub } from './console.js';
 import { HttpError, RawResponse, StreamResponse, compile, parseCookies, readJson, redirect, sendJson, sendRaw, serveStatic } from './http.js';
 import { createOidc } from './oidc.js';
 import { translate } from '../public/js/i18n-dict.js';
+import { createLoadMonitor } from './load-monitor.js';
 import { createAlerts } from './alerts.js';
 import { extraRoutes } from './routes-ext.js';
 import { createManager } from './manager.js';
@@ -38,7 +39,7 @@ export function redactSecrets(v) {
 const LEVEL = { viewer: 0, operator: 1, admin: 2 };
 export const ROLES = Object.keys(LEVEL);
 
-export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs }) {
+export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, snapshotFn }) {
   const manager = createManager({ db, key, config });
   const alerts = createAlerts({ db, key, config, fetchImpl });
   const oidc = createOidc({ config, fetchImpl });
@@ -153,8 +154,10 @@ export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, inst
 
   const scheduler = createScheduler({ db, manager, alerts, audit });
   const consoleHub = createConsoleHub();
+  const loadmon = createLoadMonitor({ db, manager, alerts, config, snapshotFn });
   manager.onSnapshot = (row, snap) => {
     alerts.evaluate(row, snap);
+    try { loadmon.onHost(row, snap); } catch { /* метрики не должны мешать опросу панелей */ }
     if (snap.stats && (!history.get(row.id) || now() - history.get(row.id) > 55_000)) {
       history.set(row.id, now());
       db.prepare('INSERT INTO stats_history (panel_id, ts, cpu, mem, disk) VALUES (?,?,?,?,?)').run(row.id, now(), snap.stats.cpu, snap.stats.memPct, snap.stats.diskPct);
@@ -411,7 +414,7 @@ export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, inst
     ['DELETE', '/api/panels/:id', (ctx) => {
       const row = panelOr404(ctx.params.id);
       db.prepare('DELETE FROM panels WHERE id = ?').run(row.id);
-      manager.invalidate(row.id);
+      manager.invalidate(row.id); loadmon.forget(row.id);
       audit(ctx, { action: 'panel.remove', panel: row });
       return { ok: true };
     }, { admin: true }],
@@ -557,7 +560,7 @@ export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, inst
       return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
 
-    ...extraRoutes({ db, key, config, fetchImpl, ssh, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
+    ...extraRoutes({ db, key, config, fetchImpl, ssh, loadmon, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
   ]);
 
   const decryptOf = (row) => manager.clientFor(row).token;
@@ -617,7 +620,7 @@ export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, inst
   const server = http.createServer((req, res) => { handle(req, res); });
   let maintenance;
   const start = () => {
-    manager.startPolling(); scheduler.start();
+    manager.startPolling(); scheduler.start(); loadmon.start();
     const prune = () => {
       db.prepare('DELETE FROM audit WHERE ts < ?').run(now() - 90 * 86_400_000);
       db.prepare('DELETE FROM stats_history WHERE ts < ?').run(now() - 7 * 86_400_000);
@@ -625,6 +628,6 @@ export function createApp({ config, db, key, fetchImpl, ssh, installPollMs, inst
     };
     prune(); maintenance = setInterval(prune, 6 * 3600_000); maintenance.unref();
   };
-  const stop = () => { manager.stop(); scheduler.stop(); consoleHub.closeAll(); clearInterval(maintenance); };
-  return { server, manager, alerts, scheduler, start, stop };
+  const stop = () => { manager.stop(); scheduler.stop(); loadmon.stop(); consoleHub.closeAll(); clearInterval(maintenance); };
+  return { server, manager, alerts, scheduler, loadmon, start, stop };
 }

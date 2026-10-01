@@ -90,6 +90,13 @@ await step('server console page', async () => {
 await step('schedules', async () => { await p.goto(U + '#/schedules'); await p.waitForTimeout(300); await scan('schedules empty'); await p.click('button:has-text("New schedule")'); await p.waitForSelector('.modal'); await scan('schedule modal'); await p.selectOption('.modal select >> nth=0', 'system'); await scan('schedule system'); await p.selectOption('.modal select >> nth=2', 'interval').catch(() => {}); await scan('schedule interval'); await p.click('.modal-foot button:has-text("Create")'); await p.waitForTimeout(400); await scan('schedule error'); await esc(); });
 await step('inventory', async () => { await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row, .tbl', { timeout: 15000 }); await scan('images'); await p.click('.seg button:has-text("Certificates")'); await p.waitForSelector('.badge', { timeout: 8000 }); await scan('certs'); await p.locator('button:has-text("Reissue")').first().click(); await p.waitForSelector('.modal'); await scan('reissue confirm'); await esc(); });
 await step('audit', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); });
+await step('load tab, service history, settings card', async () => {
+  await p.goto(U + '#/panel/1/load'); await p.waitForSelector('.chart-svg'); await p.waitForSelector('.tbl tbody tr'); await scan('load tab');
+  await p.click('.seg-btn:text-is("7 d")'); await p.waitForTimeout(400); await scan('load tab 7d');
+  await p.goto(U + '#/panel/1'); await p.waitForSelector('.project'); await p.locator('tr.row', { hasText: 'worker' }).first().click(); await p.waitForSelector('.drawer.in');
+  await p.click('.drawer .dtab:has-text("Resources")'); await p.waitForSelector('.drawer .chart-empty, .drawer .chart-svg'); await scan('service load'); await p.keyboard.press('Escape');
+  await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Load monitoring"))'); await scan('load settings');
+});
 await step('settings', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card'); await p.waitForTimeout(500);
   await p.click('button:has-text("Add channel")'); await p.waitForSelector('.modal'); await scan('channel telegram'); await p.selectOption('.modal select', 'email'); await scan('channel email'); await p.selectOption('.modal select', 'webhook'); await scan('channel webhook'); await p.click('.modal-foot button:has-text("Save")'); await p.waitForTimeout(300); await scan('channel error'); await esc();

@@ -1,0 +1,31 @@
+##LOAD
+1.52 1.10 0.80 3/412 99001
+##TOP
+top - 10:00:01 up 3 days,  1:00,  1 user,  load average: 1.52, 1.10, 0.80
+Tasks: 150 total,   2 running, 148 sleeping,   0 stopped,   0 zombie
+%Cpu(s): 55.0 us, 10.0 sy,  0.0 ni, 20.0 id, 14.0 wa,  0.0 hi,  1.0 si,  0.0 st 
+MiB Mem :   4000.0 total,    300.0 free,   2800.0 used,    900.0 buff/cache
+MiB Swap:      0.0 total,      0.0 free,      0.0 used.   1000.0 avail Mem 
+
+    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+   2001 root      20   0 5579132 384636  63444 R  62.0   9.6   14:56.58 node /app/server.js
+   2002 root      20   0  570728  98452   1568 S  14.5   2.4    9:50.91 /usr/bin/dockerd -H fd://
+   2003 www-data  20   0  764144  86064    764 S   8.0   2.1   23:27.94 nginx: worker process
+   2004 root      20   0   20684   6972   4496 D   3.0   0.2    0:02.84 apt-get upgrade
+##MEM
+MemTotal:        4096000 kB
+MemAvailable:    1024000 kB
+Buffers:          100000 kB
+Cached:           800000 kB
+SwapTotal:       1000000 kB
+SwapFree:         900000 kB
+##DISK
+/dev/sda1 30000000 24000000 5000000 83% /
+##PSMEM
+ 2001 root     384636 node /app/server.js
+ 2002 root      98452 /usr/bin/dockerd -H fd://
+ 2003 www-data  86064 nginx: worker process
+##CG
+2001 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+2003 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+##END

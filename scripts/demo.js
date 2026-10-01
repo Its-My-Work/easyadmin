@@ -45,4 +45,18 @@ for (const { id } of db.prepare('SELECT id FROM panels').all()) {
   const ins = db.prepare('INSERT INTO stats_history (panel_id, ts, cpu, mem, disk) VALUES (?,?,?,?,?)');
   for (let i = 288; i >= 1; i--) ins.run(id, Date.now() - i * 300_000, 30 + 25 * Math.sin(i / 20 + id) + Math.random() * 8, 55 + 10 * Math.sin(i / 50) + Math.random() * 3, 40 + (288 - i) / 30);
 }
+// история по сервисам и хосту для вкладки «Нагрузка»
+{
+  const ins = db.prepare('INSERT INTO svc_metrics (panel_id, ts, res, project, service, containers, cpu, cpu_max, mem, mem_max, rx, tx, cores) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  const t0 = Math.floor(Date.now() / 60_000) * 60_000;
+  for (const { id } of db.prepare("SELECT id FROM panels WHERE status = 'online'").all()) {
+    for (let i = 360; i >= 0; i--) {
+      const ts = t0 - i * 60_000; const w = 1 + Math.sin(i / 30 + id);
+      const svc = [['shop', 'web', 18 * w + 4, 420], ['shop', 'db', 9 * w + 3, 780], ['blog', 'app', 5 * w + 1, 210], ['easypanel', 'traefik', 3, 60]];
+      let cpu = 0, mem = 0;
+      for (const [pr, sv, c, m] of svc) { cpu += c; mem += m; ins.run(id, ts, 60, pr, sv, 1, c, c * 1.2, m * 1048576, m * 1048576, 20000 * w, 9000 * w, null); }
+      ins.run(id, ts, 60, '', '', 0, cpu / 2 + 6 + 4 * Math.random(), cpu / 2 + 10, (mem + 700) * 1048576, 4096 * 1048576, null, null, 2);
+    }
+  }
+}
 console.log(`Демо запущено: ${base}  (логин admin / пароль demo12345)`);

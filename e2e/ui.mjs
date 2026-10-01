@@ -273,6 +273,16 @@ await step('журнал: фильтры период/результат/кат�
   if (await p.locator('.audit-bar button:has-text("Сбросить")').count()) throw new Error('кнопка сброса осталась после сброса');
   const users = await p.locator('.audit-bar select[aria-label="Пользователь"] option').allTextContents(); if (!users.includes('admin')) throw new Error('нет пользователей в фильтре');
 });
+await step('вкладка «Нагрузка»: графики, таблица, настройки', async () => {
+  await p.goto(U + '#/panel/1/load'); await p.waitForSelector('.chart-svg'); await p.waitForSelector('.tbl tbody tr');
+  const n = await p.locator('.chart-svg').count(); if (n < 2) throw new Error('ожидалось два графика, найдено ' + n);
+  await p.click('.seg-btn:text-is("6 ч")'); await p.waitForSelector('.chart-svg');
+  await p.hover('.chart-svg >> nth=0'); await p.waitForSelector('.chart-tip:not([hidden])');
+  await p.click('.card-head label.check input'); await p.waitForTimeout(200);
+  await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Мониторинг нагрузки"))');
+  await p.click('.card:has(h3:has-text("Мониторинг нагрузки")) .seg-btn:text-is("Чувствительные")'); await p.waitForTimeout(400);
+  const act = await p.textContent('.card:has(h3:has-text("Мониторинг нагрузки")) .seg-btn.active >> nth=1'); if (!act.includes('Чувствительные')) throw new Error('уровень не сохранился: ' + act);
+});
 await step('форма нового сервиса: поля в ряд выровнены', async () => {
   await p.goto(U + '#/services'); await p.waitForSelector('.tbl');
   await p.click('button:has-text("Новый сервис")'); await p.waitForSelector('.modal');

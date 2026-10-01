@@ -37,6 +37,17 @@ export function openDb(dataDir) {
       created_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS svc_metrics (
+      panel_id INTEGER NOT NULL,
+      ts INTEGER NOT NULL,
+      res INTEGER NOT NULL DEFAULT 60,
+      project TEXT NOT NULL,
+      service TEXT NOT NULL,
+      containers INTEGER NOT NULL DEFAULT 0,
+      cpu REAL, cpu_max REAL, mem REAL, mem_max REAL, rx REAL, tx REAL, cores INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS svc_metrics_k ON svc_metrics(panel_id, project, service, ts);
+    CREATE INDEX IF NOT EXISTS svc_metrics_r ON svc_metrics(res, ts);
     CREATE TABLE IF NOT EXISTS panel_installs (
       id TEXT PRIMARY KEY,
       ts INTEGER NOT NULL,

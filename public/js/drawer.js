@@ -6,6 +6,7 @@ import { can, favorites, isDb, pushRecent, refresh, store, subscribe, svcKey, to
 import { logsView } from './logs-console.js';
 import { consoleView } from './service-console.js';
 import { backupsView } from './backups-tab.js';
+import { serviceLoad } from './load-tab.js';
 import { BUILDS, SOURCES, sourceFields, repoLabel, sourceKind, splitRepoUrl } from './source-form.js';
 import { cloneModal, saveTemplateModal } from './views2.js';
 
@@ -270,7 +271,7 @@ export function openService(s) {
     const r = svc.resources || {};
     const mk = (label, key, hint) => { const i = h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: r[key] ?? '', placeholder: '0 = без лимита' }); return { i, f: field(label, i, hint) }; };
     const ml = mk('Лимит памяти, МБ', 'memoryLimit'), mr = mk('Резерв памяти, МБ', 'memoryReservation'), cl = mk('Лимит CPU, ядер', 'cpuLimit'), cr = mk('Резерв CPU, ядер', 'cpuReservation');
-    return h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, ml.f, mr.f, cl.f, cr.f),
+    return h('div', { class: 'stack' }, serviceLoad(s.panelId, s.project, s.name), h('div', { class: 'grid-2' }, ml.f, mr.f, cl.f, cr.f),
       ro ? null : h('div', null, h('button', { class: 'btn primary', onclick: () => op('resources', { memoryLimit: ml.i.value, memoryReservation: mr.i.value, cpuLimit: cl.i.value, cpuReservation: cr.i.value }, 'Лимиты сохранены') }, 'Сохранить')));
   }
 

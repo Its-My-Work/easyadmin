@@ -64,7 +64,7 @@ export function overview(p, entry, go) {
     return [
       s.updateAvailable ? h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Доступно обновление Easypanel'), h('p', null, 'Новая версия готова к установке.'),
         h('div', { class: 'inline' }, h('button', { class: 'btn sm primary', onclick: update }, icon('rocket', 13), 'Обновить Easypanel'), h('button', { class: 'btn sm ghost', onclick: () => go('system') }, 'Подробнее')))) : null,
-      s.dockerUpdate?.available ? h('div', { class: 'callout compact' }, icon('activity', 14), h('span', { class: 'small' }, `${t('Доступна новая версия Docker')}: ${s.dockerUpdate.latest}`)) : null,
+      s.dockerUpdate?.available ? h('div', { class: 'callout compact' }, icon('activity', 14), h('span', { class: 'small' }, `${t('Доступна новая версия Docker')}: ${s.dockerUpdate.latest}`), h('span', { class: 'spacer' }), h('button', { class: 'btn sm danger', onclick: () => dockerFromOverview(p, s, draw) }, icon('rotate', 13), 'Обновить Docker')) : null,
       card('Состояние панели', null,
         kv('Версия Easypanel', s.version ? h('span', null, s.version, ' ', s.releaseTag ? badge(s.releaseTag) : null, ' ', s.updateAvailable ? badge('есть обновление', 'warn') : badge('актуальная', 'ok')) : '—'),
         kv('Версия Docker', s.dockerVersion ? h('span', null, s.dockerVersion, ' ', s.dockerUpdate?.available ? badge(`→ ${s.dockerUpdate.latest}`, 'warn') : null) : '—'),
@@ -127,6 +127,14 @@ async function updateDocker(p, st, reload) {
     message: `${t('Docker будет обновлён на самом сервере. На время обновления Docker перезапустится: ВСЕ сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут и поднимутся заново. Выполняйте это в удобное время и после резервных копий. Обновление идёт отдельным процессом на сервере (apt) и продолжится, даже если связь пропадёт.')} ${t('Панель')}: «${p.name}».` });
   if (!ok) return;
   try { const r = await post(`/api/panels/${p.id}/pdocker/update`, { confirm: p.name }); toast(t('Обновление Docker запущено'), 'success'); dockerProgress(p, r.from, r.to, reload); } catch (e) { toast(e.message, 'error', 9000); }
+}
+/** Кнопка в «Обзоре»: сначала проверка системы сервера, затем обычное подтверждение и запуск. */
+async function dockerFromOverview(p, st, reload) {
+  try {
+    const c = await get(`/api/panels/${p.id}/pdocker/check`);
+    if (!c.supported) return toast(c.reason || t('Обновление Docker на этом сервере недоступно'), 'error', 9000);
+  } catch (e) { return toast(e.message, 'error', 9000); }
+  updateDocker(p, st, reload);
 }
 export function system(p, entry, go) {
   const box = h('div', { class: 'stack' });

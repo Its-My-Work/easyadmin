@@ -7,6 +7,7 @@ import { lang, setLang, t } from './i18n.js';
 import { sourcePicker } from './source-form.js';
 import { installWizard } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
+import { loadSettingsCard, loadTab } from './load-tab.js';
 import { backupCard, channelsCard, cleanAllModal, historyCard, hooksCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
@@ -76,7 +77,7 @@ export function panelPage(id, sub) {
   const tab = sub || 'services';
   const st = p.stats;
   const down = !['online', 'degraded'].includes(p.status);
-  const tabs = [['services', 'Сервисы'], ['activity', 'Активность'], ...(can('admin') ? [['settings', 'Настройки'], ['console', 'Консоль API']] : [])];
+  const tabs = [['services', 'Сервисы'], ['load', 'Нагрузка'], ['activity', 'Активность'], ...(can('admin') ? [['settings', 'Настройки'], ['console', 'Консоль API']] : [])];
   const content = h('div');
   const page = h('div', { class: 'page', style: { '--pc': p.color } },
     h('div', { class: 'page-head' },
@@ -98,6 +99,7 @@ export function panelPage(id, sub) {
     h('div', { class: 'tabs page-tabs' }, tabs.map(([t, l]) => h('a', { class: `tab ${tab === t ? 'active' : ''}`, href: `#/panel/${p.id}${t === 'services' ? '' : '/' + t}` }, l))),
     content);
   if (tab === 'services') content.append(servicesTab(p));
+  else if (tab === 'load') content.append(loadTab(p));
   else if (tab === 'activity') content.append(activityTab(p));
   else if (tab === 'settings') content.append(settingsTab(p));
   else content.append(consoleTab(p));
@@ -379,7 +381,7 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [channelsCard(), hooksCard(), backupCard()] : []),
+    ...(can('admin') ? [loadSettingsCard(), channelsCard(), hooksCard(), backupCard()] : []),
     h('a', { class: 'callout link-callout', href: '#/profile' }, icon('users', 16), h('div', null, h('b', null, 'Личные настройки'), h('p', null, 'Пароль, двухфакторная аутентификация, сессии, язык и тема — в профиле.'))));
   return page;
 }

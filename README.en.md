@@ -127,3 +127,7 @@ node e2e/ui.mjs  # end-to-end UI check in a browser (needs playwright and a runn
 ```
 
 Layout: `src/` — server (`app.js` routes and permissions, `routes-ext.js` templates/schedules/webhooks/inventory, `easypanel.js` client and operations, `manager.js` cache and statuses, `alerts.js` notifications, `scheduler.js`, `totp.js`, `oidc.js`, `smtp.js`, `ws.js`), `public/` — UI, `test/` — tests and the panel mock, `docs/TZ.md` — specification and plan.
+
+## Server load
+
+A “Load” tab on each panel: server CPU/memory charts (services vs. system and other), a services table, per-service history in the “Resources” tab, and “What is loading the server?” (a process snapshot from the host). Settings → “Load monitoring”: retention, overload alerts, clear history.

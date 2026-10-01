@@ -10,6 +10,7 @@ export const EVENT_TYPES = {
   cert_expiring: 'Истекает сертификат',
   service_down: 'Сервис остановился или упал',
   schedule_failed: 'Ошибка задания по расписанию',
+  overload: 'Перегрузка сервера',
 };
 const DEFAULT_EVENTS = Object.keys(EVENT_TYPES);
 const SIX_HOURS = 6 * 3600_000;
@@ -25,7 +26,7 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
   /** Язык уведомлений: настройка в БД (Настройки → Уведомления), по умолчанию EASYADMIN_LANG. */
   const getLang = () => db.prepare("SELECT v FROM settings WHERE k = 'notify_lang'").get()?.v ?? config.lang ?? 'ru';
   const setLang = (l) => db.prepare("INSERT INTO settings (k, v) VALUES ('notify_lang', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(l);
-  const tr = (s) => (getLang() === 'en' ? translate(s) : s);
+  const tr = (s) => (getLang() === 'en' ? String(s).split('\n').map(translate).join('\n') : s);
 
   async function sendTo(channel, rawEvent) {
     const event = { ...rawEvent, text: tr(rawEvent.text) };

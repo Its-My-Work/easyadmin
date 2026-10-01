@@ -55,8 +55,8 @@ export function fakeShell(socket, url, socketFraming, opts = {}) {
   });
 }
 
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {}, hostExec = null } = {}) {
-  const ps = makePanelSettings(psettings);
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {}, hostExec = null, tableData = null } = {}) {
+  const ps = makePanelSettings(psettings); let tableCalls = 0;
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
@@ -134,6 +134,12 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     'settings.cleanupDockerImages': () => null,
     'settings.restartEasypanel': () => null,
     ...ps.procs,
+    // monitorOld.getMonitorTableData: свой список контейнеров (tableData) или по контейнеру на сервис; сетевые счётчики растут с каждым запросом
+    'monitorOld.getMonitorTableData': () => {
+      tableCalls += 1;
+      if (tableData) return typeof tableData === 'function' ? tableData(tableCalls) : tableData;
+      return [...projects.entries()].flatMap(([p, l]) => l.filter((s) => s.enabled !== false && !s.crash).map((s) => ({ containerName: `${p}_${s.name}.1.x`, id: `cid-${p}-${s.name}`, projectName: p, serviceName: s.name, stats: { cpu: { percent: 2 }, memory: { percent: 3, usage: 100 * 1048576 }, network: { in: 1000 * tableCalls, out: 500 * tableCalls } } })));
+    },
     'server.reboot': () => null,
   };
   for (const type of ['app', 'postgres', 'mysql', 'mariadb', 'mongo', 'redis', 'compose']) {
