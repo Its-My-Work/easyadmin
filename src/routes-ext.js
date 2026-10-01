@@ -124,12 +124,12 @@ export function extraRoutes(d) {
     ['GET', '/api/panels/:id/diagnose', async (ctx) => {
       const row = panelOr404(ctx.params.id);
       const c = manager.clientFor(row);
-      const procs = ['projects.listProjectsAndServices', 'projects.listProjects', 'monitor.getSystemStats', 'monitor.getAdvancedStats', 'projects.getDockerContainers', 'certificates.listCertificates', 'actions.listActions'];
-      // getDockerContainers требует projectName, listDomains — проект и сервис: подставляем первые из дерева
+      const procs = ['projects.listProjectsAndServices', 'projects.listProjects', 'monitor.getSystemStats', 'monitorOld.getSystemStats', 'monitorOld.getMonitorTableData', 'projects.getDockerContainers', 'certificates.listCertificates', 'actions.listActions'];
+      // getDockerContainers требует projectName (старые панели) или service (новые), listDomains — проект и сервис: подставляем первые из дерева
       const tree = await treeOf(row).catch(() => []);
       const p0 = tree.find((p) => p.services.length) ?? tree[0], s0 = p0?.services.find((x) => x.type === 'app') ?? p0?.services[0];
       if (s0) procs.push('domains.listDomains');
-      const inputOf = (proc) => (proc === 'actions.listActions' ? {} : proc === 'projects.getDockerContainers' && p0 ? { projectName: p0.name }
+      const inputOf = (proc) => (proc === 'actions.listActions' ? {} : proc === 'projects.getDockerContainers' && p0 ? { service: `${p0.name}_${s0?.name ?? ''}` }
         : proc === 'domains.listDomains' ? { projectName: p0.name, serviceName: s0.name } : undefined);
       const results = await Promise.all(procs.map(async (proc) => {
         const t0 = now();
@@ -139,6 +139,8 @@ export function extraRoutes(d) {
           return { proc, ok: true, ms: now() - t0, shape: shapeOf(v), sample: sample.slice(0, 2500), ...(proc === 'projects.listProjectsAndServices' ? { recognized: normalizeTree(v).projects.map((p) => `${p.name} (${p.services.length})`) } : {}) };
         } catch (e) { return { proc, ok: false, ms: now() - t0, error: e.message, kind: e.kind, status: e.status, body: e.body ? redactJson(e.body) : undefined }; }
       }));
+      // старое имя исчезло, а замена в monitorOld работает — это не ошибка панели
+      for (const x of results) if (!x.ok && x.status === 404 && /^monitor\./.test(x.proc) && results.some((y) => y.ok && y.proc === x.proc.replace(/^monitor\./, 'monitorOld.'))) x.replaced = true;
       const discovered = (await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => [])).filter((n) => /stat|monitor|metric|usage|resource|system|docker|container|cpu|memory|disk|cert/i.test(n)).slice(0, 80);
       return { panel: row.name, url: row.url, results, discovered };
     }, { admin: true }],

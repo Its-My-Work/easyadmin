@@ -55,7 +55,7 @@ export function fakeShell(socket, url, socketFraming, opts = {}) {
   });
 }
 
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {}, hostExec = null, tableData = null } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {}, hostExec = null, tableData = null, containersNeedService = false } = {}) {
   const ps = makePanelSettings(psettings); let tableCalls = 0;
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
@@ -121,6 +121,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
       certs.splice(k, 1); onRemove?.(d); return null;
     },
     'projects.getDockerContainers': (i) => {
+      if (containersNeedService && !i.service) throw Object.assign(new Error('Input validation failed'), { code: 'BAD_REQUEST' });
       if (containersPerProject && !i.projectName) throw Object.assign(new Error('Input validation failed'), { code: 'BAD_REQUEST' });
       if (containers) return containers;
       const one = (p, s) => ({ Id: `cid-${p}-${s.name}`, Names: [`/${p}_${s.name}.1.abc`], State: s.crash ? 'exited' : 'running', name: `${p}_${s.name}.1.abc`, state: s.crash ? 'exited' : (s.enabled ? 'running' : 'shutdown') });

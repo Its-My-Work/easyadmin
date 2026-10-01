@@ -127,6 +127,23 @@ describe('поведение реальной панели: контейнеры
     assert.ok(after.slice(calls).every((c) => c.input?.projectName));
     a2.stop(); a2.server.closeAllConnections(); a2.server.close(); await m.close();
   });
+  test('новая панель: getDockerContainers требует service → контейнеры берутся из monitorOld.getMonitorTableData, диагностика не показывает ошибок замены', async () => {
+    const m = createMockPanel({ token: 'X', containersNeedService: true, seed: { a: [{ name: 'up' }, { name: 'idle' }] },
+      tableData: [{ id: 'c1', containerName: 'custom-name', projectName: 'a', serviceName: 'up', stats: { cpu: { percent: 1 }, memory: { usage: 1 }, network: {} } }] });
+    const u = await m.listen();
+    const a2 = createApp({ config: { ...loadConfig({}), cacheTtlMs: 1 }, db: openDb(':memory:'), key: crypto.randomBytes(32) });
+    await new Promise((r) => a2.server.listen(0, '127.0.0.1', r));
+    const b2 = `http://127.0.0.1:${a2.server.address().port}`;
+    const h = { 'Content-Type': 'application/json', 'X-Requested-With': 'easyadmin' };
+    const ck = (await fetch(b2 + '/api/setup', { method: 'POST', headers: h, body: JSON.stringify({ username: 'a', password: 'password1' }) })).headers.get('set-cookie').split(';')[0];
+    const pid = (await (await fetch(b2 + '/api/panels', { method: 'POST', headers: { ...h, Cookie: ck }, body: JSON.stringify({ name: 'P', url: u, token: 'X' }) })).json()).id;
+    const ov = await (await fetch(b2 + '/api/overview?force=1', { headers: { Cookie: ck } })).json();
+    const svc = (name) => ov[0].tree.projects.find((p) => p.name === 'a').services.find((x) => x.name === name);
+    assert.equal(svc('up').health, 'running', 'контейнер с произвольным именем найден по projectName/serviceName'); assert.equal(svc('idle').health, 'missing', 'нет в списке запущенных');
+    const d = await (await fetch(`${b2}/api/panels/${pid}/diagnose`, { headers: { Cookie: ck } })).json();
+    assert.ok(d.results.find((x) => x.proc === 'monitorOld.getMonitorTableData')?.ok); assert.ok(d.results.some((x) => x.proc === 'monitorOld.getSystemStats'));
+    a2.stop(); a2.server.closeAllConnections(); a2.server.close(); await m.close();
+  });
   test('ошибка без текста: показываем код и кусок ответа, а диагностика отдаёт тело ответа', async () => {
     const m = createMockPanel({ token: 'X', statsError: true, seed: {} });
     const u = await m.listen();

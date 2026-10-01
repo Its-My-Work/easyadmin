@@ -47,7 +47,7 @@ export function createManager({ db, key, config }) {
     throw new PanelError(`Панель не поддерживает запрос статистики monitor.getSystemStats (404). Найдено в интерфейсе панели: ${names.length ? names.slice(0, 8).join(', ') : 'ничего похожего'}`, { status: 404 });
   }
 
-  const containersMode = new Map(); // panelId → { mode: 'global' | 'project' | 'none', at }
+  const containersMode = new Map(); // panelId → { mode: 'global' | 'table' | 'project' | 'none', at }
   async function fetchContainers(client, row, tree) {
     const known = containersMode.get(row.id);
     const mode = known && (known.mode !== 'none' || Date.now() - known.at < 1_800_000) ? known.mode : undefined; // «не поддерживается» перепроверяем раз в 30 мин
@@ -57,9 +57,19 @@ export function createManager({ db, key, config }) {
       catch (e) { if (mode === 'global' || e.kind === 'auth' || e.kind === 'network' || e.kind === 'timeout') throw e; }
     }
     if (mode === 'none') return null;
+    // новые панели: все запущенные контейнеры с именами проекта и сервиса одним запросом
+    const table = async () => {
+      const v = await client.query('monitorOld.getMonitorTableData');
+      if (!Array.isArray(v)) throw new Error('no list');
+      return v.filter((x) => x?.projectName && x?.serviceName).map((x) => ({ name: `${x.projectName}_${x.serviceName}`, state: 'running' }));
+    };
+    if (mode === 'table') return table();
     const names = tree.projects.map((p) => p.name);
     const parts = await Promise.all(names.map((projectName) => client.query('projects.getDockerContainers', { projectName }).catch(() => null)));
-    if (!parts.some((x) => x != null)) { remember('none'); return null; }
+    if (!parts.some((x) => x != null)) {
+      try { const v = await table(); remember('table'); return v; } catch (e) { if (e.kind === 'auth' || e.kind === 'network' || e.kind === 'timeout') throw e; }
+      remember('none'); return null;
+    }
     remember('project');
     return parts.filter((x) => x != null).flatMap((v) => (Array.isArray(v) ? v : v?.containers ?? []));
   }

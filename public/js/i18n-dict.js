@@ -365,6 +365,8 @@ export const EN = [
   ['EasyAdmin раз в минуту сохраняет нагрузку сервера и сервисов (данные берутся из панелей бесплатно) и рисует графики на вкладке «Нагрузка».', 'Once a minute EasyAdmin saves the load of the server and services (the data comes from the panels for free) and draws charts on the “Load” tab.'],
   ['Прочие контейнеры', 'Other containers'], ['сборки, временные', 'builds, temporary'],
   ['Контейнеры, которые Easypanel не смог сопоставить с сервисом: чаще всего сборка при деплое или временная задача.', 'Containers Easypanel could not match to a service: most often a build during deploy or a temporary task.'],
+  ['заменена', 'replaced'],
+  ['В этой версии Easypanel процедура переехала в monitorOld — EasyAdmin использует новую, ошибки нет.', 'In this Easypanel version the procedure moved to monitorOld — EasyAdmin uses the new one, so this is not an error.'],
   /* настройки панели Easypanel */
   ['Доступна новая версия Docker', 'A newer Docker version is available'],
   ['Сгенерированный домен', 'Generated domain'],
