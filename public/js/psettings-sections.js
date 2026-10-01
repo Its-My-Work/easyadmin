@@ -99,6 +99,32 @@ function builderModal(p, reload) {
   modal({ title: 'Новый билдер Docker', body: h('div', { class: 'stack' }, field('Имя', name, 'Латиница, цифры, - _ .'), h('div', { class: 'grid-2' }, field('CPU', cpus), field('Память, МБ', mem)), field('Swap, МБ', swap, 'Не меньше памяти.'), h('p', { class: 'muted small' }, 'Создаётся и сразу выбирается для следующих сборок.')),
     actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Создать', kind: 'primary', onClick: async () => { await post(`/api/panels/${p.id}/pbuilders`, { op: 'create', name: name.value.trim(), cpus: Number(cpus.value), memory: Number(mem.value), memorySwap: Number(swap.value) }); toast(t('Билдер создан'), 'success'); reload(); } }] });
 }
+/** Ход обновления Docker: журнал юнита на хосте и версия Docker. Во время перезапуска Docker панель недоступна — это нормально, ждём. */
+function dockerProgress(p, from, to, reload) {
+  const status = h('div', { class: 'small muted' }, 'Обновление запущено…');
+  const logEl = h('pre', { class: 'code', style: { maxHeight: '260px' } }, '');
+  let stop = false; let timer = null; let tries = 0;
+  const poll = async () => {
+    if (stop) return; tries++;
+    try {
+      const st = await get(`/api/panels/${p.id}/pstatus`);
+      if (st.dockerVersion && st.dockerVersion === to) { status.textContent = `✓ ${t('Готово: Docker обновлён до')} ${to}`; status.className = 'small ok-text'; reload(); return; }
+      const r = await get(`/api/panels/${p.id}/pdocker/log`);
+      logEl.textContent = r.log || ''; status.textContent = r.state === 'active' ? t('Идёт установка…') : t('Юнит обновления завершён — проверяем версию…'); status.className = 'small muted';
+    } catch { status.textContent = t('Панель недоступна — идёт перезапуск Docker, ждём…'); status.className = 'small warn-text'; }
+    if (tries < 120) timer = setTimeout(poll, 5000); else { status.textContent = t('Не дождались завершения. Проверьте сервер вручную: journalctl -u docker-upgrade-ea'); status.className = 'small danger-text'; }
+  };
+  modal({ title: `Docker ${from ?? ''} → ${to}`, wide: true, body: h('div', { class: 'stack' }, h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Обновление идёт отдельным процессом на сервере и продолжится, даже если связь с панелью пропадёт. Сервисы перезапустятся.')), status, logEl),
+    actions: [{ label: 'Закрыть', kind: 'ghost' }], onClose: () => { stop = true; clearTimeout(timer); reload(); } });
+  timer = setTimeout(poll, 4000);
+}
+async function updateDocker(p, st, reload) {
+  const to = st.dockerUpdate?.latest; const from = st.dockerVersion;
+  const ok = await confirmDialog({ title: `${t('Обновить Docker')}: ${from} → ${to}`, danger: true, confirmText: 'Обновить Docker', typeToConfirm: p.name,
+    message: `${t('Docker будет обновлён на самом сервере. На время обновления Docker перезапустится: ВСЕ сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут и поднимутся заново. Выполняйте это в удобное время и после резервных копий. Обновление идёт отдельным процессом на сервере (Debian/Ubuntu, apt) и продолжится, даже если связь пропадёт.')} ${t('Панель')}: «${p.name}».` });
+  if (!ok) return;
+  try { const r = await post(`/api/panels/${p.id}/pdocker/update`, { confirm: p.name }); toast(t('Обновление Docker запущено'), 'success'); dockerProgress(p, r.from, r.to, reload); } catch (e) { toast(e.message, 'error', 9000); }
+}
 export function system(p, entry, go) {
   const box = h('div', { class: 'stack' });
   const draw = () => lazy(box, async () => {
@@ -109,8 +135,9 @@ export function system(p, entry, go) {
       card('Обновления', 'Обновление скачивает свежий образ Easypanel и перезапускает панель — она будет недоступна несколько минут. Сервисы продолжают работать.',
         kv('Версия Easypanel', st.version ? h('span', null, st.version, ' ', st.updateAvailable ? badge('есть обновление', 'warn') : badge('актуальная', 'ok')) : '—'),
         kv('Версия Docker', st.dockerVersion ? h('span', null, st.dockerVersion, ' ', st.dockerUpdate?.available ? badge(`доступна ${st.dockerUpdate.latest}`, 'warn') : badge('актуальная', 'ok')) : '—'),
-        st.dockerUpdate?.available ? h('p', { class: 'muted small' }, 'Docker обновляется на самом сервере (через пакетный менеджер), из панели это недоступно.') : null,
+        st.dockerUpdate?.available ? h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Обновление Docker перезапускает Docker: все сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут. Работает на Debian/Ubuntu (apt).')) : null,
         h('div', { class: 'inline psf-foot' }, h('button', { class: 'btn sm', onclick: draw }, icon('refresh', 13), 'Проверить снова'),
+          h('button', { class: `btn sm ${st.dockerUpdate?.available ? 'danger' : ''}`, disabled: !st.dockerUpdate?.available, title: st.dockerUpdate?.available ? '' : 'Docker актуален', onclick: () => updateDocker(p, st, draw) }, icon('rotate', 13), 'Обновить Docker'),
           h('button', { class: `btn sm ${st.updateAvailable ? 'primary' : ''}`, onclick: () => runSystem(p, 'updatePanel', { title: 'Обновить Easypanel', message: 'Панель скачает свежий образ и перезапустится, на несколько минут станет недоступна.', danger: true, typed: true, done: () => setTimeout(draw, 4000) }) }, icon('rocket', 13), 'Обновить Easypanel'))),
       card('Очистка и перезапуск', null, h('div', { class: 'list' },
         act('Очистить образы Docker', 'Удалит неиспользуемые образы. Работающие сервисы не затрагиваются.', 'cleanupImages'),

@@ -237,3 +237,40 @@ describe('настройки панели: билдеры, пользовате�
     assert.equal((await api('admin', 'GET', `/api/panels/${id}/pactions/..%2F..`)).status, 400);
   });
 });
+
+describe('обновление Docker из EasyAdmin', () => {
+  const mk = async (name, { hostExec, ...opts } = {}) => {
+    const m = createMockPanel({ token: 'T', seed: { web: [{ name: 'site' }] }, realPanel: true, hostExec, ...opts });
+    panels.push(m); const url = await m.listen();
+    return { id: (await api('admin', 'POST', '/api/panels', { name, url, token: 'T' })).data.id, m };
+  };
+  const marker = (cmd, kind) => { const x = /\$\(\((\d+)\+(\d+)\)\)/.exec(cmd); return `__EA${kind}${Number(x[1]) + Number(x[2])}__`; };
+  test('запуск: только админ, подтверждение названием, только если есть новая версия; команда уходит отдельным юнитом systemd', async () => {
+    const cmds = [];
+    const { id } = await mk('DK1', { hostExec: (cmd) => { cmds.push(cmd); return `Running as unit: docker-upgrade-ea.service\n${marker(cmd, 'OK')}`; } });
+    const go = (who, body) => api(who, 'POST', `/api/panels/${id}/pdocker/update`, body);
+    assert.equal((await go('op', { confirm: 'DK1' })).status, 403);
+    assert.equal((await go('admin', {})).status, 400); assert.equal((await go('admin', { confirm: 'other' })).status, 400); assert.equal(cmds.length, 0, 'без подтверждения команда не выполняется');
+    const r = await go('admin', { confirm: 'DK1' });
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.deepEqual([r.data.started, r.data.from, r.data.to], [true, '29.7.0', '29.8.2']);
+    assert.equal(cmds.length, 1); assert.match(cmds[0], /systemd-run --unit=docker-upgrade-ea/); assert.match(cmds[0], /--only-upgrade docker-ce docker-ce-cli containerd\.io/); assert.match(cmds[0], /is-active --quiet docker-upgrade-ea/, 'повторный запуск защищён');
+    assert.ok(!/\$\{|`/.test(cmds[0].replace(/\$\(\(\d+\+\d+\)\)/g, '')), 'в команде нет подстановок: она не зависит от ввода');
+    const log = await auditOf('docker.update'); assert.ok(log.some((a) => a.ok === 1 && /29\.7\.0 → 29\.8\.2/.test(a.detail)));
+  });
+  test('нет новой версии, ошибка на хосте (не apt) и таймаут консоли — понятные ответы', async () => {
+    const { id, m } = await mk('DK2', { hostExec: (cmd) => `EA_NO_APT\n${marker(cmd, 'FAIL')}` });
+    const r = await api('admin', 'POST', `/api/panels/${id}/pdocker/update`, { confirm: 'DK2' });
+    assert.equal(r.status, 502); assert.match(r.data.error, /нужен apt/);
+    assert.ok((await auditOf('docker.update')).some((a) => a.ok === 1), 'запуск записан');
+    // консоль не отвечает на команду
+    const quiet = await mk('DK3', { hostExec: () => '' });
+    const t = await api('admin', 'POST', `/api/panels/${quiet.id}/pdocker/update`, { confirm: 'DK3' });
+    assert.ok([502, 504].includes(t.status));
+  });
+  test('ход обновления: состояние юнита и хвост журнала', async () => {
+    const { id } = await mk('DK4', { hostExec: (cmd) => (/journalctl/.test(cmd) ? `state: active\nGet:1 repo docker-ce 29.8.2\n${marker(cmd, 'OK')}` : null) });
+    const r = await api('admin', 'GET', `/api/panels/${id}/pdocker/log`);
+    assert.equal(r.status, 200); assert.equal(r.data.state, 'active'); assert.match(r.data.log, /docker-ce 29\.8\.2/); assert.ok(!r.data.log.includes('state:'));
+    assert.equal((await api('op', 'GET', `/api/panels/${id}/pdocker/log`)).status, 403);
+  });
+});

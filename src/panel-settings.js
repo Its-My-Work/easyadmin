@@ -1,6 +1,7 @@
 import { decrypt, encrypt } from './crypto.js';
 import { HttpError } from './http.js';
 import { makeLicense } from './panel-license.js';
+import { runOnHost } from './host-exec.js';
 
 /**
  * Настройки самой панели Easypanel: типизированный реестр одиночных настроек (формы строятся из него и на сервере проверяются тем же описанием)
@@ -106,6 +107,13 @@ export function diffText(def, before, after) {
   return parts.join('; ') || 'без изменений';
 }
 
+// Только Debian/Ubuntu (apt) и systemd; пакеты — официальные docker-ce. Команда запускается отдельным юнитом: сеанс консоли умрёт вместе с Docker.
+const DOCKER_UPDATE_SCRIPT = [
+  'command -v apt-get >/dev/null 2>&1 || { echo EA_NO_APT; false; }',
+  'command -v systemd-run >/dev/null 2>&1 || { echo EA_NO_SYSTEMD; false; }',
+  'if systemctl is-active --quiet docker-upgrade-ea 2>/dev/null; then echo EA_RUNNING; false; else systemd-run --unit=docker-upgrade-ea --collect --description="EasyAdmin: Docker upgrade" bash -c \'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin\' 2>&1; fi',
+].join(' && ');
+
 const SECRET_KEY = /pass|secret|token|key|credential|private|config/i;
 const maskDeep = (v, d = 0) => {
   if (Array.isArray(v)) return v.map((x) => maskDeep(x, d + 1));
@@ -177,6 +185,26 @@ export function psettingsRoutes(d) {
         users: pick(users, (v) => listOf(v, 'users').length), builders: pick(builders, (v) => listOf(v).length), nodes: pick(nodes, (v) => listOf(v, 'nodes').length),
         certificates: pick(certs, (v) => listOf(v, 'certificates').length),
       };
+    }, { admin: true }],
+
+    /* ---------- обновление Docker: отдельным юнитом systemd на хосте (он переживёт перезапуск Docker) ---------- */
+    ['POST', '/api/panels/:id/pdocker/update', async (ctx) => {
+      const { row, c } = access(ctx);
+      need(ctx.body?.confirm === row.name, 'Для подтверждения введите название панели');
+      const info = await call(() => c.query('settings.checkDockerUpdate'));
+      need(info?.updateAvailable === true && info?.latestVersion, 'Новой версии Docker нет');
+      const r = await write(ctx, row, 'docker.update.start', row.name, () => runOnHost(c, row, DOCKER_UPDATE_SCRIPT), `${info.version} → ${info.latestVersion}`);
+      if (!r.ok) {
+        const why = r.output.includes('EA_NO_APT') ? 'нужен apt (Debian/Ubuntu), обновите Docker вручную' : r.output.includes('EA_NO_SYSTEMD') ? 'нужен systemd' : r.output.includes('EA_RUNNING') ? 'обновление уже выполняется' : r.output.slice(-300) || 'неизвестная ошибка';
+        throw new HttpError(502, `Обновление не запущено: ${why}`);
+      }
+      return { started: true, from: info.version ?? null, to: info.latestVersion, output: r.output.slice(-300) };
+    }, { admin: true }],
+    ['GET', '/api/panels/:id/pdocker/log', async (ctx) => {
+      const { row, c } = access(ctx);
+      const r = await call(() => runOnHost(c, row, 'echo "state: $(systemctl is-active docker-upgrade-ea 2>/dev/null || true)"; journalctl -u docker-upgrade-ea --no-pager -n 40 -o cat 2>/dev/null | tail -n 40; true', { timeoutMs: 20_000 }));
+      const m = /state: (\S+)/.exec(r.output);
+      return { state: m ? m[1] : 'unknown', log: r.output.replace(/^state: .*\n?/m, '').slice(-4000) };
     }, { admin: true }],
 
     /* ---------- Docker: билдеры ---------- */

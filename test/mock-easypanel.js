@@ -9,7 +9,7 @@ import { makePanelSettings } from './mock-panel-settings.js';
 
 /** Игрушечный «шелл» для тестов консоли: читает маскированные клиентские кадры, понимает echo и $((a+b)). */
 export function fakeShell(socket, url, socketFraming, opts = {}) {
-  const FR = (opcode, text) => { const p = Buffer.from(text); return Buffer.concat([Buffer.from([0x80 | opcode, p.length]), p]); };
+  const FR = (opcode, text) => { const p = Buffer.from(text); const head = p.length < 126 ? Buffer.from([0x80 | opcode, p.length]) : Buffer.from([0x80 | opcode, 126, p.length >> 8, p.length & 255]); return Buffer.concat([head, p]); };
   const pick = (framing, raw) => {
     if (framing === 'raw') return raw;
     let o; try { o = JSON.parse(raw); } catch { return null; }
@@ -23,6 +23,7 @@ export function fakeShell(socket, url, socketFraming, opts = {}) {
   out(`connected ${url.searchParams.get('service') ?? url.searchParams.get('container') ?? 'host'}\r\n# `);
   let buf = Buffer.alloc(0); let line = '';
   const run = (cmd) => {
+    if (opts.exec) { const r = opts.exec(cmd); if (r != null) { out(`${String(r).replace(/\n/g, '\r\n')}\r\n# `); return; } }
     const m = /^echo (.*)$/.exec(cmd.trim());
     if (cmd.trim() === 'exit') { socket.end(); return; }
     if (m) {
@@ -54,7 +55,7 @@ export function fakeShell(socket, url, socketFraming, opts = {}) {
   });
 }
 
-export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {} } = {}) {
+export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = [], containers = null, logsPath = '/ws/serviceLogs', flatErrors = false, requireType = false, mountStyle = 'flat', containersPerProject = false, statsError = false, newStats = false, noStats = false, onRemove = null, sshKey = null, weirdKey = null, consolePath = null, consoleFraming = 'raw', realPanel = false, psettings = {}, hostExec = null } = {}) {
   const ps = makePanelSettings(psettings);
   const projects = new Map(Object.entries(seed).map(([n, svcs]) => [n, svcs.map((s) => ({ type: 'app', enabled: true, env: '', domains: [], ports: [], mounts: [], ...s }))]));
   const calls = [];
@@ -197,7 +198,7 @@ export function createMockPanel({ token = 'tok', seed = {}, stats = {}, certs = 
     const accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
     if (isReal) connects.push(url.pathname);
-    if (isReal) return fakeShell(socket, url, 'json-input-key', { strict: true, jsonOut: true, onCrash: (t) => crashes.push(t), onResize: (r) => resizes.push({ path: url.pathname, size: r, command: url.searchParams.get('command') }) });
+    if (isReal) return fakeShell(socket, url, 'json-input-key', { exec: hostExec, strict: true, jsonOut: true, onCrash: (t) => crashes.push(t), onResize: (r) => resizes.push({ path: url.pathname, size: r, command: url.searchParams.get('command') }) });
     if (isConsole) return fakeShell(socket, url, consoleFraming);
     calls.push({ proc: 'ws', input: { service: url.searchParams.get('service'), compose: url.searchParams.get('compose'), auth: req.headers.authorization } });
     socket.write(frame(1, `line one\n\x1b[31mline two\x1b[0m`));
