@@ -15,6 +15,8 @@
 - "Add panel" is one form with a switch: "Connect Easypanel" / "Install and connect Easypanel".
 - **Backups** are now a separate menu section: *Overview* (what is backed up where, by service across all panels, with "not set up" and "last run failed" flags), *Data*, *System* and shared *Settings* (schedule, S3, password). The card in Settings is replaced by a link.
 - Removed the explanatory banner from the server console page.
+- **Backups → Data**: one place to choose what to back up and how. Two methods that can be combined: **Easypanel schedules** (EasyAdmin creates, updates and removes the schedules in the panels itself from a single policy: services, schedule, number of copies, storage per panel; your own schedules are left alone; database schedules are skipped on panels without a license) and **EasyAdmin data copies**. The overview marks schedules maintained by EasyAdmin (“auto”) and the “Set up” dialog turns on both methods for a service in one step.
+- Database and volume copies are no longer encrypted with a password (the “Encrypt with the backup password” option is gone); the password now protects only the system copy (`.eabak`). Old `.enc` files can still be restored. Turning on the schedule no longer requires a password.
 
 ## 0.9.0 — first public beta
 

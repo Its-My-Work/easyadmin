@@ -106,17 +106,16 @@ export async function measureVolumes(c, row, items, host = runOnHost) {
 }
 
 /** Скрипт для сервера панели (bash). Один элемент — одна запись в файле статуса: OK|метка|файл|байт или FAIL|метка|код|аргумент. */
-export function buildScript({ runId, baseDir, dest, keep, passB64, minFreeKb, items, consistency = 'none', mpMin = 5 * GIB - 1, partMb = 1024 }) {
+export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, consistency = 'none', mpMin = 5 * GIB - 1, partMb = 1024 }) {
   const lines = [
     '#!/bin/bash',
     `BASE=${shq(baseDir)}; RUN=${shq(runId)}; DEST=${shq(dest)}; KEEP=${Number(keep)}; MINFREE=${Number(minFreeKb)}; HOLDMODE=${shq(consistency)}; MPMIN=${Number(mpMin)}; PS=$((${Number(partMb)} * 1048576))`,
-    'LOGD="$BASE/.runs"; ST="$LOGD/$RUN.status"; TMPD="$BASE/.work"; PASSF=""; HOLDS=()',
+    'LOGD="$BASE/.runs"; ST="$LOGD/$RUN.status"; TMPD="$BASE/.work"; HOLDS=()',
     'umask 077; mkdir -p "$LOGD" "$TMPD" || exit 1',
     'hold_end() { local h; for h in "${HOLDS[@]}"; do case "$h" in pause:*) docker unpause ${h#pause:} >/dev/null 2>&1;; start:*) docker start ${h#start:} >/dev/null 2>&1;; scale:*) docker service scale -d "${h#scale:}" >/dev/null 2>&1;; esac; done; HOLDS=(); }',
-    'trap \'hold_end; rm -f "${LOGD:?}/${RUN:?}.pw" "${TMPD:?}/${RUN:?}".*\' EXIT',
+    'trap \'hold_end; rm -f "${TMPD:?}/${RUN:?}".*\' EXIT',
     'echo START > "$ST"',
     'fail() { printf \'FAIL|%s|%s|%s\\n\' "$1" "$2" "$3" >> "$ST"; }',
-    passB64 ? `PASSF="$LOGD/$RUN.pw"; printf %s ${shq(passB64)} | base64 -d > "$PASSF"` : '',
     'avail=$(df -Pk "$BASE" | awk \'NR==2{print $4}\')',
     'if [ "${avail:-0}" -lt "$MINFREE" ]; then fail "*" NOSPACE "$((avail/1024))"; echo DONE >> "$ST"; exit 1; fi',
     // заморозка владельца тома на время копирования: pause — docker pause, stop — остановка (swarm: scale до 0); возврат гарантирован trap
@@ -144,8 +143,7 @@ export function buildScript({ runId, baseDir, dest, keep, passB64, minFreeKb, it
     'run_item() {',
     '  local label=$1 name=$2 url=$3 sub=$4 prefix=$5 fn=$6 hold=$7 mp=$8; local tmp="$TMPD/$RUN.$RANDOM" err="$LOGD/$RUN.err" rc size out',
     '  hold_start "$hold"',
-    '  if [ -n "$PASSF" ]; then ( set -o pipefail; "$fn" | gzip -c | openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt -pass file:"$PASSF" > "$tmp" ) 2>"$err"; rc=$?',
-    '  else ( set -o pipefail; "$fn" | gzip -c > "$tmp" ) 2>"$err"; rc=$?; fi',
+    '  ( set -o pipefail; "$fn" | gzip -c > "$tmp" ) 2>"$err"; rc=$?',
     '  hold_end',
     '  if [ $rc -ne 0 ]; then fail "$label" CMD "$(tail -c 300 "$err" | tr \'\\n|\' \'  \')"; rm -f "${tmp:?}"; return; fi',
     '  size=$(stat -c %s "$tmp" 2>/dev/null || echo 0)',
@@ -236,7 +234,7 @@ const NAME_RE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__((?:db|vol|bind)-[A-Za-z0-9_.-]+
 export const parseName = (n) => { const m = NAME_RE.exec(n); return m ? { project: m[1], service: m[2], tag: m[3], stamp: m[4], ext: m[5], encrypted: !!m[6] } : null; };
 export const groupKey = (n) => n.replace(/__\d{8}-\d{6}\..*$/, '');
 
-/** Команды восстановления для копии и пояснения. Пароль копии не подставляется. */
+/** Команды восстановления для копии и пояснения. Копии с суффиксом .enc сделаны прежними версиями (с паролем) — для них оставлена расшифровка; пароль не подставляется. */
 export function restoreHint(name, where) {
   const p = parseName(name); if (!p) throw new Error('Некорректное имя файла');
   const stream = p.encrypted ? `openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:'YOUR_BACKUP_PASSWORD' -in ${shq(name)} | gunzip -c` : `gunzip -c ${shq(name)}`;

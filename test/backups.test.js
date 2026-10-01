@@ -69,7 +69,10 @@ describe('формат файла копии', () => {
 describe('настройки и запуск', () => {
   test('права, проверки значений, секреты не отдаются', async () => {
     assert.equal((await api('GET', '/api/backups')).status, 200);
-    const { status, data } = await api('PUT', '/api/backups/settings', { enabled: true }); assert.equal(status, 400); assert.match(data.error, /пароль/);
+    // расписание включается и без пароля (он нужен только копии системы): копии данных и расписания Easypanel паролем не пользуются
+    assert.equal((await api('PUT', '/api/backups/settings', { enabled: true })).status, 200);
+    const noPw = await api('POST', '/api/backups/run'); assert.equal(noPw.status, 400); assert.match(noPw.data.error, /пароль/);
+    assert.equal((await api('PUT', '/api/backups/settings', { enabled: false })).status, 200);
     for (const bad of [{ password: 'short' }, { every: 'hourly' }, { hour: 24 }, { keep: 0 }, { storage: 'ftp' }, { panels: 'some' }, { panelIds: ['a'] }, { s3: { endpoint: 'ftp://x' } }, { s3: { prefix: '../x' } }]) assert.equal((await api('PUT', '/api/backups/settings', bad)).status, 400, JSON.stringify(bad));
     assert.equal((await api('PUT', '/api/backups/settings', { panels: 'selected', panelIds: [] })).status, 400, 'выбранные: нужна хотя бы одна');
     assert.equal((await api('PUT', '/api/backups/settings', { system: false, panels: 'none' })).status, 400, 'нечего копировать');

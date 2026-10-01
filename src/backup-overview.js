@@ -3,8 +3,8 @@
  * когда был последний запуск и чем он закончился. Ничего не меняет, только читает панели и настройки.
  */
 const DB_TYPES = ['postgres', 'mysql', 'mariadb', 'mongo']; // у Easypanel расписания баз — только для этих типов
-const listOf = (v, ...keys) => (Array.isArray(v) ? v : keys.map((k) => v?.[k]).find(Array.isArray) ?? []);
-const kindOf = (type) => (DB_TYPES.includes(type) ? 'db' : type === 'app' || type === 'box' ? 'volume' : null);
+export const listOf = (v, ...keys) => (Array.isArray(v) ? v : keys.map((k) => v?.[k]).find(Array.isArray) ?? []);
+export const kindOf = (type) => (DB_TYPES.includes(type) ? 'db' : type === 'app' || type === 'box' ? 'volume' : null);
 const STALE_MS = 8 * 86_400_000; // успешной копии давно не было
 const CACHE_MS = 60_000;
 
@@ -63,16 +63,17 @@ export function createBackupOverview({ db, manager, backups, treeOf, now = () =>
   /** Часть EasyAdmin: входит ли сервис в копии данных и чем закончился последний запуск. */
   function easyadminOf(row, project, name, type, s) {
     const d = s.data; const key = `${row.id}|${project}|${name}`;
-    const covered = d.mode === 'all' || (d.mode === 'selected' && d.keys.includes(key));
+    const inScope = d.mode === 'all' || (d.mode === 'selected' && d.keys.includes(key));
+    const covered = inScope && d.methods.easyadmin; // способ можно выключить, не трогая охват
     const dl = s.dataLast; const label = `${project}/${name}`;
     const panel = dl?.panels?.find((p) => p.name === row.name);
     const failed = !!panel?.failed?.some((f) => String(f).startsWith(label));
     const last = covered && dl ? { state: failed || panel?.error ? 'error' : 'ok', ts: dl.ts, error: panel?.failed?.find((f) => String(f).startsWith(label)) ?? panel?.error ?? null } : null;
-    return { covered, auto: !!s.enabled && covered, possible: type !== 'compose' || d.mode === 'all', last };
+    return { covered, auto: !!s.enabled && covered, possible: type !== 'compose' || d.mode === 'all', last, planned: inScope && d.methods.easypanel };
   }
 
   async function overview(accessiblePanels, { force = false } = {}) {
-    const s = backups.view(); const t = now();
+    const s = backups.view(); const t = now(); const managed = backups.epManaged?.() ?? new Set();
     const panels = await Promise.all(accessiblePanels.map(async (row) => {
       const up = ['online', 'degraded'].includes(row.status);
       if (!up) return { panelId: row.id, panelName: row.name, color: row.color, error: row.last_error || 'Панель недоступна', rows: [] };
@@ -82,8 +83,9 @@ export function createBackupOverview({ db, manager, backups, treeOf, now = () =>
         cache.set(row.id, hit);
       }
       const rows = hit.rows.map((r) => {
-        const easyadmin = easyadminOf(row, r.project, r.name, r.type, s);
-        return { ...r, easyadmin, status: combine({ easypanel: r.easypanel, easyadmin }, t) };
+        const { planned, ...easyadmin } = easyadminOf(row, r.project, r.name, r.type, s);
+        const easypanel = { ...r.easypanel, planned: planned && r.easypanel.supported, schedules: r.easypanel.schedules.map((x) => ({ ...x, managed: managed.has(`${row.id}:${x.id}`) })) };
+        return { ...r, easypanel, easyadmin, status: combine({ easypanel, easyadmin }, t) };
       }).filter((r) => !(r.status === 'na' || (r.status === 'none' && r.easypanel.noData && !r.easyadmin.possible)));
       return { panelId: row.id, panelName: row.name, color: row.color, error: hit.error ?? null, rows };
     }));

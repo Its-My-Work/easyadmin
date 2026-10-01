@@ -17,7 +17,6 @@ import { createMockPanel } from './mock-easypanel.js';
 
 const F = (p, sv) => `--filter 'name=^${p}_${sv}\\.'`;
 const HAS_BASH = spawnSync('bash', ['-c', 'exit 0']).status === 0;
-const HAS_OPENSSL = spawnSync('openssl', ['version']).status === 0;
 const PW = 'correct horse battery';
 let tmp, hostRoot, stubs, state, app, base, db, cookie = ''; const panels = []; const uploads = []; let s3srv, s3Port; const s3Objects = new Map(); const aborted = [];
 const api = async (method, p, body) => {
@@ -93,7 +92,7 @@ describe('скрипт на сервере (настоящий bash)', { skip: !
   const run = (script, env = {}) => { const f = path.join(tmp, `s-${crypto.randomBytes(3).toString('hex')}.sh`); fs.writeFileSync(f, script); return spawnSync('bash', [f], { env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`, ...env }, encoding: 'utf8' }); };
   test('дамп базы и том попадают в папку сервера, ротация оставляет keep последних, ошибки описаны', () => {
     const baseDir = path.join(tmp, 'b1'); const vol = path.join(tmp, 'vol'); fs.mkdirSync(vol); fs.writeFileSync(path.join(vol, 'file.txt'), 'hello '.repeat(50));
-    const mk = (stamp, extra = []) => buildScript({ runId: `r${stamp}`, baseDir, dest: 'host', keep: 2, passB64: null, minFreeKb: 1, items: [
+    const mk = (stamp, extra = []) => buildScript({ runId: `r${stamp}`, baseDir, dest: 'host', keep: 2, minFreeKb: 1, items: [
       { kind: 'postgres', tag: 'db-postgres', project: 'web', service: 'pg', filter: F('web', 'pg'), label: 'web/pg · postgres', file: `web__pg__db-postgres__${stamp}.sql.gz`, prefix: 'web__pg__db-postgres__', slug: 'p1-x' },
       { kind: 'volume', tag: 'vol-data', project: 'web', service: 'site', label: 'web/site · data', hostPath: vol, file: `web__site__vol-data__${stamp}.tar.gz`, prefix: 'web__site__vol-data__', slug: 'p1-x' }, ...extra] });
     for (const st of ['20261001-010000', '20261001-020000', '20261001-030000']) { const r = run(mk(st)); assert.equal(r.status, 0, r.stderr); }
@@ -106,24 +105,22 @@ describe('скрипт на сервере (настоящий bash)', { skip: !
     assert.ok(fs.readdirSync(path.join(baseDir, '.work')).length === 0, 'временные файлы убраны');
   });
   test('мало места → один понятный отказ и ничего не создаётся', () => {
-    const baseDir = path.join(tmp, 'b2'); const r = run(buildScript({ runId: 'rlow', baseDir, dest: 'host', keep: 1, passB64: null, minFreeKb: 9e12, items: [] }));
+    const baseDir = path.join(tmp, 'b2'); const r = run(buildScript({ runId: 'rlow', baseDir, dest: 'host', keep: 1, minFreeKb: 9e12, items: [] }));
     assert.equal(r.status, 1); const st = parseStatus(fs.readFileSync(path.join(baseDir, '.runs', 'rlow.status'), 'utf8')); assert.equal(st.done, true); assert.match(st.items[0].error, /Мало места/);
   });
   test('S3: файл уходит по ссылке (curl), временный файл удаляется; ошибка загрузки попадает в статус', () => {
     const baseDir = path.join(tmp, 'b3'); const item = { kind: 'mysql', tag: 'db-mysql', project: 'a', service: 'm', filter: F('a', 'm'), label: 'a/m · mysql', file: 'a__m__db-mysql__s.sql.gz', prefix: 'a__m__db-mysql__', slug: 'p2-y', url: 'https://s3.example/b/k?X-Amz-Signature=abc' };
-    const sc = buildScript({ runId: 'rs3', baseDir, dest: 's3', keep: 1, passB64: null, minFreeKb: 1, items: [item] });
+    const sc = buildScript({ runId: 'rs3', baseDir, dest: 's3', keep: 1, minFreeKb: 1, items: [item] });
     assert.ok(!sc.includes('SECRET')); assert.equal(run(sc).status, 0); assert.match(fs.readFileSync(path.join(tmp, 'curl.log'), 'utf8'), /X-Amz-Signature=abc/);
     assert.equal(fs.existsSync(path.join(baseDir, 'p2-y')), false, 'на сервере файл не остаётся'); assert.equal(parseStatus(fs.readFileSync(path.join(baseDir, '.runs', 'rs3.status'), 'utf8')).items[0].ok, true);
-    run(buildScript({ runId: 'rs3f', baseDir, dest: 's3', keep: 1, passB64: null, minFreeKb: 1, items: [item] }), { FAILCURL: '1' });
+    run(buildScript({ runId: 'rs3f', baseDir, dest: 's3', keep: 1, minFreeKb: 1, items: [item] }), { FAILCURL: '1' });
     assert.match(parseStatus(fs.readFileSync(path.join(baseDir, '.runs', 'rs3f.status'), 'utf8')).items[0].error, /Загрузка в S3.*AccessDenied/);
   });
-  test('шифрование: файл не читается без пароля и расшифровывается с ним', { skip: !HAS_OPENSSL }, () => {
-    const baseDir = path.join(tmp, 'b4'); const item = { kind: 'mongo', tag: 'db-mongo', project: 'a', service: 'mg', filter: F('a', 'mg'), label: 'a/mg · mongo', file: 'a__mg__db-mongo__s.archive.gz.enc', prefix: 'a__mg__db-mongo__', slug: 'p3-z' };
-    assert.equal(run(buildScript({ runId: 'renc', baseDir, dest: 'host', keep: 1, passB64: Buffer.from(PW).toString('base64'), minFreeKb: 1, items: [item] })).status, 0);
-    const f = path.join(baseDir, 'p3-z', item.file); const raw = fs.readFileSync(f); assert.ok(!raw.toString('latin1').includes('-- dump --'));
-    const dec = spawnSync('bash', ['-c', `openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:'${PW}' -in '${f}' | gunzip -c`], { encoding: 'utf8' }); assert.match(dec.stdout, /-- dump --/);
-    assert.notEqual(spawnSync('bash', ['-c', `openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:wrongwrong -in '${f}' | gunzip -c`]).status, 0);
-    assert.equal(fs.existsSync(path.join(baseDir, '.runs', 'renc.pw')), false, 'файл с паролем удалён');
+  test('копии не шифруются паролем: скрипт обходится без пароля, файл читается обычным gunzip', () => {
+    const baseDir = path.join(tmp, 'b4'); const item = { kind: 'mongo', tag: 'db-mongo', project: 'a', service: 'mg', filter: F('a', 'mg'), label: 'a/mg · mongo', file: 'a__mg__db-mongo__s.archive.gz', prefix: 'a__mg__db-mongo__', slug: 'p3-z' };
+    const sc = buildScript({ runId: 'rplain', baseDir, dest: 'host', keep: 1, minFreeKb: 1, items: [item] });
+    assert.ok(!/openssl|PASSF|\.pw/.test(sc), 'в скрипте нет шифрования и файла с паролем'); assert.equal(run(sc).status, 0);
+    const f = path.join(baseDir, 'p3-z', item.file); assert.match(zlib.gunzipSync(fs.readFileSync(f)).toString(), /-- dump --/);
   });
 });
 
@@ -131,21 +128,20 @@ describe('через EasyAdmin', { skip: !HAS_BASH }, () => {
   const addPanel = async (name, seed) => { const m = createMockPanel({ token: 'T', seed }); panels.push(m); return (await api('POST', '/api/panels', { name, url: await m.listen(), token: 'T' })).data.id; };
   const dataDir = () => path.join(tmp, 'hostdir');
   test('настройки данных: проверки значений', async () => {
-    await api('PUT', '/api/backups/settings', { password: PW });
-    for (const bad of [{ mode: 'x' }, { dest: 'ftp' }, { dir: 'rel' }, { dir: '/a/../b' }, { keep: 0 }, { keys: ['x'] }, { encrypt: 'y' }, { mode: 'selected', keys: [] }]) assert.equal((await api('PUT', '/api/backups/settings', { data: bad })).status, 400, JSON.stringify(bad));
+    for (const bad of [{ mode: 'x' }, { dest: 'ftp' }, { dir: 'rel' }, { dir: '/a/../b' }, { keep: 0 }, { keys: ['x'] }, { methods: { easyadmin: 'y' } }, { methods: 5 }, { providers: { a: 'x' } }, { providers: { 1: '../x' } }, { mode: 'selected', keys: [] }]) assert.equal((await api('PUT', '/api/backups/settings', { data: bad })).status, 400, JSON.stringify(bad));
     assert.equal((await api('PUT', '/api/backups/settings', { data: { mode: 'all', dest: 's3' } })).status, 400, 'S3 не настроен');
   });
-  test('«на сервер»: базы и тома выбранных сервисов, зашифровано, список файлов и подсказка восстановления', async () => {
+  test('«на сервер»: базы и тома выбранных сервисов, без шифрования, список файлов и подсказка восстановления', async () => {
     const volDir = path.join(tmp, 'vol2'); fs.mkdirSync(volDir); fs.writeFileSync(path.join(volDir, 'a.txt'), 'x'.repeat(100));
     const id = await addPanel('Alpha Panel', { web: [{ name: 'site', mounts: [{ type: 'bind', name: 'b', hostPath: volDir, mountPath: '/d' }, { type: 'file', name: 'f', mountPath: '/f' }] }, { name: 'pg', type: 'postgres', mounts: [{ type: 'volume', name: 'pgdata', mountPath: '/v' }] }, { name: 'skip', mounts: [{ type: 'volume', name: 'zzz', mountPath: '/z' }] }] });
     const keys = [`${id}|web|site`, `${id}|web|pg`];
-    const s = await api('PUT', '/api/backups/settings', { data: { mode: 'selected', keys, dest: 'host', dir: dataDir(), encrypt: HAS_OPENSSL, keep: 2, minFreeMb: 0 } }); assert.equal(s.status, 200, JSON.stringify(s.data));
+    const s = await api('PUT', '/api/backups/settings', { data: { mode: 'selected', keys, dest: 'host', dir: dataDir(), keep: 2, minFreeMb: 0 } }); assert.equal(s.status, 200, JSON.stringify(s.data));
     const r = await api('POST', '/api/backups/data/run'); assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal((await api('POST', '/api/backups/data/run')).status, 400, 'пока идёт — второй запуск нельзя');
     const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
     assert.equal(st.result.ok, true, JSON.stringify(st)); assert.equal(st.result.files, 2, 'база pg и bind-том сайта; том pg, file-монтирование и несвязанный сервис не копируются');
     const labels = st.panels[0].items.map((x) => x.label); assert.deepEqual(labels.sort(), [`web/pg · postgres`, `web/site · ${volDir}`].sort());
     const files = (await api('GET', '/api/backups/data/files')).data.files; assert.equal(files.length, 2); assert.ok(files.every((f) => f.panel === 'Alpha Panel' && f.size > 0));
-    const pg = files.find((f) => f.name.includes('db-postgres')); assert.equal(pg.name.endsWith('.enc'), HAS_OPENSSL);
+    const pg = files.find((f) => f.name.includes('db-postgres')); assert.ok(!pg.name.endsWith('.enc'), 'новые копии не шифруются паролем');
     const hint = (await api('POST', '/api/backups/data/hint', { panelId: id, name: pg.name })).data; assert.match(hint.text, /psql/); assert.ok(Array.isArray(hint.notes)); assert.ok(!hint.text.includes(PW));
     assert.equal((await api('POST', '/api/backups/data/hint', { panelId: id, name: '../x' })).status, 400);
     assert.ok((await api('GET', '/api/backups')).data.settings.dataLast.ok);
@@ -158,14 +154,14 @@ describe('через EasyAdmin', { skip: !HAS_BASH }, () => {
     // подставной docker не находит контейнеры с именем no_such_*: переименуем проект нельзя, поэтому имитируем через selected на проект no_such_proj
     const m3 = createMockPanel({ token: 'T', seed: { no_such_proj: [{ name: 'db', type: 'postgres' }] } }); panels.push(m3);
     const id3 = (await api('POST', '/api/panels', { name: 'Gamma', url: await m3.listen(), token: 'T' })).data.id;
-    await api('PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${id3}|no_such_proj|db`], dest: 'host', dir: dataDir(), encrypt: false, minFreeMb: 0 } });
+    await api('PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${id3}|no_such_proj|db`], dest: 'host', dir: dataDir(), minFreeMb: 0 } });
     await api('POST', '/api/backups/data/run'); const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
     assert.equal(st.result.ok, false); assert.equal(st.result.failed, 1); assert.match(st.panels[0].items[0].error, /не запущен/); assert.equal(hooks[0]?.type, 'backup_failed'); assert.match(hooks[0].text, /Gamma/); app.alerts.emit = orig; void id2;
     await api('PUT', '/api/backups/settings', { data: { mode: 'none' } }); assert.equal((await api('POST', '/api/backups/data/run')).status, 400);
   });
   test('S3: ссылки на загрузку подписаны, ключи не уходят на сервер панели; оператору недоступно', async () => {
     const id = app.dataId;
-    await api('PUT', '/api/backups/settings', { s3: { endpoint: `http://127.0.0.1:${s3Port}`, bucket: 'bk', accessKey: 'AKID', secretKey: 'TOPSECRETKEY', prefix: 'ea' }, data: { mode: 'selected', keys: [`${id}|web|pg`], dest: 's3', encrypt: false, minFreeMb: 0 } });
+    await api('PUT', '/api/backups/settings', { s3: { endpoint: `http://127.0.0.1:${s3Port}`, bucket: 'bk', accessKey: 'AKID', secretKey: 'TOPSECRETKEY', prefix: 'ea' }, data: { mode: 'selected', keys: [`${id}|web|pg`], dest: 's3', minFreeMb: 0 } });
     fs.rmSync(path.join(tmp, 'curl.log'), { force: true }); await api('POST', '/api/backups/data/run');
     const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
     assert.equal(st.result.ok, true, JSON.stringify(st)); const log = fs.readFileSync(path.join(tmp, 'curl.log'), 'utf8');
@@ -178,7 +174,7 @@ describe('согласованность томов, compose, Redis, загру�
   const logPath = () => path.join(state, 'docker.log'); const resetLog = () => { fs.rmSync(logPath(), { force: true }); fs.rmSync(path.join(state, 'scaled0'), { force: true }); };
   const run = (script, env = {}) => { const f = path.join(tmp, `c-${crypto.randomBytes(3).toString('hex')}.sh`); fs.writeFileSync(f, script); return spawnSync('bash', [f], { env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`, ...env }, encoding: 'utf8' }); };
   const vol = (hold, extra = {}) => ({ kind: 'volume', tag: 'vol-data', project: 'web', service: 'site', label: 'web/site · data', hostPath: path.join(tmp, 'vol'), hold, file: 'web__site__vol-data__s.tar.gz', prefix: 'web__site__vol-data__', slug: 'p1-x', ...extra });
-  const mk = (consistency, item, id) => buildScript({ runId: id, baseDir: path.join(tmp, `h-${id}`), dest: 'host', keep: 1, passB64: null, minFreeKb: 1, items: [item], consistency });
+  const mk = (consistency, item, id) => buildScript({ runId: id, baseDir: path.join(tmp, `h-${id}`), dest: 'host', keep: 1, minFreeKb: 1, items: [item], consistency });
   before(() => { fs.mkdirSync(path.join(tmp, 'vol'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'vol', 'f.txt'), 'data '.repeat(40)); });
 
   test('pause: контейнеры сервиса замораживаются на время копирования и размораживаются; none — не трогает', () => {
@@ -209,7 +205,7 @@ describe('согласованность томов, compose, Redis, загру�
     fs.writeFileSync(path.join(state, 'mounts-abc222'), `M|bind||${bindDir}\nM|volume|main_stack_appdata|/var/lib/docker/volumes/main_stack_appdata/_data\nM|bind||/var/run/docker.sock\n`);
     const m = createMockPanel({ token: 'T', seed: { main: [{ name: 'stack', type: 'compose' }] } }); panels.push(m);
     const id = (await api('POST', '/api/panels', { name: 'Compose Panel', url: await m.listen(), token: 'T' })).data.id;
-    await api('PUT', '/api/backups/settings', { password: PW, data: { mode: 'selected', keys: [`${id}|main|stack`], dest: 'host', dir: path.join(tmp, 'hostdir2'), encrypt: false, keep: 2, minFreeMb: 0, consistency: 'none' } });
+    await api('PUT', '/api/backups/settings', { password: PW, data: { mode: 'selected', keys: [`${id}|main|stack`], dest: 'host', dir: path.join(tmp, 'hostdir2'), keep: 2, minFreeMb: 0, consistency: 'none' } });
     assert.equal((await api('POST', '/api/backups/data/run')).status, 200);
     const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
     const items = st.panels[0].items; const labels = items.map((x) => x.label).sort();
@@ -224,7 +220,7 @@ describe('согласованность томов, compose, Redis, загру�
     const big = path.join(tmp, 'bigvol'); fs.mkdirSync(big, { recursive: true }); fs.writeFileSync(path.join(big, 'big.bin'), crypto.randomBytes(3 * 1024 * 1024 + 12345));
     const m = createMockPanel({ token: 'T', seed: { files: [{ name: 'big', mounts: [{ type: 'bind', name: 'b', hostPath: big, mountPath: '/d' }] }] } }); panels.push(m);
     const id = (await api('POST', '/api/panels', { name: 'Big Panel', url: await m.listen(), token: 'T' })).data.id;
-    const r0 = await api('PUT', '/api/backups/settings', { password: PW, s3: { endpoint: `http://127.0.0.1:${s3Port}`, bucket: 'bk', accessKey: 'AKID', secretKey: 'TOPSECRETKEY', prefix: 'ea' }, data: { mode: 'selected', keys: [`${id}|files|big`], dest: 's3', encrypt: false, keep: 2, minFreeMb: 0, consistency: 'none' } }); assert.equal(r0.status, 200, JSON.stringify(r0.data));
+    const r0 = await api('PUT', '/api/backups/settings', { password: PW, s3: { endpoint: `http://127.0.0.1:${s3Port}`, bucket: 'bk', accessKey: 'AKID', secretKey: 'TOPSECRETKEY', prefix: 'ea' }, data: { mode: 'selected', keys: [`${id}|files|big`], dest: 's3', keep: 2, minFreeMb: 0, consistency: 'none' } }); assert.equal(r0.status, 200, JSON.stringify(r0.data));
     assert.equal((await api('POST', '/api/backups/data/run')).status, 200);
     try {
       const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; }, 30000);

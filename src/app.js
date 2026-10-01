@@ -158,7 +158,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
   const scheduler = createScheduler({ db, manager, alerts, audit });
   const consoleHub = createConsoleHub();
   const loadmon = createLoadMonitor({ db, manager, alerts, config, snapshotFn });
-  const backups = createBackups({ db, key, config, alerts, manager, fetchImpl: fetchImpl ?? globalThis.fetch, restart, hostRun, dataPollMs, mpMin, partMb });
+  const backups = createBackups({ db, key, config, alerts, manager, audit, fetchImpl: fetchImpl ?? globalThis.fetch, restart, hostRun, dataPollMs, mpMin, partMb });
   manager.onSnapshot = (row, snap) => {
     alerts.evaluate(row, snap);
     try { loadmon.onHost(row, snap); } catch { /* метрики не должны мешать опросу панелей */ }
