@@ -1,6 +1,6 @@
 {
   "name": "easyadmin",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "description": "Единая админка для управления несколькими панелями Easypanel",
   "type": "module",
   "private": true,

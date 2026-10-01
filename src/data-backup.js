@@ -214,7 +214,7 @@ export async function deployJob(c, row, { baseDir, runId, script }, host = runOn
   }
   const start = `umask 077; base64 -d ${shq(`${f}.b64`)} | gunzip > ${shq(`${f}.sh`)} && rm -f ${shq(`${f}.b64`)} && `
     + `if systemctl is-active --quiet ea-data-backup 2>/dev/null; then echo EA_RUNNING; false; `
-    + `elif command -v systemd-run >/dev/null 2>&1; then systemd-run --unit=ea-data-backup --collect --description='EasyAdmin: data backup' bash ${shq(`${f}.sh`)} >/dev/null 2>&1 && echo EA_STARTED; `
+    + `elif command -v systemd-run >/dev/null 2>&1 && systemd-run --unit=ea-data-backup --collect --description='EasyAdmin: data backup' bash ${shq(`${f}.sh`)} >/dev/null 2>&1; then echo EA_STARTED; `
     + `else (nohup bash ${shq(`${f}.sh`)} >/dev/null 2>&1 &) ; echo EA_STARTED; fi`;
   const r = await host(c, row, start, { timeoutMs: 25_000 });
   if (/EA_RUNNING/.test(r.output)) throw new Error('На этом сервере уже идёт копирование данных');

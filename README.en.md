@@ -6,6 +6,13 @@ Zero dependencies and no frontend build: Node.js ≥ 22.13, SQLite (built-in `no
 
 > The Russian README is [README.md](README.md).
 
+> **Status: beta (0.9).** The core is covered by tests (including a mock Easypanel and real bash). Marked “experimental” is whatever has not been verified on real servers: database and volume data backups, restoring the system from a backup, installing a panel over SSH, load on multi-core servers. Try it on test panels first and keep a backup.
+
+![Overview](docs/screenshots/overview.png)
+![Panel](docs/screenshots/panel.png)
+![Load](docs/screenshots/load.png)
+![Backups](docs/screenshots/backups.png)
+
 ## Quick start
 
 ```bash
@@ -55,6 +62,8 @@ Demo without real panels (several Easypanel mocks): `npm run demo` → http://lo
 **Operations**: backup from the UI (+ `scripts/restore.js`), Prometheus metrics (`/metrics`), light/dark theme, responsive layout. An unreachable panel does not affect the others.
 
 ## Security
+
+> The host console, panel installation over SSH and data backups run commands as root on your servers: access to EasyAdmin equals access to those servers. To report a vulnerability see [SECURITY.md](SECURITY.md).
 
 - Panel tokens are encrypted (AES-256-GCM) and never returned to the client.
 - Passwords use scrypt; sessions are random tokens in an `HttpOnly; SameSite=Strict` cookie (only a hash is stored).
@@ -126,9 +135,9 @@ npm run dev      # run with auto-reload
 node e2e/ui.mjs  # end-to-end UI check in a browser (needs playwright and a running npm run demo); runs in CI
 ```
 
-Layout: `src/` — server (`app.js` routes and permissions, `routes-ext.js` templates/schedules/webhooks/inventory, `easypanel.js` client and operations, `manager.js` cache and statuses, `alerts.js` notifications, `scheduler.js`, `totp.js`, `oidc.js`, `smtp.js`, `ws.js`), `public/` — UI, `test/` — tests and the panel mock, `docs/TZ.md` — specification and plan.
+Layout: `src/` — server (`app.js` routes and permissions, `routes-ext.js` templates/schedules/webhooks/inventory, `easypanel.js` client and operations, `manager.js` cache and statuses, `alerts.js` notifications, `scheduler.js`, `totp.js`, `oidc.js`, `smtp.js`, `ws.js`), `public/` — UI, `test/` — tests and the panel mock, `docs/archive/TZ.md` — the original specification (archive).
 
-## Server load
+## Server load (beta)
 
 A “Load” tab on each panel: server CPU/memory charts (services vs. system and other), a services table, per-service history in the “Resources” tab, and “What is loading the server?” (a process snapshot from the host). Settings → “Load monitoring”: retention, overload alerts, clear history.
 
@@ -142,7 +151,7 @@ Settings → “Backups”. A `.eabak` file is encrypted with a password (scrypt
 - On a new server: put the file in `data/backups/`, create an admin and restore.
 - The password cannot be recovered — store it separately.
 
-### Database and volume data
+### Database and volume data (experimental)
 
 The same card has a “Database and volume data” block: Postgres/MySQL/MariaDB/Mongo dumps and volume copies (all services or selected). A script on the panel’s own server makes them (a separate systemd process started through the host console); the data never passes through EasyAdmin. Database passwords stay in the container: the dump reads them from its environment.
 
@@ -151,3 +160,7 @@ The same card has a “Database and volume data” block: Postgres/MySQL/MariaDB
 - Destination: a folder on the panel’s server (default `/var/backups/easyadmin`) or the S3 configured in EasyAdmin (the server uploads via temporary signed links, S3 keys are never sent to it; large volumes go in parts).
 - Backup-password encryption (AES-256), rotation by copy count, free-space check, failure notification.
 - “Data backups” → “How to restore” shows restore commands. Volumes are copied live — stop the service for consistency.
+
+## Contributing and license
+
+[CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) · [MIT](LICENSE) license.

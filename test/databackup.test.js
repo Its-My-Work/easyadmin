@@ -47,6 +47,7 @@ case "$1" in
   exec) shift; shift; for i in $(seq 1 40); do echo "-- dump -- $*"; done ;;
 esac
 `, { mode: 0o755 });
+  fs.writeFileSync(path.join(stubs, 'systemd-run'), '#!/bin/bash\nexit 1\n', { mode: 0o755 }); // как на CI-раннере: systemd-run есть, но не работает
   fs.writeFileSync(path.join(stubs, 'curl'), `#!/bin/bash
 [ -z "$EA_REALCURL" ] || exec /usr/bin/curl "$@"
 while [ $# -gt 0 ]; do case "$1" in -T) F=$2; shift 2;; -*) shift;; *) U=$1; shift;; esac; done
