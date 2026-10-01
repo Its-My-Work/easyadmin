@@ -97,6 +97,14 @@ await step('load tab, service history, settings card', async () => {
   await p.click('.drawer .dtab:has-text("Resources")'); await p.waitForSelector('.drawer .chart-empty, .drawer .chart-svg'); await scan('service load'); await p.keyboard.press('Escape');
   await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Load monitoring"))'); await scan('load settings');
 });
+await step('backups card', async () => {
+  await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Backups"))'); await scan('backups card');
+  const card = '.card:has(h3:has-text("Backups"))';
+  await p.click(card + ' .seg-btn:text-is("Selected") >> nth=1'); await p.waitForSelector(card + ' details.diag'); await scan('backups data selected');
+  await p.click(card + ' .seg-btn:text-is("To S3 (the storage above)")'); await p.waitForSelector(card + ' input[placeholder="https://s3.example.com"]'); await scan('backups data s3');
+  await p.fill(card + ' input[type=password] >> nth=-1', 'correct horse battery'); await p.click(card + ' button:has-text("Back up now")'); await p.waitForSelector(card + ' .list-item .mono', { timeout: 15000 }).catch(() => {});
+  await scan('backups list');
+});
 await step('settings', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card'); await p.waitForTimeout(500);
   await p.click('button:has-text("Add channel")'); await p.waitForSelector('.modal'); await scan('channel telegram'); await p.selectOption('.modal select', 'email'); await scan('channel email'); await p.selectOption('.modal select', 'webhook'); await scan('channel webhook'); await p.click('.modal-foot button:has-text("Save")'); await p.waitForTimeout(300); await scan('channel error'); await esc();

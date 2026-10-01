@@ -7,6 +7,7 @@ import { store } from './store.js';
 const size = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`);
 const seg = (cur, options, onPick) => h('div', { class: 'seg' }, options.map(([v, l]) => h('button', { type: 'button', class: `seg-btn ${cur === v ? 'active' : ''}`, onclick: () => onPick(v) }, l)));
 const iconBtn = (title, ic, onclick, cls = '') => h('button', { class: `btn sm icon ghost ${cls}`, title, 'aria-label': title, onclick }, icon(ic, 14));
+const copyText = (text) => { navigator.clipboard?.writeText(text); toast(t('Скопировано'), 'success'); };
 const download = (name, blob) => { const url = URL.createObjectURL(blob); const a = h('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
 
 const askPassword = (text) => new Promise((resolve) => {
@@ -71,15 +72,48 @@ async function serviceRestoreModal(name, pw, pn) {
     } }] });
 }
 
+const STATUS = { wait: 'ждёт', prepare: 'готовится', running: 'идёт', done: 'готово', partial: 'есть ошибки', error: 'ошибка', ok: 'готово', fail: 'ошибка' };
+
+/** Ход копирования данных: опрашивает сервер, пока идёт запуск. */
+function dataProgress(onDone) {
+  const box = h('div', { class: 'stack-sm' }); let stop = false;
+  const draw = async () => {
+    if (stop || !box.isConnected && box.dataset.mounted) return;
+    try {
+      const st = await get('/api/backups/data/status'); box.dataset.mounted = '1';
+      clear(box);
+      if (st.panels?.length) box.append(h('h4', null, st.running ? 'Идёт копирование данных…' : 'Результат последнего запуска'), ...st.panels.map((p) => h('div', { class: 'list-item', style: { display: 'block' } },
+        h('div', { class: 'inline' }, h('b', null, p.name), h('span', { class: `badge ${p.status === 'done' ? 'ok' : p.status === 'error' || p.status === 'partial' ? 'err' : ''}` }, STATUS[p.status] ?? p.status)),
+        p.error ? h('div', { class: 'small danger-text' }, p.error) : null, p.note ? h('div', { class: 'small muted' }, p.note) : null,
+        (p.items ?? []).map((x) => h('div', { class: 'small' }, `${x.status === 'ok' ? '✓' : x.status === 'fail' ? '✗' : '…'} ${x.label}`, x.size ? h('span', { class: 'muted' }, ` · ${size(x.size)}`) : null, x.error ? h('span', { class: 'danger-text' }, ` — ${x.error}`) : null)))));
+      if (st.running) setTimeout(draw, 3000); else { stop = true; onDone?.(); }
+    } catch { setTimeout(draw, 5000); }
+  };
+  draw(); return box;
+}
+
+async function dataFilesModal() {
+  const body = h('div', { class: 'stack' }, h('div', { class: 'skeleton', style: { height: '80px' } }));
+  modal({ title: 'Копии данных', wide: true, body, actions: [{ label: 'Закрыть', kind: 'ghost' }] });
+  try {
+    const { files } = await get('/api/backups/data/files'); clear(body);
+    if (!files.length) return body.append(h('p', { class: 'muted' }, 'Копий данных пока нет.'));
+    body.append(...files.map((x) => x.error ? h('div', { class: 'callout err compact' }, icon('alert', 14), `${x.panel}: ${x.error}`)
+      : h('div', { class: 'list-item' }, h('div', null, h('b', { class: 'mono small' }, x.name), h('div', { class: 'small muted' }, `${x.panel} · ${fmtTime(x.ts)} · ${size(x.size)}`)), h('span', { class: 'spacer' }),
+        h('button', { class: 'btn sm', onclick: async () => { try { const hint = await post('/api/backups/data/hint', { panelId: x.panelId, name: x.name }); modal({ title: 'Как восстановить', wide: true, body: h('div', { class: 'stack' }, h('p', { class: 'muted small' }, 'Выполните на сервере панели.'), ...hint.notes.map((n) => h('div', { class: 'callout compact' }, icon('alert', 14), h('span', { class: 'small' }, n))), h('pre', { class: 'code' }, hint.text)), actions: [{ label: 'Копировать', close: false, onClick: () => { copyText(hint.text); return false; } }, { label: 'Закрыть', kind: 'ghost' }] }); } catch (e) { toast(e.message, 'error'); } } }, icon('rotate', 13), 'Как восстановить'))));
+  } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
+}
+
 export function backupsCard() {
   const box = h('section', { class: 'card stack' });
   const draw = async () => {
     let d; try { d = await get('/api/backups'); } catch (e) { clear(box).append(h('h3', null, 'Резервные копии'), h('p', { class: 'muted' }, e.message)); return; }
-    const s = d.settings; const f = { ...s, panelIds: [...s.panelIds], s3: { ...s.s3 }, password: '' };
+    const s = d.settings; const f = { ...s, panelIds: [...s.panelIds], s3: { ...s.s3 }, data: { ...s.data, keys: [...s.data.keys] }, password: '' };
+    const progress = h('div'); progress.append(dataProgress());
     const redraw = () => { clear(box); build(); };
     const save = async (extra = {}) => {
       try {
-        const body = { enabled: f.enabled, system: f.system, panels: f.panels, panelIds: f.panelIds, every: f.every, hour: f.hour, keep: f.keep, storage: f.storage, s3: { endpoint: f.s3.endpoint, region: f.s3.region, bucket: f.s3.bucket, prefix: f.s3.prefix, accessKey: f.s3.accessKey, secretKey: f.s3.secretKey || undefined, pathStyle: f.s3.pathStyle }, ...extra };
+        const body = { enabled: f.enabled, system: f.system, panels: f.panels, panelIds: f.panelIds, every: f.every, hour: f.hour, keep: f.keep, storage: f.storage, data: { mode: f.data.mode, keys: f.data.keys, dest: f.data.dest, dir: f.data.dir, encrypt: f.data.encrypt, keep: f.data.keep, minFreeMb: f.data.minFreeMb }, s3: { endpoint: f.s3.endpoint, region: f.s3.region, bucket: f.s3.bucket, prefix: f.s3.prefix, accessKey: f.s3.accessKey, secretKey: f.s3.secretKey || undefined, pathStyle: f.s3.pathStyle }, ...extra };
         if (f.password) body.password = f.password;
         await put('/api/backups/settings', body); toast(t('Сохранено'), 'success'); draw();
       } catch (e) { toast(e.message, 'error', 8000); }
@@ -98,11 +132,27 @@ export function backupsCard() {
           field('Во сколько (час)', h('input', { class: 'input', type: 'number', min: 0, max: 23, value: f.hour, oninput: (e) => { f.hour = Number(e.target.value); } })),
           field('Сколько копий хранить', h('input', { class: 'input', type: 'number', min: 1, max: 60, value: f.keep, oninput: (e) => { f.keep = Number(e.target.value); } }))),
         h('div', null, h('div', { class: 'small muted' }, 'Где хранить'), seg(f.storage, [['local', 'На этом сервере'], ['s3', 'S3-хранилище']], (v) => { f.storage = v; redraw(); }),
-          f.storage === 'local' ? h('div', { class: 'small muted' }, 'Папка data/backups. Защищает от ошибок, но не от потери сервера — лучше S3 или регулярно скачивайте копии.') : h('div', { class: 'stack', style: { marginTop: '8px' } },
+          f.storage === 'local' ? h('div', { class: 'small muted' }, 'Папка data/backups. Защищает от ошибок, но не от потери сервера — лучше S3 или регулярно скачивайте копии.') : null,
+          (f.storage === 's3' || (f.data.dest === 's3' && f.data.mode !== 'none')) ? h('div', { class: 'stack', style: { marginTop: '8px' } },
             h('div', { class: 'grid-2' }, field('Адрес (endpoint)', h('input', { class: 'input mono', value: f.s3.endpoint, placeholder: 'https://s3.example.com', oninput: (e) => { f.s3.endpoint = e.target.value; } })), field('Регион', h('input', { class: 'input mono', value: f.s3.region, oninput: (e) => { f.s3.region = e.target.value; } }))),
             h('div', { class: 'grid-2' }, field('Бакет', h('input', { class: 'input mono', value: f.s3.bucket, oninput: (e) => { f.s3.bucket = e.target.value; } })), field('Папка в бакете', h('input', { class: 'input mono', value: f.s3.prefix, oninput: (e) => { f.s3.prefix = e.target.value; } }))),
             h('div', { class: 'grid-2' }, field('Access key', h('input', { class: 'input mono', value: f.s3.accessKey, autocomplete: 'off', oninput: (e) => { f.s3.accessKey = e.target.value; } })), field('Secret key', h('input', { class: 'input mono', type: 'password', autocomplete: 'new-password', placeholder: s.s3.hasSecret ? t('задан — оставьте пустым, чтобы не менять') : '', oninput: (e) => { f.s3.secretKey = e.target.value; } }))),
-            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.s3.pathStyle, onchange: (e) => { f.s3.pathStyle = e.target.checked; } }), 'Адресация path-style (MinIO, большинство совместимых хранилищ)'))),
+            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.s3.pathStyle, onchange: (e) => { f.s3.pathStyle = e.target.checked; } }), 'Адресация path-style (MinIO, большинство совместимых хранилищ)')) : null),
+        h('div', { class: 'stack', style: { borderTop: '1px solid var(--border)', paddingTop: '12px' } }, h('h4', null, 'Данные баз и томов'),
+          h('p', { class: 'muted small' }, 'Дамп базы (Postgres, MySQL, MariaDB, Mongo) и копия томов снимаются прямо на сервере панели и не проходят через EasyAdmin. Компоуз-стеки пропускаются, тома самих баз не копируются — для них есть дамп.'),
+          seg(f.data.mode, [['none', 'Не копировать'], ['all', 'Все сервисы'], ['selected', 'Выбранные']], (v) => { f.data.mode = v; redraw(); }),
+          f.data.mode === 'selected' ? h('div', { class: 'stack-sm' }, store.panels.map((p) => h('details', { class: 'diag', open: f.data.keys.some((k) => k.startsWith(`${p.id}|`)) }, h('summary', null, h('b', null, p.name)),
+            h('div', { class: 'chips', style: { marginTop: '6px' } }, (p.tree?.projects ?? []).flatMap((pr) => pr.services.filter((sv) => sv.type !== 'compose').map((sv) => { const k = `${p.id}|${pr.name}|${sv.name}`; return h('label', { class: 'chip clickable' }, h('input', { type: 'checkbox', checked: f.data.keys.includes(k), onchange: (e) => { f.data.keys = e.target.checked ? [...f.data.keys, k] : f.data.keys.filter((x) => x !== k); } }), ` ${pr.name}/${sv.name}`); })))))) : null,
+          f.data.mode !== 'none' ? h('div', { class: 'stack' },
+            h('div', null, h('div', { class: 'small muted' }, 'Куда сохранять данные'), seg(f.data.dest, [['host', 'На сервер панели'], ['s3', 'В S3 (хранилище выше)']], (v) => { f.data.dest = v; redraw(); }),
+              h('div', { class: 'small muted' }, f.data.dest === 'host' ? 'Файлы остаются на сервере каждой панели. Это не спасает от потери самого сервера.' : 'Сервер панели загружает файл сам по временной ссылке; ключи S3 на него не передаются. Размер одного файла — до 5 ГБ.')),
+            f.data.dest === 'host' ? field('Папка на сервере панели', h('input', { class: 'input mono', value: f.data.dir, oninput: (e) => { f.data.dir = e.target.value; } })) : null,
+            h('div', { class: 'grid-2' }, field('Сколько копий хранить (на каждый источник)', h('input', { class: 'input', type: 'number', min: 1, max: 30, value: f.data.keep, oninput: (e) => { f.data.keep = Number(e.target.value); } })),
+              field('Свободного места не меньше, МБ', h('input', { class: 'input', type: 'number', min: 0, value: f.data.minFreeMb, oninput: (e) => { f.data.minFreeMb = Number(e.target.value); } }), 'Если места меньше, копирование не начнётся.')),
+            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.data.encrypt, onchange: (e) => { f.data.encrypt = e.target.checked; } }), 'Шифровать паролем копии (AES-256)'),
+            s.dataLast ? h('div', { class: `callout compact ${s.dataLast.ok ? '' : 'err'}` }, icon(s.dataLast.ok ? 'activity' : 'alert', 14), h('span', { class: 'small' }, `${t('Данные')}: ${fmtTime(s.dataLast.ts)} · ${t('файлов')}: ${s.dataLast.files}${s.dataLast.failed ? ` · ${t('ошибок')}: ${s.dataLast.failed}` : ''}`)) : null,
+            h('div', { class: 'inline' }, h('button', { class: 'btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { await save(); await post('/api/backups/data/run'); toast(t('Копирование данных запущено'), 'success'); progress.replaceChildren(dataProgress(() => { draw(); })); } catch (er) { toast(er.message, 'error', 9000); } b.disabled = false; } }, icon('database', 14), 'Копировать данные сейчас'),
+              h('button', { class: 'btn ghost', onclick: dataFilesModal }, icon('layers', 14), 'Копии данных')), progress) : null),
         field('Пароль копии', h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: s.hasPassword ? t('задан — оставьте пустым, чтобы не менять') : t('не короче 8 символов'), oninput: (e) => { f.password = e.target.value; } }), 'Без пароля копию не открыть. Запишите его отдельно: восстановить пароль нельзя.'),
         h('div', { class: 'inline' }, h('button', { class: 'btn primary', onclick: () => save() }, 'Сохранить'),
           h('button', { class: 'btn', onclick: async (e) => { const b = e.currentTarget; b.disabled = true; try { await save(); const r = await post('/api/backups/run'); toast(`${t('Копия создана')}: ${size(r.size)}`, 'success'); } catch (er) { toast(er.message, 'error', 9000); } b.disabled = false; draw(); } }, icon('database', 14), 'Создать копию сейчас')),

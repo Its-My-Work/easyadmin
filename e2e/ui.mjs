@@ -82,6 +82,8 @@ await step('settings: канал уведомлений + бэкап', async () 
   await p.waitForSelector('.card:has(h3:has-text("Резервные копии")) .list-item .mono', { timeout: 15000 });
   await p.click('.card:has(h3:has-text("Резервные копии")) button[aria-label="Проверить копию"]'); await p.waitForSelector('.modal'); await p.click('.modal button:has-text("Продолжить")');
   await p.waitForSelector('.modal:has-text("Копия в порядке")'); await p.keyboard.press('Escape');
+  await p.click('.card:has(h3:has-text("Резервные копии")) .seg-btn:text-is("Выбранные") >> nth=1'); await p.waitForSelector('.card:has(h3:has-text("Резервные копии")) details.diag');
+  await p.click('.card:has(h3:has-text("Резервные копии")) .seg-btn:text-is("В S3 (хранилище выше)")'); await p.waitForSelector('.card:has(h3:has-text("Резервные копии")) input[placeholder="https://s3.example.com"]');
 });
 await step('drawer nav: вертикальное меню без горизонтальной прокрутки, цифры переключают разделы', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');

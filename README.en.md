@@ -141,3 +141,11 @@ Settings → “Backups”. A `.eabak` file is encrypted with a password (scrypt
 - “Verify backup” decrypts and checks integrity. “Restore system” stages the database and restarts EasyAdmin; the previous database is kept in `before-restore-*`. “Restore a service” creates one service from the backup on a chosen panel.
 - On a new server: put the file in `data/backups/`, create an admin and restore.
 - The password cannot be recovered — store it separately.
+
+### Database and volume data
+
+The same card has a “Database and volume data” block: Postgres/MySQL/MariaDB/Mongo dumps and volume copies (all services or selected). A script on the panel’s own server makes them (a separate systemd process started through the host console); the data never passes through EasyAdmin. Database passwords stay in the container: the dump reads them from its environment.
+
+- Destination: a folder on the panel’s server (default `/var/backups/easyadmin`) or the S3 configured in EasyAdmin (the server uploads via a temporary signed link, S3 keys are never sent to it; files up to 5 GB).
+- Backup-password encryption (AES-256), rotation by copy count, free-space check, failure notification.
+- “Data backups” → “How to restore” shows restore commands. Volumes are copied live — stop the service for consistency.

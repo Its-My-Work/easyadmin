@@ -5,8 +5,10 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { decrypt, encrypt } from './crypto.js';
 import { HttpError, RawResponse } from './http.js';
+import { runOnHost } from './host-exec.js';
 import { inspectService, normalizeTree } from './easypanel.js';
 import { applyConfig, configFromService } from './templates.js';
+import { DEFAULT_DIR, buildScript, cleanupJob, deployJob, groupKey, listHostFiles, readStatus, resolveTargets, restoreHint, slugOf, stampOf, validDir } from './data-backup.js';
 
 /**
  * Резервные копии EasyAdmin: зашифрованный паролем файл (.eabak) с базой (без истории нагрузки и сессий) и ключом приложения.
@@ -15,7 +17,8 @@ import { applyConfig, configFromService } from './templates.js';
  */
 const NAME_RE = /^easyadmin-\d{8}-\d{6}\.eabak$/;
 const DAY = 86400e3;
-const DEFAULTS = { enabled: false, system: true, panels: 'all', panelIds: [], every: 'daily', hour: 3, keep: 7, storage: 'local', s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'easyadmin/', accessKey: '', secretKey: '', pathStyle: true }, password: '' };
+const DATA_DEFAULTS = { mode: 'none', keys: [], dest: 'host', dir: DEFAULT_DIR, encrypt: true, keep: 3, minFreeMb: 1024 };
+const DEFAULTS = { enabled: false, data: DATA_DEFAULTS, system: true, panels: 'all', panelIds: [], every: 'daily', hour: 3, keep: 7, storage: 'local', s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'easyadmin/', accessKey: '', secretKey: '', pathStyle: true }, password: '' };
 const stamp = (ts) => new Date(ts).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '').replace('T', '-');
 const sha = (d) => crypto.createHash('sha256').update(d).digest('hex');
 const hmac = (k, d) => crypto.createHmac('sha256', k).update(d).digest();
@@ -77,8 +80,19 @@ export function applyPendingRestore(dataDir) {
 export function s3Client(cfg, fetchImpl = globalThis.fetch) {
   const u = new URL(cfg.endpoint);
   const host = cfg.pathStyle ? u.host : `${cfg.bucket}.${u.host}`;
+  const pathOf = (key) => (cfg.pathStyle ? `/${cfg.bucket}${key ? `/${key.split('/').map(enc).join('/')}` : ''}` : `/${key.split('/').map(enc).join('/')}`);
+  /** Временная ссылка: ею можно выполнить один запрос (PUT/GET) без ключей доступа. */
+  function presign(method, key, expires = 43200) {
+    const amz = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'); const day = amz.slice(0, 8); const scope = `${day}/${cfg.region}/s3/aws4_request`;
+    const q = { 'X-Amz-Algorithm': 'AWS4-HMAC-SHA256', 'X-Amz-Credential': `${cfg.accessKey}/${scope}`, 'X-Amz-Date': amz, 'X-Amz-Expires': String(expires), 'X-Amz-SignedHeaders': 'host' };
+    const qs = Object.keys(q).sort().map((k) => `${enc(k)}=${enc(q[k])}`).join('&'); const pathPart = pathOf(key);
+    const canonical = [method, pathPart, qs, `host:${host}\n`, 'host', 'UNSIGNED-PAYLOAD'].join('\n');
+    const sk = hmac(hmac(hmac(hmac(`AWS4${cfg.secretKey}`, day), cfg.region), 's3'), 'aws4_request');
+    const sig = crypto.createHmac('sha256', sk).update(['AWS4-HMAC-SHA256', amz, scope, sha(canonical)].join('\n')).digest('hex');
+    return `${u.protocol}//${host}${pathPart}?${qs}&X-Amz-Signature=${sig}`;
+  }
   async function call(method, key, { body = Buffer.alloc(0), query = {} } = {}) {
-    const pathPart = cfg.pathStyle ? `/${cfg.bucket}${key ? `/${key.split('/').map(enc).join('/')}` : ''}` : `/${key.split('/').map(enc).join('/')}`;
+    const pathPart = pathOf(key);
     const qs = Object.keys(query).sort().map((k) => `${enc(k)}=${enc(query[k])}`).join('&');
     const amz = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'); const day = amz.slice(0, 8);
     const payload = sha(body);
@@ -94,6 +108,7 @@ export function s3Client(cfg, fetchImpl = globalThis.fetch) {
     return res;
   }
   return {
+    presign,
     put: (key, body) => call('PUT', key, { body }),
     get: async (key) => Buffer.from(await (await call('GET', key)).arrayBuffer()),
     del: (key) => call('DELETE', key),
@@ -104,14 +119,16 @@ export function s3Client(cfg, fetchImpl = globalThis.fetch) {
   };
 }
 
-export function createBackups({ db, key, config, alerts, manager, fetchImpl = globalThis.fetch, now = () => Date.now(), restart = () => process.exit(0) }) {
+export function createBackups({ db, key, config, alerts, manager, fetchImpl = globalThis.fetch, now = () => Date.now(), restart = () => process.exit(0), dataPollMs = 10_000, hostRun }) {
   const getRaw = (k) => db.prepare('SELECT v FROM settings WHERE k = ?').get(k)?.v;
   const setRaw = (k, v) => db.prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, v);
-  const load = () => { try { const c = JSON.parse(decrypt(key, getRaw('backup_cfg'))); return { ...DEFAULTS, ...c, s3: { ...DEFAULTS.s3, ...(c.s3 ?? {}) } }; } catch { return { ...DEFAULTS, s3: { ...DEFAULTS.s3 } }; } };
+  const load = () => { try { const c = JSON.parse(decrypt(key, getRaw('backup_cfg'))); return { ...DEFAULTS, ...c, data: { ...DATA_DEFAULTS, ...(c.data ?? {}) }, s3: { ...DEFAULTS.s3, ...(c.s3 ?? {}) } }; } catch { return { ...DEFAULTS, data: { ...DATA_DEFAULTS }, s3: { ...DEFAULTS.s3 } }; } };
   const save = (c) => setRaw('backup_cfg', encrypt(key, JSON.stringify(c)));
   const lastRun = () => { try { return JSON.parse(getRaw('backup_last') ?? 'null'); } catch { return null; } };
   const dir = () => path.join(config.dataDir, 'backups');
-  let timer = null; let busy = false;
+  let timer = null; let busy = false; let dataBusy = false;
+  let dataState = { running: false, panels: {} };
+  const lastData = () => { try { return JSON.parse(getRaw('backup_data_last') ?? 'null'); } catch { return null; } };
 
   // каналам, получающим «диск заполнен», сообщаем и об ошибках копирования — один раз
   if (getRaw('backup_migrated') !== '1') {
@@ -124,7 +141,7 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
 
   const view = () => {
     const c = load(); const l = lastRun();
-    return { enabled: c.enabled, system: c.system, panels: c.panels, panelIds: c.panelIds, every: c.every, hour: c.hour, keep: c.keep, storage: c.storage, hasPassword: !!c.password, s3: { ...c.s3, secretKey: '', hasSecret: !!c.s3.secretKey }, last: l, local: config.dataDir !== ':memory:' };
+    return { enabled: c.enabled, data: c.data, dataLast: lastData(), system: c.system, panels: c.panels, panelIds: c.panelIds, every: c.every, hour: c.hour, keep: c.keep, storage: c.storage, hasPassword: !!c.password, s3: { ...c.s3, secretKey: '', hasSecret: !!c.s3.secretKey }, last: l, local: config.dataDir !== ':memory:' };
   };
   function update(b) {
     const c = load();
@@ -145,8 +162,21 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
       if (c.s3.prefix && (c.s3.prefix.includes('..') || c.s3.prefix.startsWith('/'))) throw new Error('Папка в бакете: без «..» и ведущего «/»');
       if (c.s3.prefix && !c.s3.prefix.endsWith('/')) c.s3.prefix += '/';
     }
+    if (b.data) {
+      const x = b.data;
+      if (x.mode !== undefined) { if (!['none', 'all', 'selected'].includes(x.mode)) throw new Error('Данные: none, all или selected'); c.data.mode = x.mode; }
+      if (x.keys !== undefined) { if (!Array.isArray(x.keys) || x.keys.some((k) => !/^\d+\|[a-z0-9_-]+\|[a-z0-9_-]+$/.test(String(k)))) throw new Error('Список сервисов для копирования некорректен'); c.data.keys = [...new Set(x.keys)]; }
+      if (x.dest !== undefined) { if (!['host', 's3'].includes(x.dest)) throw new Error('Куда сохранять данные: host или s3'); c.data.dest = x.dest; }
+      if (x.dir !== undefined) { if (!validDir(x.dir)) throw new Error('Папка на сервере: абсолютный путь без «..»'); c.data.dir = x.dir.replace(/\/$/, ''); }
+      if (x.encrypt !== undefined) { if (typeof x.encrypt !== 'boolean') throw new Error('Шифрование — да или нет'); c.data.encrypt = x.encrypt; }
+      if (x.keep !== undefined) { if (!Number.isInteger(x.keep) || x.keep < 1 || x.keep > 30) throw new Error('Сколько копий данных хранить: от 1 до 30'); c.data.keep = x.keep; }
+      if (x.minFreeMb !== undefined) { if (!Number.isInteger(x.minFreeMb) || x.minFreeMb < 0 || x.minFreeMb > 1_000_000) throw new Error('Минимум свободного места: МБ'); c.data.minFreeMb = x.minFreeMb; }
+      if (c.data.mode === 'selected' && !c.data.keys.length) throw new Error('Отметьте хотя бы один сервис для копирования данных');
+      if (c.data.dest === 's3' && c.data.mode !== 'none' && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Для данных в S3 заполните данные хранилища S3');
+    }
     if (!c.system && c.panels === 'none') throw new Error('Выберите, что копировать: систему или панели');
     if (c.panels === 'selected' && !c.panelIds.length) throw new Error('Отметьте хотя бы одну панель');
+    if (c.data.mode !== 'none' && c.data.encrypt && !c.password) throw new Error('Для шифрования данных задайте пароль копии');
     if (c.enabled && !c.password) throw new Error('Сначала задайте пароль копии');
     if (c.storage === 's3' && c.enabled && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Заполните данные хранилища S3');
     save(c); return view();
@@ -262,6 +292,99 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
     return { restarting: true, keyReplaced: !!keyFile, warn };
   }
 
+  /* ---------- данные баз и томов ---------- */
+  const hostFn = (c, row, script, o) => (hostRun ?? runOnHost)(c, row, script, o);
+  const panelsInScope = (c) => db.prepare('SELECT * FROM panels ORDER BY id').all().filter((r) => c.data.mode === 'all' || c.data.keys.some((k) => k.startsWith(`${r.id}|`)));
+  const s3Of = (c) => s3Client(c.s3, fetchImpl);
+
+  async function runDataPanel(c, row, stamp, state) {
+    const client = manager.clientFor(row); const projects = (await manager.snapshot(row.id))?.tree?.projects ?? [];
+    const encrypt = c.data.encrypt && !!c.password;
+    const items = (await resolveTargets(client, row, projects, c.data, stamp)).map((it) => ({ ...it, encrypt }));
+    // имена файлов с учётом шифрования
+    for (const it of items) it.file = `${it.prefix}${stamp}.${it.kind === 'volume' ? 'tar' : it.kind === 'mongo' ? 'archive' : 'sql'}.gz${encrypt ? '.enc' : ''}`;
+    if (!items.length) { state.status = 'done'; state.note = 'Нет баз и томов для копирования'; return; }
+    const s3 = c.data.dest === 's3' ? s3Of(c) : null;
+    if (s3) for (const it of items) it.url = s3.presign('PUT', `${c.s3.prefix}data/${it.slug}/${it.file}`, 12 * 3600);
+    state.items = items.map((it) => ({ label: it.label, status: 'wait' }));
+    const runId = `r${stamp}-${row.id}`;
+    const script = buildScript({ runId, baseDir: c.data.dir, dest: c.data.dest, keep: c.data.keep, passB64: encrypt ? Buffer.from(c.password).toString('base64') : null, minFreeKb: c.data.minFreeMb * 1024, items });
+    state.status = 'running';
+    await deployJob(client, row, { baseDir: c.data.dir, runId, script }, hostFn);
+    const t0 = now(); let st = { items: [], done: false, started: false };
+    for (let polls = 0; !st.done; polls++) {
+      await new Promise((r) => setTimeout(r, dataPollMs));
+      try { st = await readStatus(client, row, c.data.dir, runId, hostFn); } catch { /* консоль может отвечать с задержкой — пробуем ещё */ }
+      state.items = items.map((it) => { const r = st.items.find((x) => x.label === it.label.replace(/\|/g, '/')); return { label: it.label, status: r ? (r.ok ? 'ok' : 'fail') : 'wait', file: r?.name, size: r?.size, error: r?.error }; });
+      if (!st.started && now() - t0 > 180_000) throw new Error('Скрипт на сервере не стартовал');
+      if (now() - t0 > 6 * 3600e3) throw new Error('Копирование идёт слишком долго (больше 6 часов)');
+    }
+    cleanupJob(client, row, c.data.dir, runId, hostFn);
+    const general = st.items.find((x) => !x.ok && x.label === '*');
+    if (general) throw new Error(general.error);
+    if (s3) { // ротация в S3: оставляем keep последних по каждому источнику
+      try {
+        const all = (await s3.list(`${c.s3.prefix}data/${items[0].slug}/`)).map((o) => ({ name: o.key.split('/').pop(), key: o.key }));
+        const groups = new Map(); for (const f of all) { const g = groupKey(f.name); groups.set(g, [...(groups.get(g) ?? []), f]); }
+        for (const list of groups.values()) for (const f of list.sort((a, b) => b.name.localeCompare(a.name)).slice(c.data.keep)) await s3.del(f.key);
+      } catch (e) { state.note = `Ротация в S3 не выполнена: ${e.message}`; }
+    }
+    state.status = state.items.some((x) => x.status === 'fail') ? 'partial' : 'done';
+  }
+
+  async function runData({ reason = 'manual' } = {}) {
+    if (dataBusy) throw new Error('Копирование данных уже идёт');
+    const c = load();
+    if (c.data.mode === 'none') throw new Error('Копирование данных выключено: выберите, что копировать');
+    if (c.data.dest === 's3' && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Заполните данные хранилища S3');
+    if (c.data.encrypt && !c.password) throw new Error('Для шифрования данных задайте пароль копии');
+    if (!manager) throw new Error('Менеджер панелей недоступен');
+    const rows = panelsInScope(c); if (!rows.length) throw new Error('Нет панелей для копирования данных');
+    dataBusy = true; const t = now(); const stamp = stampOf(t);
+    dataState = { running: true, startedAt: t, reason, dest: c.data.dest, panels: Object.fromEntries(rows.map((r) => [r.id, { name: r.name, status: 'wait', items: [] }])) };
+    const run = (async () => {
+      let idx = 0;
+      await Promise.all(Array.from({ length: Math.min(2, rows.length) }, async () => {
+        while (idx < rows.length) {
+          const row = rows[idx++]; const st = dataState.panels[row.id]; st.status = 'prepare';
+          try { await runDataPanel(c, row, stamp, st); } catch (e) { st.status = 'error'; st.error = e.message; }
+        }
+      }));
+      const panels = Object.values(dataState.panels);
+      const failed = panels.reduce((n, p) => n + (p.error ? 1 : 0) + (p.items ?? []).filter((x) => x.status === 'fail').length, 0);
+      const okCount = panels.reduce((n, p) => n + (p.items ?? []).filter((x) => x.status === 'ok').length, 0);
+      const res = { ts: t, ok: failed === 0, files: okCount, failed, dest: c.data.dest, reason, panels: panels.map((p) => ({ name: p.name, status: p.status, error: p.error ?? null, failed: (p.items ?? []).filter((x) => x.status === 'fail').map((x) => `${x.label}: ${x.error}`) })) };
+      setRaw('backup_data_last', JSON.stringify(res));
+      dataState.running = false; dataState.result = res;
+      if (failed) alerts?.emit({ type: 'backup_failed', icon: '💾', text: `Копирование данных: ошибок ${failed}${res.panels.filter((p) => p.error || p.failed.length).slice(0, 2).map((p) => ` — ${p.name}: ${p.error ?? p.failed[0]}`).join('')}` }).catch?.(() => {});
+    })().finally(() => { dataBusy = false; });
+    return { started: true, panels: rows.length, wait: run };
+  }
+  const dataStatus = () => ({ ...dataState, panels: Object.entries(dataState.panels).map(([id, p]) => ({ id: Number(id), ...p })) });
+
+  async function listData() {
+    const c = load(); const out = [];
+    if (c.data.dest === 's3') {
+      const s3 = s3Of(c);
+      const files = await s3.list(`${c.s3.prefix}data/`);
+      for (const rowDb of db.prepare('SELECT * FROM panels').all()) {
+        const slug = slugOf(rowDb);
+        for (const o of files.filter((f) => f.key.startsWith(`${c.s3.prefix}data/${slug}/`))) out.push({ panelId: rowDb.id, panel: rowDb.name, name: o.key.split('/').pop(), size: o.size, ts: o.ts });
+      }
+    } else {
+      for (const row of panelsInScope(c)) {
+        try { for (const f of await listHostFiles(manager.clientFor(row), row, c.data.dir, slugOf(row), hostFn)) out.push({ panelId: row.id, panel: row.name, ...f }); }
+        catch (e) { out.push({ panelId: row.id, panel: row.name, error: e.message }); }
+      }
+    }
+    return out.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+  }
+  function dataHint(panelId, name) {
+    const c = load(); const row = db.prepare('SELECT * FROM panels WHERE id = ?').get(Number(panelId)); if (!row) throw new Error('Панель не найдена');
+    const where = c.data.dest === 's3' ? { url: s3Of(c).presign('GET', `${c.s3.prefix}data/${slugOf(row)}/${name}`, 3600) } : { dir: `${c.data.dir}/${slugOf(row)}` };
+    return { ...restoreHint(name, where), encrypted: name.endsWith('.enc') };
+  }
+
   const dayKey = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
   async function tick(ts = now()) {
     const c = load(); if (!c.enabled || !c.password || busy) return null;
@@ -272,7 +395,15 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
     if (!due || new Date(ts).getHours() < c.hour) return null;
     try { return await run({ reason: 'schedule' }); } catch { return null; }
   }
-  const start = () => { timer = setInterval(() => { tick().catch(() => {}); }, 60_000); timer.unref(); };
+  async function tickData(ts = now()) {
+    const c = load(); if (c.data.mode === 'none' || dataBusy) return null;
+    const l = lastData(); if (l && !l.ok && ts - l.ts < 3600e3) return null;
+    const lastOk = l?.ok ? l.ts : 0;
+    const due = !lastOk || (c.every === 'weekly' ? ts - lastOk >= 6.5 * DAY : dayKey(ts) !== dayKey(lastOk));
+    if (!due || !c.enabled || new Date(ts).getHours() < c.hour) return null;
+    try { return await runData({ reason: 'schedule' }); } catch { return null; }
+  }
+  const start = () => { timer = setInterval(() => { tick().catch(() => {}); tickData().catch(() => {}); }, 60_000); timer.unref(); };
   const stop = () => clearInterval(timer);
 
   /** Конфигурация одной панели из копии (для скачивания и восстановления сервисов). */
@@ -282,7 +413,7 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
     if (!p) throw new Error('Этой панели нет в копии');
     return p;
   }
-  return { view, update, run, panelFromBackup, list, download, remove, verify, restore, tick, start, stop, load };
+  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, list, download, remove, verify, restore, tick, start, stop, load };
 }
 
 export function backupRoutes(d) {
@@ -300,6 +431,12 @@ export function backupRoutes(d) {
       try { const r = await backups.run({ reason: 'manual' }); audit(ctx, { action: 'backup.run', target: r.name, detail: `${r.size} байт` }); return r; }
       catch (e) { audit(ctx, { action: 'backup.run', target: 'резервная копия', ok: false, detail: e.message }); throw e; }
     }), { admin: true }],
+    ['POST', '/api/backups/data/run', w(async (ctx) => {
+      const r = await backups.runData({ reason: 'manual' }); r.wait.catch(() => {}); audit(ctx, { action: 'backup.data_run', target: 'данные баз и томов', detail: `панелей: ${r.panels}` }); return { started: true, panels: r.panels };
+    }), { admin: true }],
+    ['GET', '/api/backups/data/status', w(() => backups.dataStatus()), { admin: true }],
+    ['GET', '/api/backups/data/files', w(async () => ({ files: await backups.listData() })), { admin: true }],
+    ['POST', '/api/backups/data/hint', w((ctx) => backups.dataHint(ctx.body?.panelId, String(ctx.body?.name ?? ''))), { admin: true }],
     ['GET', '/api/backups/download', w(async (ctx) => {
       const n = name(ctx); const buf = await backups.download(n); audit(ctx, { action: 'backup.download', target: n });
       return new RawResponse(buf, 'application/octet-stream', { 'Content-Disposition': `attachment; filename="${n}"` });
