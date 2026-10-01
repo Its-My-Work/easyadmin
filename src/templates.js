@@ -3,6 +3,13 @@ import { PanelError, SERVICE_TYPES, assertType, createService, inspectService, r
 const pick = (o, ...keys) => { for (const k of keys) if (o?.[k] != null && o[k] !== '') return o[k]; return undefined; };
 
 /** Снимает переносимую конфигурацию сервиса (env, источник, ресурсы). Домены/порты/тома не копируются — они привязаны к хосту. */
+export const configFromService = (type, service) => ({
+  type,
+  env: String(pick(service, 'env', 'envs') ?? ''),
+  source: service?.source ?? null,
+  build: service?.build ?? null,
+  resources: service?.resources ?? null,
+});
 export async function extractConfig(client, ref) {
   const { service } = await inspectService(client, ref);
   return {

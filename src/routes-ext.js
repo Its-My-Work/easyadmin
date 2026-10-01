@@ -16,6 +16,7 @@ import { extrasRoutes } from './panel-extras.js';
 import { licenseRoutes } from './panel-license.js';
 import { installRoutes } from './installer.js';
 import { loadRoutes } from './load-monitor.js';
+import { backupRoutes as backupApiRoutes } from './backups.js';
 
 const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
 
@@ -699,5 +700,5 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...loadRoutes(d), ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
+  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...loadRoutes(d), ...backupApiRoutes({ ...d, treeOf }), ...backupRoutes, ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes, ...backupRoutes];
 }

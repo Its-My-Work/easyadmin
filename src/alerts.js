@@ -11,6 +11,7 @@ export const EVENT_TYPES = {
   service_down: 'Сервис остановился или упал',
   schedule_failed: 'Ошибка задания по расписанию',
   overload: 'Перегрузка сервера',
+  backup_failed: 'Ошибка резервного копирования',
 };
 const DEFAULT_EVENTS = Object.keys(EVENT_TYPES);
 const SIX_HOURS = 6 * 3600_000;

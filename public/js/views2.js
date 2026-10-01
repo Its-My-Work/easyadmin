@@ -401,22 +401,6 @@ export function twoFaCard() {
   return h('section', { class: 'card stack' }, h('h3', null, 'Двухфакторная аутентификация'), h('p', { class: 'muted small' }, 'Код из приложения при входе. Рекомендуем включить: EasyAdmin даёт доступ ко всем вашим серверам.'), box);
 }
 
-export function backupCard() {
-  const withKey = h('input', { type: 'checkbox' });
-  const btn = h('button', { class: 'btn', onclick: async () => {
-    btn.disabled = true;
-    try {
-      const res = await fetch(`/api/backup${withKey.checked ? '?withKey=1' : ''}`, { headers: { 'X-Requested-With': 'easyadmin' } });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const url = URL.createObjectURL(await res.blob());
-      const a = h('a', { href: url, download: `easyadmin-backup-${new Date().toISOString().slice(0, 10)}.json` }); document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      toast('Бэкап скачан', 'success');
-    } catch (e) { toast(e.message, 'error'); } btn.disabled = false;
-  } }, icon('download', 14), 'Скачать бэкап');
-  return h('section', { class: 'card stack' }, h('h3', null, 'Резервная копия'),
-    h('p', { class: 'muted small' }, 'База EasyAdmin (панели, пользователи, журнал, шаблоны). Токены панелей зашифрованы — без ключа шифрования их не восстановить: либо храните EASYADMIN_SECRET, либо включите ключ в бэкап (тогда файл нужно беречь как секрет). Восстановление: ', h('code', null, 'node scripts/restore.js backup.json')),
-    h('label', { class: 'check' }, withKey, 'Включить ключ шифрования в файл'), h('div', null, btn));
-}
 
 export function hooksCard() {
   const box = h('div', { class: 'list' });

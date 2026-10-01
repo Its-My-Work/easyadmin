@@ -1,4 +1,7 @@
 // Демо: несколько имитаций Easypanel + EasyAdmin с готовыми данными. Логин: admin / demo12345
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
@@ -23,8 +26,9 @@ for (const [name, seed, stats] of seeds) {
 // демо-каталог шаблонов Easypanel из нескольких образцов — чтобы вкладка «Каталог» работала без интернета
 const catalogSrv = http.createServer((req, res) => { const body = CATALOG_FILES[decodeURIComponent(req.url.slice(1))]; if (body === undefined) { res.writeHead(404); return res.end(); } res.writeHead(200); res.end(body); });
 await new Promise((r) => catalogSrv.listen(0, '127.0.0.1', r));
-const config = { ...loadConfig({ EASYADMIN_CATALOG_URL: process.env.EASYADMIN_CATALOG_URL || `http://127.0.0.1:${catalogSrv.address().port}` }), dataDir: ':memory:', port };
-const db = openDb(':memory:');
+const demoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'easyadmin-demo-'));
+const config = { ...loadConfig({ EASYADMIN_CATALOG_URL: process.env.EASYADMIN_CATALOG_URL || `http://127.0.0.1:${catalogSrv.address().port}` }), dataDir: demoDir, port };
+const db = openDb(demoDir);
 const app = createApp({ config, db, key: crypto.randomBytes(32) });
 await new Promise((r) => app.server.listen(port, '0.0.0.0', r));
 app.start();

@@ -1,0 +1,336 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { decrypt, encrypt } from './crypto.js';
+import { HttpError, RawResponse } from './http.js';
+import { inspectService, normalizeTree } from './easypanel.js';
+import { applyConfig, configFromService } from './templates.js';
+
+/**
+ * Резервные копии EasyAdmin: зашифрованный паролем файл (.eabak) с базой (без истории нагрузки и сессий) и ключом приложения.
+ * Хранилище: папка data/backups или S3-совместимое (SigV4 на встроенном crypto). Расписание, ротация, проверка и восстановление.
+ * Восстановление: копия кладётся в data/restore-pending, сервис перезапускается и подменяет базу при старте (applyPendingRestore).
+ */
+const NAME_RE = /^easyadmin-\d{8}-\d{6}\.eabak$/;
+const DAY = 86400e3;
+const DEFAULTS = { enabled: false, system: true, panels: 'all', panelIds: [], every: 'daily', hour: 3, keep: 7, storage: 'local', s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'easyadmin/', accessKey: '', secretKey: '', pathStyle: true }, password: '' };
+const stamp = (ts) => new Date(ts).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '').replace('T', '-');
+const sha = (d) => crypto.createHash('sha256').update(d).digest('hex');
+const hmac = (k, d) => crypto.createHmac('sha256', k).update(d).digest();
+const enc = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
+/* ---------- формат файла ---------- */
+export function sealBackup({ dbBytes, appKey, password, createdAt, panels = [] }) {
+  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
+  const k = crypto.scryptSync(password, salt, 32, { N: 16384, r: 8, p: 1 });
+  const c = crypto.createCipheriv('aes-256-gcm', k, iv);
+  const plain = JSON.stringify({ db: dbBytes ? dbBytes.toString('base64') : null, key: dbBytes && appKey ? appKey.toString('hex') : null, panels });
+  const ct = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
+  return Buffer.from(JSON.stringify({ format: 'easyadmin-backup', v: 2, createdAt, kdf: { name: 'scrypt', N: 16384, r: 8, p: 1, salt: salt.toString('base64') }, iv: iv.toString('base64'), tag: c.getAuthTag().toString('base64'), data: ct.toString('base64') }));
+}
+export function openBackup(file, password) {
+  let env;
+  try { env = JSON.parse(file.toString('utf8')); } catch { throw new Error('Это не файл копии EasyAdmin'); }
+  if (env?.format !== 'easyadmin-backup' || env.v !== 2) throw new Error('Это не файл копии EasyAdmin (или формат новее)');
+  try {
+    const k = crypto.scryptSync(password, Buffer.from(env.kdf.salt, 'base64'), 32, { N: env.kdf.N, r: env.kdf.r, p: env.kdf.p });
+    const d = crypto.createDecipheriv('aes-256-gcm', k, Buffer.from(env.iv, 'base64'));
+    d.setAuthTag(Buffer.from(env.tag, 'base64'));
+    const plain = JSON.parse(Buffer.concat([d.update(Buffer.from(env.data, 'base64')), d.final()]).toString('utf8'));
+    return { createdAt: env.createdAt, db: plain.db ? Buffer.from(plain.db, 'base64') : null, key: plain.key ? Buffer.from(plain.key, 'hex') : null, panels: plain.panels ?? [] };
+  } catch { throw new Error('Неверный пароль или файл повреждён'); }
+}
+/** Проверяет, что внутри рабочая база: целостность и основные таблицы. Возвращает счётчики. */
+export function inspectDb(bytes) {
+  const tmp = path.join(os.tmpdir(), `ea-inspect-${crypto.randomBytes(6).toString('hex')}.db`);
+  fs.writeFileSync(tmp, bytes);
+  let d;
+  try {
+    d = new DatabaseSync(tmp);
+    const ok = d.prepare('PRAGMA integrity_check').get();
+    if (Object.values(ok)[0] !== 'ok') throw new Error('База в копии повреждена');
+    const n = (t) => d.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n;
+    return { panels: n('panels'), users: n('users'), channels: n('channels'), templates: n('templates') };
+  } catch (e) { throw new Error(e.message.includes('повреждена') ? e.message : 'В копии нет базы EasyAdmin'); } finally { try { d?.close(); } catch { /* ignore */ } fs.rmSync(tmp, { force: true }); }
+}
+
+/** При старте: если подготовлено восстановление, подменяет базу (старая сохраняется в before-restore-*). */
+export function applyPendingRestore(dataDir) {
+  const dir = path.join(dataDir, 'restore-pending');
+  const db = path.join(dir, 'easyadmin.db');
+  if (!fs.existsSync(db)) return null;
+  const saved = path.join(dataDir, `before-restore-${stamp(Date.now())}`);
+  fs.mkdirSync(saved, { recursive: true });
+  for (const f of ['easyadmin.db', 'easyadmin.db-wal', 'easyadmin.db-shm', 'secret.key']) {
+    const from = path.join(dataDir, f);
+    if (fs.existsSync(from) && (f !== 'secret.key' || fs.existsSync(path.join(dir, 'secret.key')))) fs.renameSync(from, path.join(saved, f));
+  }
+  fs.renameSync(db, path.join(dataDir, 'easyadmin.db'));
+  if (fs.existsSync(path.join(dir, 'secret.key'))) fs.renameSync(path.join(dir, 'secret.key'), path.join(dataDir, 'secret.key'));
+  fs.rmSync(dir, { recursive: true, force: true });
+  return saved;
+}
+
+/* ---------- S3 (SigV4) ---------- */
+export function s3Client(cfg, fetchImpl = globalThis.fetch) {
+  const u = new URL(cfg.endpoint);
+  const host = cfg.pathStyle ? u.host : `${cfg.bucket}.${u.host}`;
+  async function call(method, key, { body = Buffer.alloc(0), query = {} } = {}) {
+    const pathPart = cfg.pathStyle ? `/${cfg.bucket}${key ? `/${key.split('/').map(enc).join('/')}` : ''}` : `/${key.split('/').map(enc).join('/')}`;
+    const qs = Object.keys(query).sort().map((k) => `${enc(k)}=${enc(query[k])}`).join('&');
+    const amz = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'); const day = amz.slice(0, 8);
+    const payload = sha(body);
+    const headers = { host, 'x-amz-content-sha256': payload, 'x-amz-date': amz };
+    const names = Object.keys(headers).sort();
+    const canonical = [method, pathPart, qs, names.map((n) => `${n}:${headers[n]}\n`).join(''), names.join(';'), payload].join('\n');
+    const scope = `${day}/${cfg.region}/s3/aws4_request`;
+    const sts = ['AWS4-HMAC-SHA256', amz, scope, sha(canonical)].join('\n');
+    const sk = hmac(hmac(hmac(hmac(`AWS4${cfg.secretKey}`, day), cfg.region), 's3'), 'aws4_request');
+    const auth = `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${scope}, SignedHeaders=${names.join(';')}, Signature=${crypto.createHmac('sha256', sk).update(sts).digest('hex')}`;
+    const res = await fetchImpl(`${u.protocol}//${host}${pathPart}${qs ? `?${qs}` : ''}`, { method, headers: { ...headers, Authorization: auth }, body: method === 'PUT' ? body : undefined, signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) { const t = (await res.text().catch(() => '')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160); throw new Error(`Хранилище S3: HTTP ${res.status}${t ? ` — ${t}` : ''}`); }
+    return res;
+  }
+  return {
+    put: (key, body) => call('PUT', key, { body }),
+    get: async (key) => Buffer.from(await (await call('GET', key)).arrayBuffer()),
+    del: (key) => call('DELETE', key),
+    async list(prefix) {
+      const x = await (await call('GET', '', { query: { 'list-type': '2', prefix } })).text();
+      return [...x.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)].map((m) => ({ key: /<Key>([^<]*)<\/Key>/.exec(m[1])?.[1], size: Number(/<Size>(\d+)<\/Size>/.exec(m[1])?.[1] ?? 0), ts: Date.parse(/<LastModified>([^<]*)<\/LastModified>/.exec(m[1])?.[1] ?? '') || 0 })).filter((o) => o.key);
+    },
+  };
+}
+
+export function createBackups({ db, key, config, alerts, manager, fetchImpl = globalThis.fetch, now = () => Date.now(), restart = () => process.exit(0) }) {
+  const getRaw = (k) => db.prepare('SELECT v FROM settings WHERE k = ?').get(k)?.v;
+  const setRaw = (k, v) => db.prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, v);
+  const load = () => { try { const c = JSON.parse(decrypt(key, getRaw('backup_cfg'))); return { ...DEFAULTS, ...c, s3: { ...DEFAULTS.s3, ...(c.s3 ?? {}) } }; } catch { return { ...DEFAULTS, s3: { ...DEFAULTS.s3 } }; } };
+  const save = (c) => setRaw('backup_cfg', encrypt(key, JSON.stringify(c)));
+  const lastRun = () => { try { return JSON.parse(getRaw('backup_last') ?? 'null'); } catch { return null; } };
+  const dir = () => path.join(config.dataDir, 'backups');
+  let timer = null; let busy = false;
+
+  // каналам, получающим «диск заполнен», сообщаем и об ошибках копирования — один раз
+  if (getRaw('backup_migrated') !== '1') {
+    for (const c of db.prepare('SELECT id, events FROM channels').all()) {
+      const ev = String(c.events ?? '').split(',').filter(Boolean);
+      if (ev.includes('disk_high') && !ev.includes('backup_failed')) db.prepare('UPDATE channels SET events = ? WHERE id = ?').run([...ev, 'backup_failed'].join(','), c.id);
+    }
+    setRaw('backup_migrated', '1');
+  }
+
+  const view = () => {
+    const c = load(); const l = lastRun();
+    return { enabled: c.enabled, system: c.system, panels: c.panels, panelIds: c.panelIds, every: c.every, hour: c.hour, keep: c.keep, storage: c.storage, hasPassword: !!c.password, s3: { ...c.s3, secretKey: '', hasSecret: !!c.s3.secretKey }, last: l, local: config.dataDir !== ':memory:' };
+  };
+  function update(b) {
+    const c = load();
+    if (b.enabled !== undefined) { if (typeof b.enabled !== 'boolean') throw new Error('Включено — да или нет'); c.enabled = b.enabled; }
+    if (b.system !== undefined) { if (typeof b.system !== 'boolean') throw new Error('Система — да или нет'); c.system = b.system; }
+    if (b.panels !== undefined) { if (!['none', 'all', 'selected'].includes(b.panels)) throw new Error('Панели: none, all или selected'); c.panels = b.panels; }
+    if (b.panelIds !== undefined) { if (!Array.isArray(b.panelIds) || b.panelIds.some((x) => !Number.isInteger(x))) throw new Error('Список панелей — числа'); c.panelIds = [...new Set(b.panelIds)]; }
+    if (b.every !== undefined) { if (!['daily', 'weekly'].includes(b.every)) throw new Error('Периодичность: daily или weekly'); c.every = b.every; }
+    if (b.hour !== undefined) { if (!Number.isInteger(b.hour) || b.hour < 0 || b.hour > 23) throw new Error('Час: от 0 до 23'); c.hour = b.hour; }
+    if (b.keep !== undefined) { if (!Number.isInteger(b.keep) || b.keep < 1 || b.keep > 60) throw new Error('Сколько копий хранить: от 1 до 60'); c.keep = b.keep; }
+    if (b.storage !== undefined) { if (!['local', 's3'].includes(b.storage)) throw new Error('Хранилище: local или s3'); c.storage = b.storage; }
+    if (b.password) { if (String(b.password).length < 8) throw new Error('Пароль копии: не короче 8 символов'); c.password = String(b.password); }
+    if (b.s3) {
+      for (const k of ['endpoint', 'region', 'bucket', 'prefix', 'accessKey']) if (b.s3[k] !== undefined) c.s3[k] = String(b.s3[k]).trim();
+      if (b.s3.secretKey) c.s3.secretKey = String(b.s3.secretKey);
+      if (b.s3.pathStyle !== undefined) c.s3.pathStyle = !!b.s3.pathStyle;
+      if (c.s3.endpoint) { try { const u = new URL(c.s3.endpoint); if (!/^https?:$/.test(u.protocol)) throw new Error(); c.s3.endpoint = `${u.protocol}//${u.host}`; } catch { throw new Error('Адрес S3 — URL вида https://s3.example.com'); } }
+      if (c.s3.prefix && (c.s3.prefix.includes('..') || c.s3.prefix.startsWith('/'))) throw new Error('Папка в бакете: без «..» и ведущего «/»');
+      if (c.s3.prefix && !c.s3.prefix.endsWith('/')) c.s3.prefix += '/';
+    }
+    if (!c.system && c.panels === 'none') throw new Error('Выберите, что копировать: систему или панели');
+    if (c.panels === 'selected' && !c.panelIds.length) throw new Error('Отметьте хотя бы одну панель');
+    if (c.enabled && !c.password) throw new Error('Сначала задайте пароль копии');
+    if (c.storage === 's3' && c.enabled && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Заполните данные хранилища S3');
+    save(c); return view();
+  }
+
+  const store = (c) => {
+    if (c.storage === 's3') {
+      const s3 = s3Client(c.s3, fetchImpl);
+      return {
+        put: (name, buf) => s3.put(`${c.s3.prefix}${name}`, buf),
+        get: (name) => s3.get(`${c.s3.prefix}${name}`),
+        del: (name) => s3.del(`${c.s3.prefix}${name}`),
+        list: async () => (await s3.list(c.s3.prefix)).map((o) => ({ name: o.key.slice(c.s3.prefix.length), size: o.size, ts: o.ts })),
+      };
+    }
+    return {
+      put: async (name, buf) => { fs.mkdirSync(dir(), { recursive: true, mode: 0o700 }); fs.writeFileSync(path.join(dir(), name), buf, { mode: 0o600 }); },
+      get: async (name) => fs.readFileSync(path.join(dir(), name)),
+      del: async (name) => fs.rmSync(path.join(dir(), name), { force: true }),
+      list: async () => (fs.existsSync(dir()) ? fs.readdirSync(dir()).filter((f) => NAME_RE.test(f)).map((f) => { const s = fs.statSync(path.join(dir(), f)); return { name: f, size: s.size, ts: s.mtimeMs }; }) : []),
+    };
+  };
+  const validName = (n) => { if (!NAME_RE.test(String(n))) throw new Error('Некорректное имя файла копии'); return n; };
+
+  /** Снимок базы без истории нагрузки и сессий. */
+  function dumpDb() {
+    if (config.dataDir === ':memory:') throw new Error('Копия недоступна для базы в памяти');
+    const tmp = path.join(os.tmpdir(), `ea-dump-${crypto.randomBytes(6).toString('hex')}.db`);
+    try {
+      db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
+      const d = new DatabaseSync(tmp);
+      try { d.exec('DELETE FROM svc_metrics; DELETE FROM stats_history; DELETE FROM sessions; VACUUM;'); } finally { d.close(); }
+      return fs.readFileSync(tmp);
+    } finally { fs.rmSync(tmp, { force: true }); }
+  }
+
+  /** Конфигурация панели: проекты и сервисы с полным описанием (env, источник, домены, порты, тома). Недоступные места записываются в errors. */
+  async function collectPanelConfig(row) {
+    const out = { id: row.id, name: row.name, url: row.url, at: now(), projects: [], errors: [] };
+    try {
+      const client = manager.clientFor(row);
+      const tree = normalizeTree(await client.query('projects.listProjectsAndServices'));
+      for (const pr of tree.projects) {
+        const services = [];
+        for (const sv of pr.services) {
+          try { services.push({ type: sv.type, name: sv.name, ...(await inspectService(client, { type: sv.type, project: pr.name, name: sv.name })) }); }
+          catch (e) { out.errors.push(`${pr.name}/${sv.name}: ${e.message}`); }
+        }
+        out.projects.push({ name: pr.name, services });
+      }
+    } catch (e) { out.errors.push(e.message); }
+    return out;
+  }
+  async function collectPanels(c) {
+    if (c.panels === 'none' || !manager) return [];
+    const rows = db.prepare('SELECT * FROM panels ORDER BY id').all().filter((r) => c.panels === 'all' || c.panelIds.includes(r.id));
+    const res = []; let i = 0;
+    await Promise.all(Array.from({ length: Math.min(3, rows.length) }, async () => { while (i < rows.length) { const row = rows[i++]; res.push(await collectPanelConfig(row)); } }));
+    return res.sort((a, b) => a.id - b.id);
+  }
+  const summarize = (panels) => panels.map((p) => ({ id: p.id, name: p.name, url: p.url, projects: p.projects.length, services: p.projects.reduce((n, x) => n + x.services.length, 0), errors: p.errors }));
+
+  async function prune(c, st) {
+    const files = (await st.list()).filter((f) => NAME_RE.test(f.name)).sort((a, b) => b.name.localeCompare(a.name));
+    for (const f of files.slice(c.keep)) await st.del(f.name);
+  }
+
+  async function run({ reason = 'manual' } = {}) {
+    if (busy) throw new Error('Копия уже создаётся');
+    const c = load();
+    if (!c.password) throw new Error('Сначала задайте пароль копии');
+    busy = true;
+    const t = now();
+    try {
+      const name = `easyadmin-${stamp(t)}.eabak`;
+      const panels = await collectPanels(c);
+      const buf = sealBackup({ dbBytes: c.system ? dumpDb() : null, appKey: key, password: c.password, createdAt: t, panels });
+      const st = store(c);
+      await st.put(name, buf);
+      await prune(c, st);
+      const res = { ts: t, ok: true, name, size: buf.length, storage: c.storage, reason, system: c.system, panels: summarize(panels).map((p) => ({ name: p.name, services: p.services, errors: p.errors.length })) };
+      setRaw('backup_last', JSON.stringify(res)); return res;
+    } catch (e) {
+      const res = { ts: t, ok: false, error: e.message, storage: c.storage, reason };
+      setRaw('backup_last', JSON.stringify(res));
+      alerts?.emit({ type: 'backup_failed', icon: '💾', text: `Не удалось создать резервную копию EasyAdmin: ${e.message}` }).catch?.(() => {});
+      throw e;
+    } finally { busy = false; }
+  }
+
+  const list = async () => { const c = load(); return (await store(c).list()).filter((f) => NAME_RE.test(f.name)).sort((a, b) => b.name.localeCompare(a.name)); };
+  const download = async (name) => store(load()).get(validName(name));
+  const remove = async (name) => { await store(load()).del(validName(name)); };
+  const passwordOr = (p) => { const pw = p || load().password; if (!pw) throw new Error('Укажите пароль копии'); return pw; };
+
+  async function verify(name, password) {
+    const opened = openBackup(await download(name), passwordOr(password));
+    const { panels: dbPanels, ...counts } = opened.db ? inspectDb(opened.db) : {};
+    return { createdAt: opened.createdAt, hasSystem: !!opened.db, dbPanels, ...counts, hasKey: !!opened.key, keyMatches: opened.key ? opened.key.equals(key) : null, size: opened.db?.length ?? 0, panels: summarize(opened.panels) };
+  }
+  /** Готовит восстановление и перезапускает сервис; база подменяется при старте. */
+  async function restore(name, password) {
+    const opened = openBackup(await download(name), passwordOr(password));
+    if (!opened.db) throw new Error('В этой копии нет системы EasyAdmin — только конфигурации панелей');
+    inspectDb(opened.db);
+    const pend = path.join(config.dataDir, 'restore-pending');
+    fs.rmSync(pend, { recursive: true, force: true }); fs.mkdirSync(pend, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(pend, 'easyadmin.db'), opened.db, { mode: 0o600 });
+    const keyFile = !config.secret && opened.key && !opened.key.equals(key);
+    if (keyFile) fs.writeFileSync(path.join(pend, 'secret.key'), opened.key.toString('hex'), { mode: 0o600 });
+    const warn = config.secret && opened.key && !opened.key.equals(key) ? 'Ключ шифрования в копии отличается от EASYADMIN_SECRET: токены панелей не расшифруются, пока не вернёте прежнее значение EASYADMIN_SECRET.' : null;
+    setTimeout(restart, 700).unref?.();
+    return { restarting: true, keyReplaced: !!keyFile, warn };
+  }
+
+  const dayKey = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+  async function tick(ts = now()) {
+    const c = load(); if (!c.enabled || !c.password || busy) return null;
+    const l = lastRun();
+    if (l && ts - l.ts < 3600e3 && !l.ok) return null; // после ошибки пробуем не чаще раза в час
+    const lastOk = l?.ok ? l.ts : 0;
+    const due = !lastOk || (c.every === 'weekly' ? ts - lastOk >= 6.5 * DAY : dayKey(ts) !== dayKey(lastOk));
+    if (!due || new Date(ts).getHours() < c.hour) return null;
+    try { return await run({ reason: 'schedule' }); } catch { return null; }
+  }
+  const start = () => { timer = setInterval(() => { tick().catch(() => {}); }, 60_000); timer.unref(); };
+  const stop = () => clearInterval(timer);
+
+  /** Конфигурация одной панели из копии (для скачивания и восстановления сервисов). */
+  async function panelFromBackup(name, password, panelId) {
+    const opened = openBackup(await download(name), passwordOr(password));
+    const p = opened.panels.find((x) => x.id === Number(panelId));
+    if (!p) throw new Error('Этой панели нет в копии');
+    return p;
+  }
+  return { view, update, run, panelFromBackup, list, download, remove, verify, restore, tick, start, stop, load };
+}
+
+export function backupRoutes(d) {
+  const { backups, audit, need, manager, panelOr404, asHttp, treeOf } = d;
+  const w = (fn) => async (ctx) => { try { return await fn(ctx); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, e.message); } };
+  const name = (ctx) => ctx.url.searchParams.get('name');
+  return [
+    ['GET', '/api/backups', w(async () => {
+      const settings = backups.view(); let files = []; let filesError = null;
+      try { files = await backups.list(); } catch (e) { filesError = e.message; }
+      return { settings, files, filesError };
+    }), { admin: true }],
+    ['PUT', '/api/backups/settings', w((ctx) => { const r = backups.update(ctx.body ?? {}); audit(ctx, { action: 'backup.settings', target: 'резервные копии', detail: JSON.stringify({ enabled: r.enabled, system: r.system, panels: r.panels, every: r.every, storage: r.storage, keep: r.keep }) }); return r; }), { admin: true }],
+    ['POST', '/api/backups/run', w(async (ctx) => {
+      try { const r = await backups.run({ reason: 'manual' }); audit(ctx, { action: 'backup.run', target: r.name, detail: `${r.size} байт` }); return r; }
+      catch (e) { audit(ctx, { action: 'backup.run', target: 'резервная копия', ok: false, detail: e.message }); throw e; }
+    }), { admin: true }],
+    ['GET', '/api/backups/download', w(async (ctx) => {
+      const n = name(ctx); const buf = await backups.download(n); audit(ctx, { action: 'backup.download', target: n });
+      return new RawResponse(buf, 'application/octet-stream', { 'Content-Disposition': `attachment; filename="${n}"` });
+    }), { admin: true }],
+    ['DELETE', '/api/backups', w(async (ctx) => { const n = name(ctx); await backups.remove(n); audit(ctx, { action: 'backup.delete', target: n }); return { ok: true }; }), { admin: true }],
+    ['POST', '/api/backups/verify', w((ctx) => backups.verify(ctx.body?.name, ctx.body?.password)), { admin: true }],
+    ['POST', '/api/backups/restore', w(async (ctx) => {
+      need(ctx.body?.confirm === true, 'Подтвердите восстановление');
+      const r = await backups.restore(ctx.body.name, ctx.body.password);
+      audit(ctx, { action: 'backup.restore', target: ctx.body.name, detail: 'система EasyAdmin' }); return r;
+    }), { admin: true }],
+    ['POST', '/api/backups/panel-config', w(async (ctx) => {
+      const p = await backups.panelFromBackup(ctx.body?.name, ctx.body?.password, ctx.body?.panel);
+      audit(ctx, { action: 'backup.panel_config', target: p.name, detail: ctx.body.name });
+      return p;
+    }), { admin: true }],
+    // вернуть один сервис из копии на панель: создаётся новый сервис (env, источник, ресурсы); домены, порты и тома — вручную из конфигурации
+    ['POST', '/api/backups/restore-service', w(async (ctx) => {
+      const b = ctx.body ?? {};
+      const p = await backups.panelFromBackup(b.name, b.password, b.panel);
+      const pr = p.projects.find((x) => x.name === b.project); const sv = pr?.services.find((x) => x.name === b.service);
+      need(sv, 'Этого сервиса нет в копии');
+      const row = panelOr404(b.targetPanelId); const project = String(b.targetProject || b.project); const svcName = String(b.targetName || b.service);
+      for (const [v, l] of [[project, 'проекта'], [svcName, 'сервиса']]) need(/^[a-z0-9-_]+$/.test(v), `Имя ${l}: латиница нижнего регистра, цифры, - и _`);
+      const existing = await treeOf(row).catch((e) => { throw asHttp(e); });
+      need(!existing.some((x) => x.name === project && x.services.some((y) => y.name === svcName)), `В проекте ${project} уже есть сервис ${svcName} — укажите другое имя`);
+      const steps = await applyConfig(manager.clientFor(row), { project, name: svcName }, configFromService(sv.type, sv.service), { existingProjects: existing.map((x) => x.name) });
+      manager.invalidate(row.id);
+      const ok = steps.every((s) => s.ok);
+      audit(ctx, { action: 'backup.restore_service', panel: row, target: `${project}/${svcName}`, ok, detail: steps.filter((s) => !s.ok).map((s) => `${s.step}: ${s.error}`).join('; ').slice(0, 200) || 'из копии' });
+      return { ok, steps };
+    }), { admin: true }],
+  ];
+}

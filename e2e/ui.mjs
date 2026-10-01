@@ -76,8 +76,12 @@ await step('settings: канал уведомлений + бэкап', async () 
   await p.fill('.modal input[placeholder="Команда DevOps"]', 'CI'); await p.fill('.modal input[placeholder="https://example.com/hook"]', 'http://127.0.0.1:9/x');
   await p.click('.modal-foot button:has-text("Сохранить")'); await p.waitForSelector('.list-item:has-text("CI")');
   await p.screenshot({ path: 'v2-settings.png', fullPage: true });
-  await Promise.all([p.waitForEvent('download').catch(() => null), p.click('button:has-text("Скачать бэкап")')]);
-  await p.waitForTimeout(500);
+  await p.waitForSelector('.card:has(h3:has-text("Резервные копии"))');
+  await p.fill('.card:has(h3:has-text("Резервные копии")) input[type=password]', 'correct horse battery');
+  await p.click('.card:has(h3:has-text("Резервные копии")) button:has-text("Создать копию сейчас")');
+  await p.waitForSelector('.card:has(h3:has-text("Резервные копии")) .list-item .mono', { timeout: 15000 });
+  await p.click('.card:has(h3:has-text("Резервные копии")) button[aria-label="Проверить копию"]'); await p.waitForSelector('.modal'); await p.click('.modal button:has-text("Продолжить")');
+  await p.waitForSelector('.modal:has-text("Копия в порядке")'); await p.keyboard.press('Escape');
 });
 await step('drawer nav: вертикальное меню без горизонтальной прокрутки, цифры переключают разделы', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');

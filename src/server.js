@@ -2,11 +2,14 @@ import fs from 'node:fs';
 import { loadConfig } from './config.js';
 import { loadKey } from './crypto.js';
 import { openDb } from './db.js';
+import { applyPendingRestore } from './backups.js';
 import { createApp } from './app.js';
 import { translate } from '../public/js/i18n-dict.js';
 
 const config = loadConfig();
 fs.mkdirSync(config.dataDir, { recursive: true });
+const restored = applyPendingRestore(config.dataDir);
+if (restored) console.log(config.lang === 'en' ? translate(`База восстановлена из копии, прежняя сохранена в ${restored}`) : `База восстановлена из копии, прежняя сохранена в ${restored}`);
 const db = openDb(config.dataDir);
 const key = loadKey(config.dataDir, config.secret);
 const app = createApp({ config, db, key });

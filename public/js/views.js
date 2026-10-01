@@ -8,7 +8,8 @@ import { sourcePicker } from './source-form.js';
 import { installWizard } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
 import { loadSettingsCard, loadTab } from './load-tab.js';
-import { backupCard, channelsCard, cleanAllModal, hooksCard } from './views2.js';
+import { backupsCard } from './backups-card.js';
+import { channelsCard, cleanAllModal, hooksCard } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
 
@@ -380,7 +381,7 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [loadSettingsCard(), channelsCard(), hooksCard(), backupCard()] : []),
+    ...(can('admin') ? [loadSettingsCard(), channelsCard(), hooksCard(), backupsCard()] : []),
     h('a', { class: 'callout link-callout', href: '#/profile' }, icon('users', 16), h('div', null, h('b', null, 'Личные настройки'), h('p', null, 'Пароль, двухфакторная аутентификация, сессии, язык и тема — в профиле.'))));
   return page;
 }

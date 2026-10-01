@@ -131,3 +131,13 @@ Layout: `src/` — server (`app.js` routes and permissions, `routes-ext.js` temp
 ## Server load
 
 A “Load” tab on each panel: server CPU/memory charts (services vs. system and other), a services table, per-service history in the “Resources” tab, and “What is loading the server?” (a process snapshot from the host). Settings → “Load monitoring”: retention, overload alerts, clear history.
+
+## Backups
+
+Settings → “Backups”. A `.eabak` file is encrypted with a password (scrypt + AES-256-GCM) and contains the EasyAdmin system (database without load history and sessions, plus the app key) and/or Easypanel panel configurations (all or selected: projects, services, env, sources, domains, ports, volumes). Database and volume data is not copied — Easypanel’s own backups cover it.
+
+- Schedule: daily or weekly at a chosen hour, rotation by copy count; a failure sends a “Backup failure” notification.
+- Storage: the `data/backups` folder or any S3-compatible storage (SigV4, no dependencies).
+- “Verify backup” decrypts and checks integrity. “Restore system” stages the database and restarts EasyAdmin; the previous database is kept in `before-restore-*`. “Restore a service” creates one service from the backup on a chosen panel.
+- On a new server: put the file in `data/backups/`, create an admin and restore.
+- The password cannot be recovered — store it separately.
