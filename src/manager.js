@@ -28,7 +28,9 @@ export function createManager({ db, key, config }) {
     if (st?.proc && st.proc !== 'monitor.getSystemStats') { // найденная ранее процедура
       try { return await client.query(st.proc); } catch (e) { if (!is404(e)) throw e; remember({ proc: null, at: 0 }); }
     }
-    try { const v = await client.query('monitor.getSystemStats'); remember({ proc: 'monitor.getSystemStats', at: Date.now() }); return v; } catch (e) { if (!is404(e)) throw e; } // дешёвый 404 не страшен; обнаружение — не чаще раза в 6 ч
+    for (const name of ['monitor.getSystemStats', 'monitorOld.getSystemStats']) { // в новых Easypanel процедура переехала в monitorOld
+      try { const v = await client.query(name); remember({ proc: name, at: Date.now() }); return v; } catch (e) { if (!is404(e)) throw e; }
+    } // дешёвый 404 не страшен; обнаружение — не чаще раза в 6 ч
     const cur = statsProcs.get(row.id);
     if (!cur?.at || Date.now() - cur.at > 6 * 3600_000) {
       const found = (await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => []))
