@@ -363,6 +363,8 @@ export const EN = [
   ['Очистить историю', 'Clear history'],
   ['Обновление Docker на этом сервере недоступно', 'Docker update is not available on this server'],
   ['EasyAdmin раз в минуту сохраняет нагрузку сервера и сервисов (данные берутся из панелей бесплатно) и рисует графики на вкладке «Нагрузка».', 'Once a minute EasyAdmin saves the load of the server and services (the data comes from the panels for free) and draws charts on the “Load” tab.'],
+  ['Прочие контейнеры', 'Other containers'], ['сборки, временные', 'builds, temporary'],
+  ['Контейнеры, которые Easypanel не смог сопоставить с сервисом: чаще всего сборка при деплое или временная задача.', 'Containers Easypanel could not match to a service: most often a build during deploy or a temporary task.'],
   /* настройки панели Easypanel */
   ['Доступна новая версия Docker', 'A newer Docker version is available'],
   ['Сгенерированный домен', 'Generated domain'],

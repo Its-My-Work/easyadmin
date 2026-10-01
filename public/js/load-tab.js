@@ -60,7 +60,7 @@ export function loadTab(p) {
       clear(tableBox).append(rows.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
         h('thead', null, h('tr', null, ['Сервис', 'CPU сейчас', 'CPU средн.', 'RAM сейчас', 'RAM пик', 'Сеть ↓ / ↑'].map((c) => h('th', null, c)))),
         h('tbody', null, rows.map((s) => h('tr', { class: s.running ? '' : 'muted' },
-          h('td', null, h('b', null, s.service), ' ', h('span', { class: 'muted small' }, s.project), s.running ? null : h('span', { class: 'badge' }, 'не запущен')),
+          h('td', null, s.service === 'unknown' ? [h('b', null, 'Прочие контейнеры'), ' ', h('span', { class: 'muted small', title: 'Контейнеры, которые Easypanel не смог сопоставить с сервисом: чаще всего сборка при деплое или временная задача.' }, 'сборки, временные')] : [h('b', null, s.service), ' ', h('span', { class: 'muted small' }, s.project)]), s.running ? null : h('span', { class: 'badge' }, 'не запущен')),
           h('td', null, s.cpu == null ? '—' : fmtPct(s.cpu)), h('td', null, fmtPct(s.cpuAvg)), h('td', null, s.mem == null ? '—' : fmtBytes(s.mem)), h('td', null, fmtBytes(s.memMax)),
           h('td', null, s.rx == null ? '—' : [fmtRate(s.rx), ' / ', fmtRate(s.tx)])))))) : h('p', { class: 'muted small' }, 'Сервисов с данными пока нет.'));
     };
