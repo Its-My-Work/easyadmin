@@ -286,6 +286,12 @@ export const EN = [
   ['Этот путь — консоль хоста, а не сервиса', 'This path is the host console, not a service console'],
   ['Контейнер', 'Container'],
   /* настройки панели Easypanel */
+  ['Доступна новая версия Docker', 'A newer Docker version is available'],
+  ['Сгенерированный домен', 'Generated domain'],
+  ['Последние действия панели', 'Recent panel actions'],
+  ['Обновление Docker перезапускает Docker: все сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут. Работает на Ubuntu и Debian (apt) с Docker из репозитория Docker.', 'Updating Docker restarts Docker: all services, including Easypanel and EasyAdmin, will stop for a few minutes. Works on Ubuntu and Debian (apt) with Docker from the Docker repository.'],
+  ['Последние бэкапы', 'Recent backups'],
+  ['Сервис / объект', 'Service / object'],
   ['Пользователь Easypanel создан', 'Easypanel user created'],
   ['Пользователь Easypanel изменён', 'Easypanel user changed'],
   ['Пользователь Easypanel удалён', 'Easypanel user deleted'],

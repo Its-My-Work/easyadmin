@@ -21,7 +21,7 @@ const scan = async (where) => {
   });
   for (const t of items) if (!DATA.test(t.replace(/^\[[^\]]+\]\s*/, ''))) { if (!found.has(t)) found.set(t, where); }
 };
-const step = async (name, fn) => { try { await fn(); await scan(name); } catch (e) { console.log('STEP FAIL', name, e.message.split('\n')[0]); await p.screenshot({ path: `i18n-fail-${name.replace(/\W+/g, '_')}.png` }); await scan(name + ' (failed)'); } };
+const step = async (name, fn) => { try { await fn(); await scan(name); } catch (e) { console.log('STEP FAIL', name, e.message.split('\n').slice(0, 4).join(' | ')); await p.screenshot({ path: `i18n-fail-${name.replace(/\W+/g, '_')}.png` }); await scan(name + ' (failed)'); } };
 const esc = async () => { await p.keyboard.press('Escape'); await p.waitForTimeout(150); };
 
 await p.goto(U);
@@ -70,23 +70,22 @@ await step('templates catalog', async () => {
   await p.fill('.cat-bar input.search', 'uses fs'); await p.locator('.cat-card').first().click(); await p.waitForSelector('.modal .callout.warn'); await scan('catalog unsupported'); await esc();
   await p.click('.seg-btn:has-text("My templates")'); await p.click('button:has-text("Import Easypanel schema")'); await p.waitForSelector('.modal textarea'); await scan('import schema'); await esc();
 });
-await step('service console + panel settings', async () => {
+await step('service logs, console + panel settings', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'worker' }).first().click(); await p.waitForSelector('.drawer.in');
-  await p.click('.drawer .dtab:has-text("Logs and console")'); await p.waitForSelector('.logview .ll', { timeout: 8000 }); await scan('logs and console idle');
-  await p.click('.drawer summary:has-text("Connection settings")'); await scan('console settings');
-  await p.fill('.term-input', 'echo hi'); await p.press('.term-input', 'Enter'); await p.waitForSelector('.drawer :text("Terminal connected")', { timeout: 12000 }); await p.waitForTimeout(400); await scan('console connected');
-  await p.click('.drawer button:has-text("Disconnect terminal")'); await p.keyboard.press('Escape');
-  await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.set-group'); await scan('panel settings');
-  await p.fill('.page input.search', 'listUsers'); await p.click('.set-group .list-item:has-text("listUsers") button:has-text("Read")'); await p.waitForSelector('.modal table.tbl'); await scan('settings table'); await esc();
-  await p.fill('.page input.search', 'systemPrune'); await p.click('.set-group .list-item:has-text("systemPrune") button:has-text("Run")'); await p.waitForSelector('.modal'); await scan('settings one-click'); await esc();
-  await p.fill('.page input.search', 'generateApiToken'); await p.click('.set-group .list-item:has-text("generateApiToken") button:has-text("Change")'); await p.waitForSelector('.modal textarea'); await scan('settings edit'); await esc();
+  await p.click('.drawer .dtab:has-text("Logs")'); await p.waitForSelector('.logview .ll', { timeout: 8000 }); await scan('logs');
+  await p.click('.drawer .dtab:has-text("Console")'); await p.waitForSelector('.term-big'); await scan('service console idle');
+  await p.click('.drawer button:has-text("Connect terminal")'); await p.waitForSelector('.drawer :text("Connected")', { timeout: 12000 });
+  await p.fill('.term-input', 'echo hi'); await p.press('.term-input', 'Enter'); await p.waitForTimeout(400); await scan('service console connected');
+  await p.keyboard.press('Escape');
+  await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.psf-nav'); await p.waitForSelector('.psf', { timeout: 10000 });
+  const n = await p.locator('.psf-nav .chip-btn').count();
+  for (let i = 0; i < n; i++) { await p.locator('.psf-nav .chip-btn').nth(i).click(); await p.waitForTimeout(900); await scan(`panel settings section ${i}`); }
 });
 await step('server console page', async () => {
   await p.goto(U + '#/'); await p.waitForSelector('.panel-card'); await p.click('.nav-item:has-text("Console")'); await p.waitForSelector('.term-big'); await scan('server console idle');
-  await p.click('.page summary:has-text("Connection settings")'); await scan('server console settings');
   await p.fill('.term-input', 'echo hi'); await p.press('.term-input', 'Enter'); await p.waitForSelector('.page :text("Connected")', { timeout: 12000 }); await p.waitForTimeout(300); await scan('server console connected');
-  await p.click('.page button:has-text("Disconnect terminal")');
+  await p.click('.page button:has-text("Disconnect")');
 });
 await step('schedules', async () => { await p.goto(U + '#/schedules'); await p.waitForTimeout(300); await scan('schedules empty'); await p.click('button:has-text("New schedule")'); await p.waitForSelector('.modal'); await scan('schedule modal'); await p.selectOption('.modal select >> nth=0', 'system'); await scan('schedule system'); await p.selectOption('.modal select >> nth=2', 'interval').catch(() => {}); await scan('schedule interval'); await p.click('.modal-foot button:has-text("Create")'); await p.waitForTimeout(400); await scan('schedule error'); await esc(); });
 await step('inventory', async () => { await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row, .tbl', { timeout: 15000 }); await scan('images'); await p.click('.seg button:has-text("Certificates")'); await p.waitForSelector('.badge', { timeout: 8000 }); await scan('certs'); await p.locator('button:has-text("Reissue")').first().click(); await p.waitForSelector('.modal'); await scan('reissue confirm'); await esc(); });

@@ -11,6 +11,8 @@ p.on('pageerror', (e) => errors.push('PAGEERR ' + e.message));
 p.on('console', (m) => { if (m.type() === 'error') errors.push('CONSOLE ' + m.text()); });
 let failed = 0;
 const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); } catch (e) { failed++; console.log('FAIL', name, e.message.split('\n')[0]); await p.screenshot({ path: 'e2e-fail.png' }); } };
+// Playwright waitForFunction выполняет код в странице через eval, а CSP приложения запрещает unsafe-eval (иногда ловится как EvalError) — ждём опросом через evaluate
+const until = async (fn, arg = null, { timeout = 8000 } = {}) => { const t0 = Date.now(); for (;;) { if (await p.evaluate(fn, arg)) return; if (Date.now() - t0 > timeout) throw new Error('until: таймаут ' + timeout + ' мс'); await p.waitForTimeout(100); } };
 const U = 'http://127.0.0.1:3100/';
 await p.goto(U);
 await p.fill('input[placeholder="Логин"]', 'admin'); await p.fill('input[type=password]', 'demo12345'); await p.click('button[type=submit]');
@@ -82,14 +84,15 @@ await step('drawer nav: вертикальное меню без горизон�
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
   const overflow = await p.evaluate(() => { const n = document.querySelector('.dnav'); return n.scrollWidth > n.clientWidth + 1; });
   if (overflow) throw new Error('у меню есть горизонтальная прокрутка');
-  await p.keyboard.press('4'); await p.waitForSelector('.dtab.active:has-text("Домены")');
+  const tabKey = async (name) => String((await p.locator('.drawer .dtab').allInnerTexts()).findIndex((x) => x.includes(name)) + 1); // номер вкладки зависит от набора вкладок сервиса
+  await p.keyboard.press(await tabKey('Домены')); await p.waitForSelector('.dtab.active:has-text("Домены")');
   await p.click('.drawer .section-head button'); await p.waitForSelector('.modal');
   await p.fill('.modal input[placeholder="app.example.com"]', 'edit.example.com'); await p.click('.modal-foot button:has-text("Сохранить")');
   await p.waitForSelector('.drawer .list-item:has-text("edit.example.com")');
   await p.click('.drawer .list-item:has-text("edit.example.com") button[title="Изменить"]'); await p.waitForSelector('.modal');
   await p.fill('.modal input[placeholder="app.example.com"]', 'renamed.example.com'); await p.click('.modal-foot button:has-text("Сохранить")');
   await p.waitForSelector('.drawer .list-item:has-text("renamed.example.com")');
-  await p.keyboard.press('5'); await p.waitForSelector('.dtab.active:has-text("Порты и тома")');
+  await p.keyboard.press(await tabKey('Порты и тома')); await p.waitForSelector('.dtab.active:has-text("Порты и тома")');
   await p.locator('.drawer .section-head button').nth(1).click(); await p.waitForSelector('.modal'); await p.fill('.modal input[placeholder="/var/lib/data"]', '/data1'); await p.fill('.modal input[placeholder="data"]', 'vol1'); await p.click('.modal-foot button:has-text("Сохранить")');
   await p.waitForSelector('.drawer .list-item:has-text("/data1")');
   await p.click('.drawer .list-item:has-text("/data1") button[title="Изменить"]'); await p.waitForSelector('.modal'); await p.fill('.modal input[placeholder="/var/lib/data"]', '/data2'); await p.click('.modal-foot button:has-text("Сохранить")');
@@ -183,9 +186,9 @@ await step('вкладки «Логи» и «Консоль»: логи идут
   await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.term-big');
   await p.click('.drawer button:has-text("Подключить терминал")'); await p.waitForSelector('.drawer :text("Подключено")', { timeout: 12000 }); // подключение по кнопке
   await p.fill('.term-input', 'echo hi-e2e-console'); await p.press('.term-input', 'Enter');
-  await p.waitForFunction(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo hi-e2e-console') && t.split('\n').some((l) => l.trim() === 'hi-e2e-console'); }, null, { timeout: 6000 });
+  await until(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo hi-e2e-console') && t.split('\n').some((l) => l.trim() === 'hi-e2e-console'); }, null, { timeout: 6000 });
   await p.selectOption('.term-quick', 'pwd'); if ((await p.inputValue('.term-input')) !== 'pwd') throw new Error('быстрая команда не подставилась');
-  await p.fill('.term-input', 'ls 123'); await p.press('.term-input', 'Enter'); await p.waitForFunction(() => document.querySelector('.term-big')?.textContent.includes('ls 123: not found'), null, { timeout: 6000 });
+  await p.fill('.term-input', 'ls 123'); await p.press('.term-input', 'Enter'); await until(() => document.querySelector('.term-big')?.textContent.includes('ls 123: not found'), null, { timeout: 6000 });
   if (!(await p.locator('.drawer .dtab.active').innerText()).includes('Консоль')) throw new Error('ввод цифр переключил вкладку');
   await p.click('.drawer .dtab:has-text("Логи")'); await p.waitForSelector('.logview .ll:has-text("tick")'); // логи на месте
   await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.term-big');
@@ -208,24 +211,11 @@ await step('консоль сервера: пункт меню, подключе
   await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.term-big');
   await p.fill('.term-input', 'echo host-e2e'); await p.press('.term-input', 'Enter');
   await p.waitForSelector('.page :text("Подключено")', { timeout: 12000 });
-  await p.waitForFunction(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo host-e2e') && t.split('\n').some((l) => l.trim() === 'host-e2e'); }, null, { timeout: 6000 });
+  await until(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo host-e2e') && t.split('\n').some((l) => l.trim() === 'host-e2e'); }, null, { timeout: 6000 });
   await p.waitForTimeout(300);
   await p.click('.nav-item:has-text("Обзор")'); await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.term-big');
   if (!(await p.locator('.term-big').innerText()).includes('host-e2e')) throw new Error('вывод консоли пропал после перехода по страницам');
   await p.click('.page button:has-text("Отключить терминал")'); await p.waitForSelector('.page :text("Терминал отключён")');
-});
-await step('настройки панели: список процедур, чтение со скрытыми секретами', async () => {
-  await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.set-group');
-  await p.fill('.page input.search', 'branding'); await p.waitForSelector('.set-group .list-item:has-text("getBasicSettings")');
-  await p.click('.set-group .list-item:has-text("getBasicSettings") button:has-text("Прочитать")'); await p.waitForSelector('.modal pre.code');
-  const masked = await p.locator('.modal pre.code').innerText(); if (masked.includes('super-secret-value') || !masked.includes('••••••')) throw new Error('секрет не скрыт: ' + masked);
-  await p.check('.modal label.check input'); const open = await p.locator('.modal pre.code').innerText(); if (!open.includes('super-secret-value')) throw new Error('секрет не показан');
-  await p.keyboard.press('Escape');
-  await p.fill('.page input.search', 'listUsers'); await p.click('.set-group .list-item:has-text("listUsers") button:has-text("Прочитать")'); await p.waitForSelector('.modal table.tbl');
-  const tbl = await p.locator('.modal table.tbl').innerText(); if (!tbl.includes('dev@example.com') || tbl.includes('tok-secret')) throw new Error('таблица пользователей неверна: ' + tbl);
-  await p.click('.modal .seg-btn:has-text("JSON")'); await p.waitForSelector('.modal pre.code'); await p.keyboard.press('Escape');
-  await p.fill('.page input.search', 'systemPrune'); await p.click('.set-group .list-item:has-text("systemPrune") button:has-text("Выполнить")'); await p.waitForSelector('.modal:has-text("Docker system prune")'); await p.click('.modal-foot button:has-text("Отмена")');
-  await p.fill('.page input.search', 'generateApiToken'); await p.click('.set-group .list-item:has-text("generateApiToken") button:has-text("Изменить")'); await p.waitForSelector('.modal textarea'); await p.keyboard.press('Escape');
 });
 await step('live logs tab', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
@@ -265,7 +255,7 @@ await step('пользователи: создать, отключить, уда
   await p.locator('tr.row', { hasText: 'e2e-user' }).locator('button[title="Отключить учётную запись"]').click(); await p.waitForSelector('tr.row:has-text("e2e-user") .badge:has-text("Отключён")');
   await p.screenshot({ path: 'v5-users.png' });
   await p.locator('tr.row', { hasText: 'e2e-user' }).locator('button[title="Удалить"]').click(); await p.waitForSelector('.modal');
-  await p.fill('.modal input', 'e2e-user'); await p.click('.modal-foot .btn.danger'); await p.waitForFunction(() => !document.body.textContent.includes('e2e-user'));
+  await p.fill('.modal input', 'e2e-user'); await p.click('.modal-foot .btn.danger'); await p.waitForSelector('tr.row:has-text("e2e-user")', { state: 'detached' });
 });
 await step('audit search', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); await p.fill('.input.search', 'clone'); await p.waitForTimeout(600); await p.screenshot({ path: 'v2-audit.png' }); });
 await step('журнал: фильтры период/результат/категория/пользователь и сброс', async () => {
