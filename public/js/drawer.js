@@ -44,7 +44,20 @@ const destOf = (x) => DEST_KEYS.map((k) => x[k]).find((v) => v && typeof v === '
 const domainOf = (x, fallbackPort = '') => {
   const d = destOf(x);
   return { id: x.id ?? x._id, host: x.host ?? x.domain ?? '', https: x.https ?? x.ssl ?? true,
-    port: x.port ?? d.port ?? x.destinationPort ?? x.targetPort ?? findDeep(x, /port/i) ?? fallbackPort, path: x.path ?? d.path ?? '/' };
+    port: x.port ?? d.port ?? x.destinationPort ?? x.targetPort ?? findDeep(x, /port/i) ?? fallbackPort, path: x.path ?? d.path ?? '/',
+    protocol: d.protocol ?? 'http', destPath: d.path ?? '/', composeService: d.composeService ?? '' };
+};
+/** Имена сервисов из текста docker-compose (только верхний уровень блока services); для стека из Git текста нет — поле станет обычным. */
+const composeServices = (yaml) => {
+  const out = []; let inSvc = false; let indent = null;
+  for (const l of String(yaml ?? '').split('\n')) {
+    if (/^services:\s*(#.*)?$/.test(l)) { inSvc = true; continue; }
+    if (!inSvc) continue;
+    if (/^\S/.test(l) && !l.startsWith('#')) break;
+    const m = /^( +)([A-Za-z0-9_.-]+):\s*(#.*)?$/.exec(l);
+    if (m && (indent == null || m[1].length === indent)) { indent = m[1].length; out.push(m[2]); }
+  }
+  return out;
 };
 const portOf = (x) => ({ id: x.id ?? x._id, published: x.published ?? x.publishedPort ?? x.external ?? x.hostPort ?? '', target: x.target ?? x.targetPort ?? x.internal ?? x.containerPort ?? '', protocol: String(x.protocol ?? 'tcp').toLowerCase() });
 const mountOf = (x) => ({ id: x.id ?? x._id, type: x.type ?? 'volume', name: x.name ?? x.volume ?? '', hostPath: x.hostPath ?? x.source ?? '', mountPath: x.mountPath ?? x.target ?? x.path ?? '', content: x.content ?? '' });
@@ -205,26 +218,34 @@ export function openService(s) {
 
   /* ---- Домены ---- */
   let svcPort = '';
-  function domainForm(x) {
-    const v = x ? domainOf(x, svcPort) : { host: '', port: svcPort || 80, path: '/', https: true };
-    const host = h('input', { class: 'input', placeholder: 'app.example.com', value: v.host }), port = h('input', { class: 'input', type: 'number', min: 1, max: 65535, value: v.port }), path = h('input', { class: 'input mono', value: v.path });
+  function domainForm(x, svc) {
+    const v = x ? domainOf(x, svcPort) : { host: '', port: svcPort || 80, path: '/', https: true, protocol: 'http', destPath: '/', composeService: '' };
+    const isCompose = svc?.type === 'compose'; const names = isCompose ? composeServices(svc?.source?.content) : [];
+    const host = h('input', { class: 'input', placeholder: 'app.example.com', value: v.host }), path = h('input', { class: 'input mono', value: v.path });
+    const port = h('input', { class: 'input', type: 'number', min: 1, max: 65535, value: v.port }), destPath = h('input', { class: 'input mono', value: v.destPath });
+    const protocol = h('select', { class: 'input' }, ['http', 'https'].map((p) => h('option', { value: p, selected: p === v.protocol }, p.toUpperCase())));
+    const compose = !isCompose ? null : names.length ? h('select', { class: 'input' }, (names.includes(v.composeService) || !v.composeService ? names : [v.composeService, ...names]).map((n) => h('option', { value: n, selected: n === v.composeService }, n)))
+      : h('input', { class: 'input mono', value: v.composeService, placeholder: 'web' });
     const https = check(v.https !== false, 'HTTPS (Let’s Encrypt)');
-    dialog(x ? 'Изменить домен' : 'Добавить домен', h('div', { class: 'stack' }, field('Хост', host), h('div', { class: 'grid-2' }, field('Порт контейнера', port), field('Путь', path)), https.el), async () => {
+    dialog(x ? 'Изменить домен' : 'Добавить домен', h('div', { class: 'stack' }, h('div', { class: 'grid-2' }, field('Хост', host), field('Путь', path)), https.el,
+      h('h4', null, 'Назначение'), h('div', { class: 'grid-2' }, field('Протокол', protocol), field('Порт', port)), field('Путь назначения', destPath),
+      compose ? field('Сервис compose', compose, 'Какой сервис стека получает трафик этого домена.') : null), async () => {
       if (!host.value.trim()) throw new Error('Укажите хост');
-      const params = { id: x ? v.id : undefined, original: x, host: host.value.trim(), port: port.value, path: path.value || '/', https: https.i.checked };
+      if (isCompose && !compose.value.trim()) throw new Error('Укажите сервис compose');
+      const params = { id: x ? v.id : undefined, original: x, host: host.value.trim(), port: port.value, path: path.value || '/', https: https.i.checked, protocol: protocol.value, destPath: destPath.value || '/', ...(isCompose ? { composeService: compose.value.trim() } : {}) };
       return x ? op('domainUpdate', params, 'Домен обновлён') : op('domainAdd', params, 'Домен добавлен');
     });
   }
   function domains(svc, d) {
     svcPort = svc?.proxy?.port ?? findDeep(svc?.proxy, /port/i) ?? '';
     const list = asList(d.domains);
-    return h('div', { class: 'stack' }, sectionHead('Домены', () => domainForm(), 'Добавить домен'),
+    return h('div', { class: 'stack' }, sectionHead('Домены', () => domainForm(null, svc), 'Добавить домен'),
       list.length ? h('div', { class: 'list' }, list.map((x) => {
         const v = domainOf(x, svcPort);
         return h('div', { class: 'list-item' },
           h('div', null, h('a', { class: 'link-row', href: `${v.https === false ? 'http' : 'https'}://${v.host}${v.path && v.path !== '/' ? v.path : ''}`, target: '_blank', rel: 'noopener' }, h('b', null, v.host), icon('external', 12)),
-            h('div', { class: 'muted small' }, `порт ${v.port === '' ? '—' : v.port} · ${v.https === false ? 'HTTP' : 'HTTPS'}${v.path && v.path !== '/' ? ` · ${v.path}` : ''}`)),
-          itemActions(() => domainForm(x), confirmDel('Удалить домен?', v.host, 'domainDelete', { id: v.id }, 'Домен удалён')));
+            h('div', { class: 'muted small' }, [v.composeService, `${t('порт')} ${v.port === '' ? '—' : v.port}${v.protocol === 'https' ? ' (HTTPS)' : ''}`, v.https === false ? 'HTTP' : 'HTTPS', v.path && v.path !== '/' ? v.path : null].filter(Boolean).join(' · '))),
+          itemActions(() => domainForm(x, svc), confirmDel('Удалить домен?', v.host, 'domainDelete', { id: v.id }, 'Домен удалён')));
       })) : h('div', { class: 'muted' }, 'Доменов пока нет.'));
   }
 

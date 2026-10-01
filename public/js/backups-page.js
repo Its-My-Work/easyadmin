@@ -57,8 +57,8 @@ async function setupModal(row, svc, reload) {
   const panelId = row.panel.panelId; let sys; let ep;
   try { [sys, ep] = await Promise.all([get('/api/backups'), get(`/api/backups/ep?panel=${panelId}`)]); } catch (e) { return toast(e.message, 'error'); }
   const s = sys.settings; const info = ep.panels[0] ?? { providers: [] };
-  const epOk = row.easypanel.supported && info.providers.length > 0 && !info.error; const eaOk = row.easyadmin.possible;
-  const epWhy = !row.easypanel.supported ? 'У этого типа сервиса у Easypanel нет расписаний.' : info.error ? info.error : !info.providers.length ? 'В панели нет хранилища бэкапов.' : null;
+  const epOk = row.easypanel.supported && !row.easypanel.noData && info.providers.length > 0 && !info.error; const eaOk = row.easyadmin.possible;
+  const epWhy = !row.easypanel.supported ? 'У этого типа сервиса у Easypanel нет расписаний.' : row.easypanel.noData ? 'У сервиса нет томов: Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются.' : info.error ? info.error : !info.providers.length ? 'В панели нет хранилища бэкапов.' : null;
   const cb = (checked, disabled) => h('input', { type: 'checkbox', checked: checked && !disabled, disabled });
   const useEp = cb(epOk, !epOk); const useEa = cb(!epOk && eaOk, !eaOk);
   const chosen = info.selected ?? '';
@@ -68,7 +68,7 @@ async function setupModal(row, svc, reload) {
   modal({ title: `${row.project}/${row.name}`, body: h('div', { class: 'stack' },
     h('p', { class: 'muted small' }, 'Выберите, чем копировать сервис. Можно включить оба способа — копии лягут в два разных места.'),
     option(useEp, 'Расписание Easypanel', 'Копии делает сама панель в её хранилище; EasyAdmin создаёт расписание и поддерживает его. Базы можно восстановить прямо из карточки сервиса.',
-      epWhy ? h('div', { class: 'small danger-text' }, t(epWhy), !info.providers.length && row.easypanel.supported ? [' ', h('a', { href: `#/panel/${panelId}/settings`, onclick: () => { try { localStorage.setItem('ea-pset-section', 'infra'); } catch { /* приватный режим */ } } }, t('Добавить хранилище'))] : null)
+      epWhy ? h('div', { class: 'small danger-text' }, t(epWhy), !info.providers.length && row.easypanel.supported && !row.easypanel.noData ? [' ', h('a', { href: `#/panel/${panelId}/settings`, onclick: () => { try { localStorage.setItem('ea-pset-section', 'infra'); } catch { /* приватный режим */ } } }, t('Добавить хранилище'))] : null)
         : prov ? h('div', { class: 'small', style: { marginTop: '6px' } }, `${t('Хранилище')}: `, prov) : h('div', { class: 'small muted' }, `${t('Хранилище')}: ${info.providers[0].name || info.providers[0].id}`)),
     option(useEa, 'Копии данных EasyAdmin', 'Дамп базы или копия томов на сервере панели (или в S3), расписание и хранилище общие для всех сервисов. Восстановление — вручную по подсказке.', eaOk ? null : h('div', { class: 'small danger-text' }, t('Для стека compose включите «Все сервисы» на вкладке «Данные».'))),
     h('div', { class: 'callout compact' }, icon('clock', 14), h('span', { class: 'small' }, `${s.every === 'weekly' ? t('Раз в неделю') : t('Каждый день')}, ${pad2(s.hour)}:00 · ${t('Расписание общее, оно меняется на вкладке «Настройки».')}`)),
@@ -78,8 +78,10 @@ async function setupModal(row, svc, reload) {
     if (!methods.easypanel && !methods.easyadmin) { toast(t('Отметьте хотя бы один способ'), 'error'); return false; }
     if (methods.easypanel && prov && !prov.value) { toast(t('Выберите хранилище для копий'), 'error'); return false; }
     const r = await post('/api/backups/protect', { panelId, project: row.project, service: row.name, methods, providerId: methods.easypanel && prov ? prov.value : undefined, enableSchedule: enable.checked });
-    if (r.sync?.error) toast(`${t('Расписание Easypanel не создано')}: ${r.sync.error}`, 'error', 9000);
-    else if (r.sync?.notes.length) toast(r.sync.notes[0], 'error', 9000);
+    const sy = r.sync;
+    if (sy?.error) toast(`${t('Расписание Easypanel не создано')}: ${sy.error}`, 'error', 9000);
+    else if (sy && !(sy.created + sy.updated + sy.unchanged)) toast(`${t('Расписание Easypanel не создано')}${sy.notes[0] ? `: ${sy.notes[0]}` : ''}`, 'error', 9000);
+    else if (sy?.notes.length) toast(sy.notes[0], 'error', 9000);
     else toast(t('Защита включена'), 'success');
     reload?.(true);
   } }] });

@@ -402,6 +402,18 @@ export async function firstOk(c, proc, variants) {
 }
 
 const num = (v) => (v === '' || v == null ? undefined : Number(v));
+/** Назначение домена: протокол, порт, путь и (для compose) сервис стека. Значения проверяются: уйдут в панель как есть. */
+function domainDest(r, p, old = {}) {
+  const port = num(p.port) ?? old.port ?? 80;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new PanelError('Порт: число от 1 до 65535');
+  const protocol = p.protocol ?? old.protocol ?? 'http';
+  if (!['http', 'https'].includes(protocol)) throw new PanelError('Протокол назначения: http или https');
+  const path = p.destPath ?? old.path ?? '/';
+  if (typeof path !== 'string' || !path.startsWith('/') || path.length > 200 || /[\u0000-\u001f\s]/.test(path)) throw new PanelError('Путь назначения: начинается с «/», без пробелов');
+  const composeService = p.composeService ?? old.composeService;
+  if (composeService != null && composeService !== '' && !/^[A-Za-z0-9_.-]{1,64}$/.test(String(composeService))) throw new PanelError('Сервис compose: латиница, цифры, - _ .');
+  return { projectName: r.projectName, serviceName: r.serviceName, protocol, port, path, ...(composeService ? { composeService: String(composeService) } : {}) };
+}
 
 /** Белый список тонких операций; params приходят из UI. */
 export const BUILD_TYPES = ['nixpacks', 'dockerfile', 'heroku_buildpacks', 'paketo_buildpacks'];
@@ -423,16 +435,24 @@ export const SERVICE_OPS = {
     ...r, owner: p.owner, repo: p.repo, ref: p.branch || 'main', branch: p.branch || 'main', path: p.path || '/',
   }),
   sourceGit: (c, r, { type }, p) => c.mutate(svcProc(type, 'updateSourceGit'), { ...r, repo: String(p.repo), ref: p.branch || 'main', branch: p.branch || 'main', path: p.path || '/' }),
-  domainAdd: (c, r, _s, p) => c.mutate('domains.createDomain', {
-    ...r, host: p.host, https: p.https !== false, port: num(p.port) ?? 80, path: p.path || '/',
-  }),
+  domainAdd: (c, r, _s, p) => {
+    const dest = domainDest(r, p);
+    // назначение — в serviceDestination (так панель хранит и отдаёт домены), порт дублируется на верхнем уровне для старых версий панели
+    return c.mutate('domains.createDomain', {
+      ...r, host: p.host, https: p.https !== false, port: dest.port, path: p.path || '/',
+      middlewares: [], certificateResolver: '', wildcard: false, destinationType: 'service', serviceDestination: dest,
+    });
+  },
   domainUpdate: (c, r, _s, p) => {
     // отправляем исходный объект целиком (на случай полей, о которых мы не знаем) + правки
     const o = plain(p.original); const id = p.id ?? o.id ?? o._id;
     const dk = ['serviceDestination', 'destination', 'service'].find((k) => o[k] && typeof o[k] === 'object');
-    const port = num(p.port) ?? o.port ?? o[dk]?.port; const path = p.path ?? o.path ?? o[dk]?.path ?? '/';
+    const port = num(p.port) ?? o.port ?? o[dk]?.port; const path = p.path ?? o.path ?? '/';
     const body = { ...o, ...r, id, domainId: id, host: p.host ?? o.host, https: p.https ?? o.https, path };
-    if (dk) body[dk] = { ...o[dk], port, path }; else body.port = port;
+    if (dk) { // путь домена и путь назначения — разные поля; незаданное остаётся как было (в том числе сервис compose)
+      const d = domainDest(r, { ...p, port }, o[dk]);
+      body[dk] = { ...o[dk], port: d.port, path: p.destPath !== undefined ? d.path : o[dk].path ?? '/', ...(p.protocol !== undefined ? { protocol: d.protocol } : {}), ...(p.composeService !== undefined ? { composeService: d.composeService } : {}) };
+    } else body.port = port;
     return c.mutate('domains.updateDomain', body);
   },
   domainDelete: (c, r, _s, p) => c.mutate('domains.deleteDomain', { ...r, id: p.id, domainId: p.id }),
