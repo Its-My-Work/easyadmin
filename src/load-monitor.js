@@ -11,6 +11,7 @@ import { takeSnapshot, topLines } from './host-snapshot.js';
  */
 const MIN = 60_000;
 export const RETENTION = { short: { m5Days: 3, h1Days: 0 }, standard: { m5Days: 7, h1Days: 30 }, long: { m5Days: 7, h1Days: 90 } };
+export const INTERVALS = [1, 2, 5, 10, 15]; // минут между замерами
 export const ALERT_PRESETS = { off: null, normal: { cpu: 85, mem: 90, minutes: 10 }, sensitive: { cpu: 70, mem: 80, minutes: 5 } };
 export const RANGES = { '1h': 3600e3, '6h': 6 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, '30d': 30 * 86400e3 };
 const POINTS = 240;
@@ -19,8 +20,9 @@ const SNAPSHOT_COOLDOWN = 10 * MIN;
 export function createLoadMonitor({ db, manager, alerts, config, now = () => Date.now(), snapshotFn = takeSnapshot }) {
   const setting = (k, def) => db.prepare('SELECT v FROM settings WHERE k = ?').get(`load_${k}`)?.v ?? def;
   const setSetting = (k, v) => db.prepare("INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(`load_${k}`, String(v));
-  const getSettings = () => ({ enabled: setting('enabled', '1') === '1', retention: setting('retention', 'standard'), alerts: setting('alerts', 'normal'), snapshot: setting('snapshot', '1') === '1' });
+  const getSettings = () => ({ enabled: setting('enabled', '1') === '1', retention: setting('retention', 'standard'), alerts: setting('alerts', 'normal'), snapshot: setting('snapshot', '1') === '1', interval: INTERVALS.includes(Number(setting('interval', '1'))) ? Number(setting('interval', '1')) : 1 });
   const lastNet = new Map(); const lastList = new Map(); const unsupported = new Map(); const alertState = new Map();
+  let lastTick = 0;
   let timer = null; let janitor = null;
 
   // существующим каналам, которые получают «диск заполнен», добавляем и «перегрузку сервера» — один раз
@@ -68,7 +70,9 @@ export function createLoadMonitor({ db, manager, alerts, config, now = () => Dat
   function onHost(row, snap, ts = now()) {
     const st = snap?.stats; if (!st || !getSettings().enabled) return;
     const minute = Math.floor(ts / MIN) * MIN;
-    if (!db.prepare("SELECT 1 FROM svc_metrics WHERE panel_id = ? AND ts = ? AND res = 60 AND project = '' AND service = ''").get(row.id, minute)) {
+    // не чаще одного замера хоста за выбранный интервал (при интервале в 1 минуту — одна запись на минуту, как раньше)
+    const since = minute - (getSettings().interval - 1) * MIN;
+    if (!db.prepare("SELECT 1 FROM svc_metrics WHERE panel_id = ? AND ts >= ? AND res = 60 AND project = '' AND service = ''").get(row.id, since)) {
       insert.run(row.id, minute, 60, '', '', 0, Number(st.cpu) || 0, Number(st.cpu) || 0, (Number(st.memUsedMb) || 0) * 1048576, (Number(st.memTotalMb) || 0) * 1048576, null, null, Number(st.cpus) || 1);
     }
     evaluate(row, st, ts);
@@ -127,7 +131,7 @@ export function createLoadMonitor({ db, manager, alerts, config, now = () => Dat
       return { t: h.t, cpu: num(h.cpu), svcCpu: num(Math.min(svcCpu, h.cpu ?? svcCpu)), otherCpu: num(Math.max(0, (h.cpu ?? 0) - svcCpu)), mem: Math.round(h.mem), svcMem: Math.round(Math.min(svcMem, h.mem ?? svcMem)), otherMem: Math.round(Math.max(0, (h.mem ?? 0) - svcMem)) }; });
     const agg = db.prepare("SELECT project, service, AVG(cpu) cpuAvg, MAX(COALESCE(cpu_max, cpu)) cpuMax, AVG(mem) memAvg, MAX(COALESCE(mem_max, mem)) memMax, AVG(rx) rxAvg, AVG(tx) txAvg FROM svc_metrics WHERE panel_id = ? AND service <> '' AND ts >= ? GROUP BY project, service").all(panelId, from);
     const latest = new Map(db.prepare("SELECT m.project, m.service, m.cpu, m.mem, m.rx, m.tx, m.containers, m.ts FROM svc_metrics m JOIN (SELECT project, service, MAX(ts) mts FROM svc_metrics WHERE panel_id = ? AND service <> '' GROUP BY project, service) x ON m.project = x.project AND m.service = x.service AND m.ts = x.mts WHERE m.panel_id = ?").all(panelId, panelId).map((r) => [`${r.project}\u0000${r.service}`, r]));
-    const services = agg.map((a) => { const l = latest.get(`${a.project}\u0000${a.service}`); const live = l && ts - l.ts <= 5 * MIN;
+    const services = agg.map((a) => { const l = latest.get(`${a.project}\u0000${a.service}`); const live = l && ts - l.ts <= Math.max(5, 2 * getSettings().interval + 1) * MIN;
       return { project: a.project, service: a.service, running: !!live, containers: live ? l.containers : 0, cpu: live ? num(l.cpu / cores) : null, cpuAvg: num(a.cpuAvg / cores), cpuMax: num(a.cpuMax / cores), mem: live ? Math.round(l.mem) : null, memAvg: Math.round(a.memAvg), memMax: Math.round(a.memMax), rx: live ? Math.round(l.rx ?? 0) : null, tx: live ? Math.round(l.tx ?? 0) : null,
         memPct: live && total ? num((l.mem / total) * 100) : null }; })
       .sort((x, y) => (y.cpuAvg ?? 0) - (x.cpuAvg ?? 0) || (y.memAvg ?? 0) - (x.memAvg ?? 0));
@@ -147,7 +151,10 @@ export function createLoadMonitor({ db, manager, alerts, config, now = () => Dat
   const forget = (panelId) => { db.prepare('DELETE FROM svc_metrics WHERE panel_id = ?').run(panelId); };
 
   async function tick(ts = now()) {
-    if (!getSettings().enabled) return;
+    const { enabled, interval } = getSettings();
+    if (!enabled) return;
+    if (lastTick && ts - lastTick < interval * MIN - 5000) return; // таймер тикает раз в минуту, замер — раз в выбранный интервал
+    lastTick = ts;
     const rows = db.prepare("SELECT * FROM panels WHERE status IN ('online','degraded')").all();
     await Promise.allSettled(rows.map((row) => collectPanel(row, ts)));
   }
@@ -163,7 +170,7 @@ export function createLoadMonitor({ db, manager, alerts, config, now = () => Dat
 export function loadRoutes(d) {
   const { db, manager, audit, need, asHttp, panelOr404, canPanel, loadmon } = d;
   const lastSnap = new Map();
-  const view = () => ({ ...loadmon.getSettings(), ...loadmon.info(), presets: { alerts: ALERT_PRESETS, retention: RETENTION } });
+  const view = () => ({ ...loadmon.getSettings(), ...loadmon.info(), presets: { alerts: ALERT_PRESETS, retention: RETENTION, intervals: INTERVALS } });
   return [
     ['GET', '/api/load/settings', () => view(), { admin: true }],
     ['PUT', '/api/load/settings', (ctx) => {
@@ -171,6 +178,7 @@ export function loadRoutes(d) {
       if (b.enabled !== undefined) { need(typeof b.enabled === 'boolean', 'Включено — да или нет'); loadmon.setSetting('enabled', b.enabled ? '1' : '0'); }
       if (b.retention !== undefined) { need(Object.keys(RETENTION).includes(b.retention), 'Неизвестный срок хранения'); loadmon.setSetting('retention', b.retention); }
       if (b.alerts !== undefined) { need(Object.keys(ALERT_PRESETS).includes(b.alerts), 'Неизвестный уровень уведомлений'); loadmon.setSetting('alerts', b.alerts); }
+      if (b.interval !== undefined) { need(INTERVALS.includes(Number(b.interval)), `Интервал замеров: ${INTERVALS.join(', ')} мин`); loadmon.setSetting('interval', Number(b.interval)); }
       if (b.snapshot !== undefined) { need(typeof b.snapshot === 'boolean', 'Снимок — да или нет'); loadmon.setSetting('snapshot', b.snapshot ? '1' : '0'); }
       audit(ctx, { action: 'load.settings', target: 'нагрузка', detail: JSON.stringify({ before, after: loadmon.getSettings() }).slice(0, 300) });
       return view();

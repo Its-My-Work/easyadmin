@@ -85,7 +85,6 @@ export function consolePage() {
   apply(); paint();
   return h('div', { class: 'page' },
     h('div', { class: 'page-head' }, h('h1', null, 'Консоль сервера'), h('div', { class: 'inline' }, panelSel)),
-    h('div', { class: 'callout compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Терминал хоста через встроенную консоль Easypanel (Настройки → Сервер → Консоль): SSH и пароли не нужны. Команды выполняются на самом сервере с правами, которые даёт панель. В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.')),
     h('div', { class: 'inline' }, connect, disconnect, ctrlC, quick, clearBtn, dl, h('span', { class: 'spacer' }), status),
     info, termEl,
     h('div', { class: 'term-bar' }, h('span', { class: 'term-prompt' }, '#'), input));

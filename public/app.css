@@ -248,7 +248,7 @@ tr.row.dim td { opacity: .55; } tr.row.dim td:last-child { opacity: 1; }
 .seg-btn:hover { color: var(--text); } .seg-btn.active { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--border2); }
 .audit-panel-link { display: block; color: inherit; text-decoration: none; } .audit-panel-link:hover .panel-chip { text-decoration: underline; }
 .sparks .spark-empty { grid-column: 1 / -1; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* таблицы сервисов: одинаковые колонки в каждом проекте и на странице «Все сервисы» */
+/* таблицы сервисов: одинаковые колонки в каждом проекте и на странице «Сервисы» */
 .svc-tbl { table-layout: fixed; }
 .svc-tbl .w-check { width: 44px; } .svc-tbl .c-type { width: 130px; } .svc-tbl .c-panel { width: 210px; } .svc-tbl .c-status { width: 150px; } .svc-tbl .w-actions { width: 132px; }
 .svc-tbl .c-name { overflow: hidden; } .svc-tbl .svc-name { min-width: 0; } .svc-tbl .svc-name > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
@@ -339,7 +339,7 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .psf-logorow { flex-wrap: nowrap; min-width: 0; }
 
 /* журнал действий: на узком экране строка — карточка (действие, панель, объект, время и пользователь), а не обрезанная таблица */
-.a-name { font-weight: 650; } .audit-detail { max-width: 420px; }
+.a-name { font-weight: 650; } .audit-detail { max-width: 420px; } .audit-detail.open { max-width: none; white-space: pre-wrap; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; } .audit-detail:not(.danger-text) { cursor: pointer; }
 @media (max-width: 900px) {
   .audit-tbl thead { display: none; } .audit-tbl, .audit-tbl tbody { display: block; }
   .audit-tbl tr { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'act st' 'panel panel' 'obj obj' 'time user'; gap: 4px 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
@@ -376,3 +376,20 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .page > *, .load-grid > *, .chart-wrap, .chart, .card { min-width: 0; }
 .load-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 900px) { .load-grid { grid-template-columns: minmax(0, 1fr); } .chart { padding-left: 34px; } .chart-tip { margin-left: 0; } }
+
+/* время сервера в шапке */
+.server-clock { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel2); color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.server-clock b { color: var(--text); font-weight: 600; } .tz-now { font-variant-numeric: tabular-nums; font-size: 18px; }
+@media (max-width: 700px) { .server-clock .sc-date { display: none; } .topbar > .muted.small { display: none; } }
+
+/* крутящийся кружок на кнопках действий, пока операция выполняется */
+.spinner { display: inline-block; box-sizing: border-box; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rot .7s linear infinite; vertical-align: -2px; }
+.btn.busy { color: var(--accent); }
+
+/* переключатель режима в форме «Добавить панель» */
+.seg.seg-wide { display: flex; } .seg-wide .seg-btn { flex: 1 1 0; white-space: normal; line-height: 1.25; padding: 8px 12px; }
+
+/* вкладка «История» сервиса */
+.hist-main { display: flex; gap: 10px; align-items: flex-start; min-width: 0; } .hist-main > .icon { margin-top: 3px; flex: none; color: var(--muted); }
+.hist-row { gap: 12px; } .hist-detail { overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 2px; }
+.hist-log { max-height: 60vh; min-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

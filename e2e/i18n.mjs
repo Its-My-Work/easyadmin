@@ -31,7 +31,7 @@ await p.fill('input[type=password]', 'demo12345'); await p.click('button[type=su
 await p.waitForSelector('.panel-card');
 await step('dashboard', async () => { await p.waitForTimeout(600); });
 await step('cleanup modal', async () => { await p.click('button:has-text("Docker cleanup")'); await p.waitForSelector('.modal'); await scan('cleanup'); await esc(); });
-await step('add panel modal', async () => { await p.click('button:has-text("Add panel") >> nth=0'); await p.waitForSelector('.modal'); await scan('add-panel'); await p.click('.modal .linkbtn'); await p.click('.modal-foot button:has-text("Test")'); await p.waitForTimeout(400); await scan('add-panel-test'); await esc(); });
+await step('add panel modal', async () => { await p.click('button:has-text("Add panel") >> nth=0'); await p.waitForSelector('.modal'); await scan('add-panel'); await p.click('.modal .seg-btn:has-text("Install and connect")'); await p.waitForTimeout(200); await scan('add-panel-install'); await p.click('.modal .seg-btn:has-text("Connect Easypanel")'); await p.click('.modal .linkbtn'); await p.click('.modal-foot button:has-text("Test")'); await p.waitForTimeout(400); await scan('add-panel-test'); await esc(); });
 await step('panel page', async () => { await p.click('.nav-panel >> nth=0'); await p.waitForSelector('.project'); await p.waitForTimeout(400); });
 await step('diagnostics', async () => { await p.click('button[title^="Diagnostics"]'); await p.waitForSelector('.diag'); await p.waitForTimeout(400); await scan('diag'); await esc(); });
 await step('system menu', async () => { await p.click('button[title="System"]'); await p.waitForSelector('.modal'); await scan('system'); await esc(); });
@@ -88,7 +88,7 @@ await step('server console page', async () => {
   await p.click('.page button:has-text("Disconnect")');
 });
 await step('schedules', async () => { await p.goto(U + '#/schedules'); await p.waitForTimeout(300); await scan('schedules empty'); await p.click('button:has-text("New schedule")'); await p.waitForSelector('.modal'); await scan('schedule modal'); await p.selectOption('.modal select >> nth=0', 'system'); await scan('schedule system'); await p.selectOption('.modal select >> nth=2', 'interval').catch(() => {}); await scan('schedule interval'); await p.click('.modal-foot button:has-text("Create")'); await p.waitForTimeout(400); await scan('schedule error'); await esc(); });
-await step('inventory', async () => { await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row, .tbl', { timeout: 15000 }); await scan('images'); await p.click('.seg button:has-text("Certificates")'); await p.waitForSelector('.badge', { timeout: 8000 }); await scan('certs'); await p.locator('button:has-text("Reissue")').first().click(); await p.waitForSelector('.modal'); await scan('reissue confirm'); await esc(); });
+await step('inventory', async () => { await p.goto(U + '#/inventory'); await p.waitForSelector('.diff-row, .tbl', { timeout: 15000 }); await scan('images'); await p.click('.seg button:has-text("Certificates")'); await p.waitForSelector('.badge', { timeout: 8000 }); await scan('certs'); await p.locator('button[aria-label="Reissue"]').first().click(); await p.waitForSelector('.modal'); await scan('reissue confirm'); await esc(); await p.locator('button[aria-label="Delete certificate"]').first().click(); await p.waitForSelector('.modal'); await scan('delete cert confirm'); await esc(); });
 await step('audit', async () => { await p.goto(U + '#/audit'); await p.waitForSelector('.tbl tbody tr'); });
 await step('load tab, service history, settings card', async () => {
   await p.goto(U + '#/panel/1/load'); await p.waitForSelector('.chart-svg'); await p.waitForSelector('.tbl tbody tr'); await scan('load tab');
@@ -97,13 +97,14 @@ await step('load tab, service history, settings card', async () => {
   await p.click('.drawer .dtab:has-text("Resources")'); await p.waitForSelector('.drawer .chart-empty, .drawer .chart-svg'); await scan('service load'); await p.keyboard.press('Escape');
   await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Load monitoring"))'); await scan('load settings');
 });
-await step('backups card', async () => {
-  await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Backups"))'); await scan('backups card');
-  const card = '.card:has(h3:has-text("Backups"))';
-  await p.click(card + ' .seg-btn:text-is("Selected") >> nth=1'); await p.waitForSelector(card + ' details.diag'); await scan('backups data selected');
-  await p.click(card + ' .seg-btn:text-is("To S3 (the storage above)")'); await p.waitForSelector(card + ' input[placeholder="https://s3.example.com"]'); await scan('backups data s3');
-  await p.fill(card + ' input[type=password] >> nth=-1', 'correct horse battery'); await p.click(card + ' button:has-text("Back up now")'); await p.waitForSelector(card + ' .list-item .mono', { timeout: 15000 }).catch(() => {});
-  await scan('backups list');
+await step('backups section', async () => {
+  await p.goto(U + '#/backups'); await p.waitForSelector('.kpis .kpi'); await p.waitForSelector('.tbl tbody tr'); await scan('backups overview');
+  await p.locator('.tbl button:has-text("Set up")').first().click(); await p.waitForSelector('.modal'); await scan('backups setup modal'); await esc();
+  await p.goto(U + '#/backups/data'); await p.waitForSelector('.seg-btn:text-is("Selected")'); await scan('backups data');
+  await p.click('.seg-btn:text-is("Selected")'); await p.waitForSelector('details.diag'); await scan('backups data selected');
+  await p.click('.seg-btn:text-is("All services")'); await p.click('.seg-btn:text-is("To S3")'); await scan('backups data s3');
+  await p.goto(U + '#/backups/system'); await p.waitForSelector('button:has-text("Back up now")'); await scan('backups system');
+  await p.goto(U + '#/backups/settings'); await p.waitForSelector('h4:has-text("Backup password")'); await scan('backups settings');
 });
 await step('settings', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card'); await p.waitForTimeout(500);

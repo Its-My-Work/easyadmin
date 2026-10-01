@@ -101,8 +101,10 @@ export function loadSettingsCard() {
     const a = s.presets.alerts;
     clear(box).append(
       h('div', { class: 'card-head' }, h('h3', null, 'Мониторинг нагрузки'), h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.enabled, onchange: (e) => save({ enabled: e.target.checked }) }), 'Включён')),
-      h('p', { class: 'muted small' }, 'EasyAdmin раз в минуту сохраняет нагрузку сервера и сервисов (данные берутся из панелей бесплатно) и рисует графики на вкладке «Нагрузка».'),
+      h('p', { class: 'muted small' }, 'EasyAdmin регулярно сохраняет нагрузку сервера и сервисов (данные берутся из панелей бесплатно) и рисует графики на вкладке «Нагрузка».'),
       s.enabled ? h('div', { class: 'stack' },
+        h('div', null, h('div', { class: 'small muted' }, 'Как часто замерять'), seg('interval', s.presets.intervals.map((m) => [m, m === 1 ? '1 мин' : `${m} мин`])),
+          h('div', { class: 'small muted' }, 'Чаще — подробнее графики, но больше записей в базе и запросов к панелям. Применяется сразу; уже собранные данные не меняются.')),
         h('div', null, h('div', { class: 'small muted' }, 'Сколько хранить'), seg('retention', [['short', '3 дня'], ['standard', '30 дней'], ['long', '90 дней']]),
           h('div', { class: 'small muted' }, 'Минутные данные — сутки, дальше история уплотняется до 5 минут и до часа.')),
         h('div', null, h('div', { class: 'small muted' }, 'Уведомлять о перегрузке'), seg('alerts', [['off', 'Выкл'], ['normal', 'Обычные'], ['sensitive', 'Чувствительные']]),

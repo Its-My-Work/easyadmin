@@ -1,4 +1,5 @@
 import { locale, t } from './i18n.js';
+import { fmtServer } from './clock.js';
 
 /** Мини-хелперы DOM. Весь текст вставляется через textContent → XSS невозможен. */
 export function h(tag, attrs, ...children) {
@@ -83,6 +84,9 @@ export function icon(name, size = 16) {
   return s;
 }
 
+/** Крутящийся кружок вместо значка, пока действие выполняется. */
+export const spinner = (size = 15) => h('span', { class: 'spinner', role: 'status', 'aria-label': 'Выполняется…', style: { width: `${size}px`, height: `${size}px` } });
+
 /* ---------- форматирование ---------- */
 export const pct = (v) => (v == null ? '—' : `${Math.round(v)}%`);
 export function relTime(ts) {
@@ -101,7 +105,7 @@ export function uptime(sec) {
 }
 export const gb = (v) => (v == null ? '—' : `${Math.round(v * 10) / 10} ГБ`);
 export const host = (u) => { try { return new URL(u).host; } catch { return u; } };
-export const fmtTime = (ts) => new Date(ts).toLocaleString(locale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+export const fmtTime = (ts) => fmtServer(ts, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }); // в часовом поясе сервера
 
 /* ---------- toast ---------- */
 export function toast(message, kind = 'info', ms = 4000) {

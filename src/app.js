@@ -12,6 +12,7 @@ import { translate } from '../public/js/i18n-dict.js';
 import { createLoadMonitor } from './load-monitor.js';
 import { createBackups } from './backups.js';
 import { createAlerts } from './alerts.js';
+import { applyTimezone, getSavedTimezone } from './timezone.js';
 import { extraRoutes } from './routes-ext.js';
 import { createManager } from './manager.js';
 import { createScheduler } from './scheduler.js';
@@ -41,6 +42,7 @@ const LEVEL = { viewer: 0, operator: 1, admin: 2 };
 export const ROLES = Object.keys(LEVEL);
 
 export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin, partMb, fetchImpl, ssh, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, snapshotFn }) {
+  applyTimezone(getSavedTimezone(db)); // сохранённый часовой пояс сервера (Настройки → Время сервера)
   const manager = createManager({ db, key, config });
   const alerts = createAlerts({ db, key, config, fetchImpl });
   const oidc = createOidc({ config, fetchImpl });

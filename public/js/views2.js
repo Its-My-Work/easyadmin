@@ -284,8 +284,8 @@ async function imagesView(body, force = false) {
     const drawT = () => {
       const f = q.value.toLowerCase();
       const rows = ok.filter((i) => !f || [i.project, i.name, i.image, i.repo, i.panelName].some((x) => x && x.toLowerCase().includes(f)));
-      clear(table).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Сервис', 'Панель', 'Источник'].map((x) => h('th', null, x)))),
-        h('tbody', null, rows.map((i) => h('tr', null, h('td', null, h('b', null, i.name), h('span', { class: 'muted small' }, `  ${i.project}`)), h('td', null, panelChip({ name: i.panelName, color: i.color })), h('td', { class: 'mono small', title: i.repoUrl ?? '' }, i.image ?? i.repo ?? h('span', { class: 'muted' }, i.type))))))) : empty('Ничего не найдено'));
+      clear(table).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Сервис', 'Тип', 'Панель', 'Источник'].map((x) => h('th', null, x)))),
+        h('tbody', null, rows.map((i) => h('tr', null, h('td', null, h('b', null, i.name), h('span', { class: 'muted small' }, `  ${i.project}`)), h('td', null, i.kind ? typeChip(i.kind) : null), h('td', null, panelChip({ name: i.panelName, color: i.color })), h('td', { class: 'mono small', title: i.repoUrl ?? '' }, i.image ?? i.repo ?? h('span', { class: 'muted' }, i.type))))))) : empty('Ничего не найдено'));
     };
     q.addEventListener('input', drawT); drawT();
     clear(body).append(
@@ -313,6 +313,14 @@ async function reissueCert(p, c, reload) {
   } catch (e) { toast(e.message, 'error', 8000); }
 }
 
+/** Удаление без запроса нового: например, сертификат домена, которого больше нет. */
+async function deleteCert(p, c, reload) {
+  const domain = c.domain.split(', ')[0];
+  if (!await confirmDialog({ title: 'Удалить сертификат?', confirmText: 'Удалить', danger: true,
+    message: `Сертификат ${domain} на панели «${p.panelName}» будет удалён. Если домен всё ещё привязан к сервису, HTTPS для него перестанет работать, пока панель не выпустит новый.` })) return;
+  try { await post(`/api/panels/${p.panelId}/certs/delete`, { domain }); toast(`Сертификат удалён: ${domain}`, 'success'); reload(); } catch (e) { toast(e.message, 'error', 8000); }
+}
+
 async function certsView(body) {
   try {
     const data = await get('/api/certs');
@@ -321,7 +329,9 @@ async function certsView(body) {
         const days = c.expiresAt ? Math.floor((c.expiresAt - Date.now()) / 86_400_000) : null;
         return h('tr', null, h('td', null, h('b', null, c.domain), c.sans?.length ? h('div', { class: 'muted small' }, c.sans.join(', ')) : null), h('td', { class: 'muted', title: c.source === 'tls' ? 'Срок получен по TLS-соединению с доменом' : null }, c.expiresAt ? new Date(c.expiresAt).toLocaleDateString(locale()) : '—'),
           h('td', { class: 'w-actions' }, days == null ? h('span', { class: 'badge muted' }, 'срок неизвестен') : h('span', { class: `badge ${days < 7 ? 'err' : days < 30 ? 'warn' : 'ok'}` }, days < 0 ? 'истёк' : `${days} дн.`)),
-          can('admin') ? h('td', { class: 'w-actions' }, h('button', { class: 'btn sm', title: 'Удалить сертификат и запросить новый', onclick: () => reissueCert(p, c, () => certsView(body)) }, icon('refresh', 13), 'Перевыпустить')) : null);
+          can('admin') ? h('td', { class: 'w-actions' }, h('div', { class: 'inline nowrap' },
+            h('button', { class: 'btn icon sm', title: 'Перевыпустить: удалить сертификат и запросить новый', 'aria-label': 'Перевыпустить', onclick: () => reissueCert(p, c, () => certsView(body)) }, icon('refresh', 14)),
+            h('button', { class: 'btn icon sm danger-text', title: 'Удалить сертификат', 'aria-label': 'Удалить сертификат', onclick: () => deleteCert(p, c, () => certsView(body)) }, icon('trash', 14)))) : null);
       }))) : h('p', { class: 'muted' }, 'Сертификатов нет.'))));
     if (!data.length) body.append(empty('Нет панелей'));
   } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
@@ -373,6 +383,7 @@ export function channelsCard() {
   const langSel = h('select', { class: 'input', style: { width: 'auto' }, onchange: async () => { try { await put('/api/settings', { notifyLang: langSel.value }); toast('Язык уведомлений сохранён', 'success'); } catch (e) { toast(e.message, 'error'); } } },
     h('option', { value: 'ru' }, 'Русский'), h('option', { value: 'en' }, 'English'));
   get('/api/settings').then((r) => { langSel.value = r.notifyLang; }).catch(() => { langSel.hidden = true; });
+  load(); // список каналов и перечень событий для формы (без этого вызова «События» в окне создания были пустыми)
   return h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Уведомления'), h('div', { class: 'inline' }, h('span', { class: 'muted small' }, 'Язык уведомлений'), langSel, h('button', { class: 'btn sm', onclick: () => form() }, icon('plus', 14), 'Добавить канал'))), box,
     h('p', { class: 'muted small', style: { marginTop: '10px' } }, 'Уведомления о падении панели приходят после двух неудачных проверок подряд. Остановки сервисов, сделанные через EasyAdmin, не считаются сбоем.'));
 }
