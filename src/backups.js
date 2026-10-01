@@ -8,7 +8,7 @@ import { HttpError, RawResponse } from './http.js';
 import { runOnHost } from './host-exec.js';
 import { inspectService, normalizeTree } from './easypanel.js';
 import { applyConfig, configFromService } from './templates.js';
-import { DEFAULT_DIR, buildScript, cleanupJob, deployJob, groupKey, listHostFiles, readStatus, resolveTargets, restoreHint, slugOf, stampOf, validDir } from './data-backup.js';
+import { CONSISTENCY, DEFAULT_DIR, DISCOVER_CMD, buildScript, cleanupJob, deployJob, groupKey, listHostFiles, measureVolumes, needsDiscovery, parseDiscovery, readStatus, resolveTargets, restoreHint, slugOf, stampOf, validDir } from './data-backup.js';
 
 /**
  * Резервные копии EasyAdmin: зашифрованный паролем файл (.eabak) с базой (без истории нагрузки и сессий) и ключом приложения.
@@ -17,7 +17,7 @@ import { DEFAULT_DIR, buildScript, cleanupJob, deployJob, groupKey, listHostFile
  */
 const NAME_RE = /^easyadmin-\d{8}-\d{6}\.eabak$/;
 const DAY = 86400e3;
-const DATA_DEFAULTS = { mode: 'none', keys: [], dest: 'host', dir: DEFAULT_DIR, encrypt: true, keep: 3, minFreeMb: 1024 };
+const DATA_DEFAULTS = { mode: 'none', keys: [], dest: 'host', dir: DEFAULT_DIR, encrypt: true, keep: 3, minFreeMb: 1024, consistency: 'none' };
 const DEFAULTS = { enabled: false, data: DATA_DEFAULTS, system: true, panels: 'all', panelIds: [], every: 'daily', hour: 3, keep: 7, storage: 'local', s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'easyadmin/', accessKey: '', secretKey: '', pathStyle: true }, password: '' };
 const stamp = (ts) => new Date(ts).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '').replace('T', '-');
 const sha = (d) => crypto.createHash('sha256').update(d).digest('hex');
@@ -82,9 +82,9 @@ export function s3Client(cfg, fetchImpl = globalThis.fetch) {
   const host = cfg.pathStyle ? u.host : `${cfg.bucket}.${u.host}`;
   const pathOf = (key) => (cfg.pathStyle ? `/${cfg.bucket}${key ? `/${key.split('/').map(enc).join('/')}` : ''}` : `/${key.split('/').map(enc).join('/')}`);
   /** Временная ссылка: ею можно выполнить один запрос (PUT/GET) без ключей доступа. */
-  function presign(method, key, expires = 43200) {
+  function presign(method, key, expires = 43200, extra = {}) {
     const amz = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'); const day = amz.slice(0, 8); const scope = `${day}/${cfg.region}/s3/aws4_request`;
-    const q = { 'X-Amz-Algorithm': 'AWS4-HMAC-SHA256', 'X-Amz-Credential': `${cfg.accessKey}/${scope}`, 'X-Amz-Date': amz, 'X-Amz-Expires': String(expires), 'X-Amz-SignedHeaders': 'host' };
+    const q = { 'X-Amz-Algorithm': 'AWS4-HMAC-SHA256', 'X-Amz-Credential': `${cfg.accessKey}/${scope}`, 'X-Amz-Date': amz, 'X-Amz-Expires': String(expires), 'X-Amz-SignedHeaders': 'host', ...extra };
     const qs = Object.keys(q).sort().map((k) => `${enc(k)}=${enc(q[k])}`).join('&'); const pathPart = pathOf(key);
     const canonical = [method, pathPart, qs, `host:${host}\n`, 'host', 'UNSIGNED-PAYLOAD'].join('\n');
     const sk = hmac(hmac(hmac(hmac(`AWS4${cfg.secretKey}`, day), cfg.region), 's3'), 'aws4_request');
@@ -110,6 +110,9 @@ export function s3Client(cfg, fetchImpl = globalThis.fetch) {
   return {
     presign,
     put: (key, body) => call('PUT', key, { body }),
+    /** Загрузка частями: создаёт upload и возвращает UploadId (части, завершение и отмена выполняются по временным ссылкам). */
+    async createMultipart(key) { const x = await (await call('POST', key, { query: { uploads: '' } })).text(); const id = /<UploadId>([^<]+)<\/UploadId>/.exec(x)?.[1]; if (!id) throw new Error('Хранилище S3 не вернуло UploadId'); return id; },
+    abortMultipart: (key, uploadId) => call('DELETE', key, { query: { uploadId } }),
     get: async (key) => Buffer.from(await (await call('GET', key)).arrayBuffer()),
     del: (key) => call('DELETE', key),
     async list(prefix) {
@@ -119,7 +122,7 @@ export function s3Client(cfg, fetchImpl = globalThis.fetch) {
   };
 }
 
-export function createBackups({ db, key, config, alerts, manager, fetchImpl = globalThis.fetch, now = () => Date.now(), restart = () => process.exit(0), dataPollMs = 10_000, hostRun }) {
+export function createBackups({ db, key, config, alerts, manager, fetchImpl = globalThis.fetch, now = () => Date.now(), restart = () => process.exit(0), dataPollMs = 10_000, hostRun, mpMin = 5 * 1024 ** 3 - 1, partMb = 1024 }) {
   const getRaw = (k) => db.prepare('SELECT v FROM settings WHERE k = ?').get(k)?.v;
   const setRaw = (k, v) => db.prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, v);
   const load = () => { try { const c = JSON.parse(decrypt(key, getRaw('backup_cfg'))); return { ...DEFAULTS, ...c, data: { ...DATA_DEFAULTS, ...(c.data ?? {}) }, s3: { ...DEFAULTS.s3, ...(c.s3 ?? {}) } }; } catch { return { ...DEFAULTS, data: { ...DATA_DEFAULTS }, s3: { ...DEFAULTS.s3 } }; } };
@@ -170,6 +173,7 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
       if (x.dir !== undefined) { if (!validDir(x.dir)) throw new Error('Папка на сервере: абсолютный путь без «..»'); c.data.dir = x.dir.replace(/\/$/, ''); }
       if (x.encrypt !== undefined) { if (typeof x.encrypt !== 'boolean') throw new Error('Шифрование — да или нет'); c.data.encrypt = x.encrypt; }
       if (x.keep !== undefined) { if (!Number.isInteger(x.keep) || x.keep < 1 || x.keep > 30) throw new Error('Сколько копий данных хранить: от 1 до 30'); c.data.keep = x.keep; }
+      if (x.consistency !== undefined) { if (!CONSISTENCY.includes(x.consistency)) throw new Error('Согласованность томов: none, pause или stop'); c.data.consistency = x.consistency; }
       if (x.minFreeMb !== undefined) { if (!Number.isInteger(x.minFreeMb) || x.minFreeMb < 0 || x.minFreeMb > 1_000_000) throw new Error('Минимум свободного места: МБ'); c.data.minFreeMb = x.minFreeMb; }
       if (c.data.mode === 'selected' && !c.data.keys.length) throw new Error('Отметьте хотя бы один сервис для копирования данных');
       if (c.data.dest === 's3' && c.data.mode !== 'none' && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Для данных в S3 заполните данные хранилища S3');
@@ -300,17 +304,29 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
   async function runDataPanel(c, row, stamp, state) {
     const client = manager.clientFor(row); const projects = (await manager.snapshot(row.id))?.tree?.projects ?? [];
     const encrypt = c.data.encrypt && !!c.password;
-    const items = (await resolveTargets(client, row, projects, c.data, stamp)).map((it) => ({ ...it, encrypt }));
-    // имена файлов с учётом шифрования
-    for (const it of items) it.file = `${it.prefix}${stamp}.${it.kind === 'volume' ? 'tar' : it.kind === 'mongo' ? 'archive' : 'sql'}.gz${encrypt ? '.enc' : ''}`;
+    const compose = needsDiscovery(projects, c.data, row.id) ? parseDiscovery((await hostFn(client, row, DISCOVER_CMD, { timeoutMs: 60_000 }).catch(() => ({ output: '' }))).output) : [];
+    const items = (await resolveTargets(client, row, projects, c.data, stamp, { compose })).map((it) => ({ ...it }));
+    if (encrypt) for (const it of items) { it.file += '.enc'; it.encrypt = true; }
     if (!items.length) { state.status = 'done'; state.note = 'Нет баз и томов для копирования'; return; }
-    const s3 = c.data.dest === 's3' ? s3Of(c) : null;
-    if (s3) for (const it of items) it.url = s3.presign('PUT', `${c.s3.prefix}data/${it.slug}/${it.file}`, 12 * 3600);
+    const s3 = c.data.dest === 's3' ? s3Of(c) : null; const keyOf = (it) => `${c.s3.prefix}data/${it.slug}/${it.file}`;
+    const opened = []; // начатые загрузки частями: незавершённые отменяем
+    if (s3) {
+      const sizes = await measureVolumes(client, row, items, hostFn);
+      for (const it of items) {
+        it.url = s3.presign('PUT', keyOf(it), 12 * 3600);
+        if (it.kind === 'volume' && (sizes.get(it.hostPath) ?? 0) > mpMin) { // том больше порога: готовим загрузку частями
+          const uploadId = await s3.createMultipart(keyOf(it)); opened.push({ key: keyOf(it), uploadId, label: it.label });
+          const n = Math.min(100, Math.ceil(sizes.get(it.hostPath) / (partMb * 1048576)) + 2);
+          it.mp = { complete: s3.presign('POST', keyOf(it), 12 * 3600, { uploadId }), abort: s3.presign('DELETE', keyOf(it), 12 * 3600, { uploadId }), parts: Array.from({ length: n }, (_, i) => s3.presign('PUT', keyOf(it), 12 * 3600, { partNumber: String(i + 1), uploadId })) };
+        }
+      }
+    }
     state.items = items.map((it) => ({ label: it.label, status: 'wait' }));
     const runId = `r${stamp}-${row.id}`;
-    const script = buildScript({ runId, baseDir: c.data.dir, dest: c.data.dest, keep: c.data.keep, passB64: encrypt ? Buffer.from(c.password).toString('base64') : null, minFreeKb: c.data.minFreeMb * 1024, items });
+    const script = buildScript({ runId, baseDir: c.data.dir, dest: c.data.dest, keep: c.data.keep, passB64: encrypt ? Buffer.from(c.password).toString('base64') : null, minFreeKb: c.data.minFreeMb * 1024, items, consistency: c.data.consistency, mpMin, partMb });
     state.status = 'running';
-    await deployJob(client, row, { baseDir: c.data.dir, runId, script }, hostFn);
+    try { await deployJob(client, row, { baseDir: c.data.dir, runId, script }, hostFn); }
+    catch (e) { for (const o of opened) await s3.abortMultipart(o.key, o.uploadId).catch(() => {}); throw e; }
     const t0 = now(); let st = { items: [], done: false, started: false };
     for (let polls = 0; !st.done; polls++) {
       await new Promise((r) => setTimeout(r, dataPollMs));
@@ -320,6 +336,7 @@ export function createBackups({ db, key, config, alerts, manager, fetchImpl = gl
       if (now() - t0 > 6 * 3600e3) throw new Error('Копирование идёт слишком долго (больше 6 часов)');
     }
     cleanupJob(client, row, c.data.dir, runId, hostFn);
+    for (const o of opened) if (!st.items.some((x) => x.ok && x.label === o.label.replace(/\|/g, '/'))) await s3.abortMultipart(o.key, o.uploadId).catch(() => {});
     const general = st.items.find((x) => !x.ok && x.label === '*');
     if (general) throw new Error(general.error);
     if (s3) { // ротация в S3: оставляем keep последних по каждому источнику

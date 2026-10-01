@@ -40,7 +40,7 @@ export function redactSecrets(v) {
 const LEVEL = { viewer: 0, operator: 1, admin: 2 };
 export const ROLES = Object.keys(LEVEL);
 
-export function createApp({ config, db, key, restart, hostRun, dataPollMs, fetchImpl, ssh, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, snapshotFn }) {
+export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin, partMb, fetchImpl, ssh, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, snapshotFn }) {
   const manager = createManager({ db, key, config });
   const alerts = createAlerts({ db, key, config, fetchImpl });
   const oidc = createOidc({ config, fetchImpl });
@@ -156,7 +156,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, fetch
   const scheduler = createScheduler({ db, manager, alerts, audit });
   const consoleHub = createConsoleHub();
   const loadmon = createLoadMonitor({ db, manager, alerts, config, snapshotFn });
-  const backups = createBackups({ db, key, config, alerts, manager, fetchImpl: fetchImpl ?? globalThis.fetch, restart, hostRun, dataPollMs });
+  const backups = createBackups({ db, key, config, alerts, manager, fetchImpl: fetchImpl ?? globalThis.fetch, restart, hostRun, dataPollMs, mpMin, partMb });
   manager.onSnapshot = (row, snap) => {
     alerts.evaluate(row, snap);
     try { loadmon.onHost(row, snap); } catch { /* метрики не должны мешать опросу панелей */ }
