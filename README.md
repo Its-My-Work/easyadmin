@@ -1,26 +1,25 @@
 # EasyAdmin
 
-Одна админка для всех ваших панелей [Easypanel](https://easypanel.io). Один раз вошли — управляете 10–20 серверами из одного интерфейса: статус и нагрузка, проекты и сервисы, деплой, перезапуск, env, домены, порты, тома, массовые операции, журнал действий.
+One admin console for all your [Easypanel](https://easypanel.io) panels. Sign in once and manage 10–20 servers from a single interface: status and load, projects and services, deploys, restarts, env, domains, ports, volumes, live logs, bulk operations and an audit log.
 
-Без зависимостей и без сборки фронтенда: Node.js ≥ 22.13, SQLite (встроенный `node:sqlite`), чистый JS в браузере. Интерфейс и сообщения сервера доступны на **русском и английском** (кнопка RU/EN в боковой панели и на странице входа).
+Zero dependencies and no frontend build: Node.js ≥ 22.13, SQLite (built-in `node:sqlite`), plain JS in the browser. The interface and server messages are available in **Russian and English** (switch with the RU/EN button in the sidebar or on the sign-in page).
 
-> English version: [README.en.md](README.en.md).
+> 🇷🇺 **Русская версия: [README.ru.md](README.ru.md).**
 
-> **Статус: бета (0.9).** Основной функционал покрыт тестами (в том числе на моке Easypanel и настоящем bash). Помечено «экспериментально» то, что не проверялось на реальных серверах: копии данных баз и томов, восстановление системы из копии, установка панели по SSH, нагрузка на многоядерных серверах. Сначала пробуйте на тестовых панелях и делайте резервную копию.
+> **Status: beta (0.9).** The core is covered by tests (including a mock Easypanel and real bash). Marked “experimental” is whatever has not been verified on real servers: database and volume data backups, restoring the system from a backup, installing a panel over SSH, load on multi-core servers. Try it on test panels first and keep a backup.
 
-![Обзор](docs/screenshots/overview.png)
-![Панель](docs/screenshots/panel.png)
-![Нагрузка](docs/screenshots/load.png)
-![Резервные копии](docs/screenshots/backups.png)
+![Overview](docs/screenshots/overview.png)
+![Panel](docs/screenshots/panel.png)
+![Load](docs/screenshots/load.png)
+![Backups](docs/screenshots/backups.png)
 
-## Быстрый старт
+## Quick start
 
 ```bash
 npm start            # http://localhost:3100
 ```
 
-При первом открытии создайте администратора. Затем **«Добавить панель»**: адрес панели и API-токен
-(Easypanel → *Settings → Users → Generate API Token*). Либо войдите по email/паролю — токен будет получен автоматически (пароль не сохраняется).
+On first open, create an administrator. Then **Add panel**: the panel address and an API token (Easypanel → *Settings → Users → Generate API Token*), or sign in with the panel's email/password — a token is obtained automatically (the password is not stored).
 
 Docker:
 
@@ -28,148 +27,147 @@ Docker:
 EASYADMIN_SECRET="$(openssl rand -hex 32)" docker compose up -d --build
 ```
 
-> Сохраните `EASYADMIN_SECRET`: им шифруются токены панелей (AES-256-GCM). Если переменная не задана, ключ создаётся в `data/secret.key` — бэкапьте `data/` целиком.
-> За HTTPS-прокси включите `EASYADMIN_SECURE_COOKIES=true`. EasyAdmin даёт полный доступ к серверам — не выставляйте его наружу без HTTPS.
+> Keep `EASYADMIN_SECRET`: it encrypts panel tokens (AES-256-GCM). If unset, a key is created in `data/secret.key` — back up the whole `data/` directory.
+> Behind an HTTPS proxy set `EASYADMIN_SECURE_COOKIES=true`. EasyAdmin gives full access to your servers — do not expose it without HTTPS.
 
-Демо без реальных панелей (несколько имитаций Easypanel): `npm run demo` → http://localhost:3100, `admin` / `demo12345`.
+Demo without real panels (several Easypanel mocks): `npm run demo` → http://localhost:3100, `admin` / `demo12345`.
 
-## Возможности
+## Features
 
-**Управление**
-- **Обзор**: сводка по всем панелям (онлайн/офлайн, CPU/RAM/диск), фильтр по тегам, блок «Требуют внимания», очистка Docker сразу на нескольких панелях.
-- **Панель**: график нагрузки (6 ч / 24 ч / 7 дн), проекты и сервисы, быстрые действия (деплой / перезапуск / старт / стоп), создание и удаление проектов и сервисов (App, PostgreSQL, MySQL, MariaDB, MongoDB, Redis, Compose), системные операции, история операций панели с логами.
-- **Сервис** (боковая панель): env (значения скрыты по умолчанию), домены, порты, тома, лимиты, источник (образ / GitHub), заметки, текущее потребление, избранное, удаление с подтверждением вводом имени.
-- **Живые логи**: вкладка «Логи» в карточке сервиса — поток в реальном времени с фильтром, паузой, автопрокруткой, подсветкой ошибок и скачиванием (оператор и выше).
-- **Состояние контейнеров** (best-effort): «Сбой» — сервис включён, но контейнер упал; «Нет контейнера».
-- **Сервисы**: единый список по всем панелям, фильтры и **массовые операции**: деплой / рестарт / старт / стоп, **массовая правка env** (добавить/изменить/удалить ключи, комментарии сохраняются), **массовая смена образа**.
-- **Шаблоны и клонирование**: перенос сервиса (env, источник, ресурсы) на другую панель одной кнопкой; сохранение сервиса как шаблона и развёртывание на любой панели.
-- **Расписания**: рестарт/деплой/старт/стоп сервисов и очистка Docker — раз в день (по дням недели) или через интервал; запуск вручную; ошибки уходят в уведомления.
-- **Инвентарь**: какие образы где запущены и **расхождения версий** между панелями; сроки **сертификатов** по всем панелям.
-- **Вебхуки для CI/CD**: ссылка на деплой/рестарт сервиса без входа (`curl -X POST …`), токен хранится хэшем.
-- **Консоль API**: прямой вызов любой tRPC-процедуры панели (только admin).
-- **Поиск и команды** — `Ctrl/⌘ + K` или `/`; избранное и недавние сервисы сверху.
+**Management**
+- **Overview**: all panels at a glance (online/offline, CPU/RAM/disk), tag filter, "Needs attention" block, Docker cleanup on several panels at once.
+- **Panel**: load chart (6 h / 24 h / 7 d), projects and services, quick actions (deploy / restart / start / stop), create and delete projects and services (App, PostgreSQL, MySQL, MariaDB, MongoDB, Redis, Compose), system operations, panel operation history with logs.
+- **Service** (side panel): env (values hidden by default), domains, ports, volumes, limits, source (image / GitHub), notes, current usage, favorites, deletion confirmed by typing the name.
+- **Live logs**: the "Logs" tab streams in real time with filter, pause, auto-scroll, error highlighting and download (operator and above).
+- **Container state** (best effort): "Failed" — service enabled but its container crashed; "No container".
+- **Services**: one list across all panels with filters and **bulk operations**: deploy / restart / start / stop, **bulk env editing** (add/change/remove keys, comments preserved), **bulk image change**.
+- **Templates and cloning**: move a service (env, source, resources) to another panel in one click; save a service as a template and deploy it on any panel.
+- **Schedules**: restart/deploy/start/stop services and Docker cleanup — daily (by weekday) or at an interval; run manually; failures go to notifications.
+- **Inventory**: which images run where and **version mismatches** between panels; **certificate** expiry across panels.
+- **CI/CD webhooks**: a URL that deploys/restarts a service without signing in (`curl -X POST …`); the token is stored hashed.
+- **API console**: call any tRPC procedure of a panel directly (admin only).
+- **Search and commands** — `Ctrl/⌘ + K` or `/`; favorites and recent services first.
 
-**Уведомления** (Telegram, email по SMTP и webhook): панель недоступна (после двух неудачных проверок) и снова доступна, ошибка токена, диск заполнен (порог настраивается), сертификат истекает (< 7 дней), сервис остановился/упал вне EasyAdmin, ошибка расписания.
+**Notifications** (Telegram, email over SMTP and webhook): panel unreachable (after two failed checks) and recovered, token error, disk full (configurable threshold), certificate expiring (< 7 days), service stopped/crashed outside EasyAdmin, schedule error. The notification language (RU/EN) is set in *Settings → Notifications*.
 
-**Пользователи и доступ**
-- **Профиль** (клик по имени в боковой панели): имя и email, смена пароля (остальные устройства при этом выходят), 2FA, **активные сессии** (устройство, IP, последняя активность; можно завершить любую или все остальные), язык, тема, последние действия.
-- **Пользователи** (администратор): таблица с ролью, способом входа (пароль / SSO / 2FA), доступом к панелям, последним входом и статусом; создание, редактирование (логин, имя, email, роль, панели, пароль, сброс 2FA), **отключение учётной записи** (вход закрывается, сессии обрываются), завершение всех сессий, удаление. Защита от потери последнего администратора и от отключения/удаления самого себя.
-- Роли: `admin`; `operator` (деплой, рестарт, env, домены — без удаления и системных операций); `viewer` (только чтение, **без env и секретов**).
-- Ограничение пользователя набором панелей (например, подрядчик видит только «Клиент Acme»).
-- **SSO (OpenID Connect)**: вход через Keycloak, Authentik, Google, Azure AD, Okta и др. (см. ниже).
-- **2FA (TOTP)**, смена пароля, сброс 2FA администратором.
-- Журнал действий с поиском и **экспортом в CSV** (хранится 90 дней).
+**Users and access**
+- **Profile** (click your name in the sidebar): name and email, password change (other devices are signed out), 2FA, **active sessions** (device, IP, last activity; end any or all others), language, theme, your recent actions.
+- **Users** (administrator): a table with role, sign-in method (password / SSO / 2FA), panel access, last sign-in and status; create, edit (username, name, email, role, panels, password, 2FA reset), **disable an account** (sign-in blocked, sessions ended), end all sessions, delete. The last administrator cannot be demoted, disabled or deleted, and you cannot disable or delete yourself.
+- Roles: `admin`; `operator` (deploy, restart, env, domains — no deletion or system operations); `viewer` (read-only, **no env or secrets**).
+- Restrict a user to a set of panels (e.g. a contractor sees only "Client Acme").
+- **SSO (OpenID Connect)**: sign in via Keycloak, Authentik, Google, Azure AD, Okta, etc. (see below).
+- **2FA (TOTP)**, password change, admin-side 2FA reset.
+- Audit log with search and **CSV export** (kept for 90 days).
 
-**Эксплуатация**: бэкап из интерфейса (+ `scripts/restore.js`), метрики Prometheus (`/metrics`), светлая/тёмная тема, адаптивная вёрстка. Недоступная панель не влияет на остальные.
+**Operations**: backup from the UI (+ `scripts/restore.js`), Prometheus metrics (`/metrics`), light/dark theme, responsive layout. An unreachable panel does not affect the others.
 
-## Безопасность
+## Security
 
-> Консоль хоста, установка панели по SSH и копии данных выполняют команды на серверах с правами root: доступ к EasyAdmin равен доступу к этим серверам. Сообщить об уязвимости: см. [SECURITY.md](SECURITY.md).
+> The host console, panel installation over SSH and data backups run commands as root on your servers: access to EasyAdmin equals access to those servers. To report a vulnerability see [SECURITY.md](SECURITY.md).
 
-- Токены панелей шифруются (AES-256-GCM) и никогда не возвращаются клиенту.
-- Пароли — scrypt; сессии — случайные токены в `HttpOnly; SameSite=Strict` cookie (в БД хранится только хэш).
-- Роль `viewer` не получает env и поля с секретами; доступ по панелям проверяется на сервере для каждого запроса.
-- Токены вебхуков хранятся хэшем и показываются один раз; на вызов есть лимит.
-- CSRF: обязательный заголовок `X-Requested-With` + проверка `Origin`; ограничение попыток входа; CSP и защитные заголовки.
-- Редиректы при обращении к панелям не выполняются (токен не утечёт на другой хост).
+- Panel tokens are encrypted (AES-256-GCM) and never returned to the client.
+- Passwords use scrypt; sessions are random tokens in an `HttpOnly; SameSite=Strict` cookie (only a hash is stored).
+- The `viewer` role never receives env or secret fields; per-panel access is enforced server-side on every request.
+- Webhook tokens are stored hashed and shown once; calls are rate-limited.
+- CSRF: mandatory header `X-Requested-With` + `Origin` check; login attempt limiting; CSP and security headers.
+- Redirects are not followed when talking to panels (a token cannot leak to another host).
 
-## Настройка (переменные окружения)
+## Configuration (environment variables)
 
-См. `.env.example`. Часовой пояс расписаний — переменная `TZ` (например `TZ=Europe/Moscow`). Метрики: задайте `EASYADMIN_METRICS_TOKEN` и добавьте в Prometheus `authorization: {credentials: <токен>}` для `/metrics`.
+See `.env.example`. Schedule time zone — the `TZ` variable (e.g. `TZ=Europe/Berlin`). Notification language default — `EASYADMIN_LANG=en` (changeable in the UI). Metrics: set `EASYADMIN_METRICS_TOKEN` and add `authorization: {credentials: <token>}` for `/metrics` in Prometheus.
 
 ## SSO (OpenID Connect)
 
-Задайте `EASYADMIN_PUBLIC_URL` (например `https://admin.example.com`) и `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`. В провайдере зарегистрируйте redirect URI `https://admin.example.com/api/oidc/callback`. На странице входа появится кнопка «Войти через …».
+Set `EASYADMIN_PUBLIC_URL` (e.g. `https://admin.example.com`) and `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`. Register the redirect URI `https://admin.example.com/api/oidc/callback` with your provider. A "Sign in with …" button appears on the sign-in page.
 
-- Используется Authorization Code + PKCE; подпись `id_token` (RS256/ES256) проверяется по JWKS, проверяются `iss`, `aud`, срок и `nonce`. Провайдер должен работать по HTTPS.
-- Новый пользователь создаётся при первом входе с ролью `OIDC_DEFAULT_ROLE` (по умолчанию `viewer`); адреса из `OIDC_ADMIN_EMAILS` получают `admin`; самый первый вход в пустую систему тоже даёт `admin`. Роль и доступ к панелям потом меняются в *Настройки → Пользователи*.
-- Существующий локальный пользователь с логином, равным подтверждённой почте, привязывается к SSO-аккаунту с сохранением роли.
-- `OIDC_ALLOWED_DOMAINS` ограничивает домены почты. Пароль SSO-пользователя недействителен — вход только через провайдера (2FA обеспечивает провайдер).
+- Authorization Code + PKCE; the `id_token` signature (RS256/ES256) is verified against the JWKS, and `iss`, `aud`, expiry and `nonce` are checked. The provider must use HTTPS.
+- A new user is created on first sign-in with the `OIDC_DEFAULT_ROLE` role (default `viewer`); addresses in `OIDC_ADMIN_EMAILS` become `admin`; the very first sign-in into an empty system is also `admin`. Change roles and panel access later in *Settings → Users*.
+- An existing local user whose username equals the verified email is linked to the SSO account, keeping their role.
+- `OIDC_ALLOWED_DOMAINS` restricts email domains. An SSO user's password is unusable — sign-in only through the provider (the provider handles 2FA).
 
-## Каталог шаблонов Easypanel
+## Easypanel template catalog
 
-*Шаблоны → Каталог Easypanel* показывает те же шаблоны, что и Easypanel при создании сервиса (около 850 штук, поиск и теги): карточка с описанием и ссылками, форма параметров, **предпросмотр схемы** и развёртывание на выбранной панели одним нажатием (проект создаётся автоматически).
+*Templates → Easypanel catalog* shows the same templates Easypanel offers when creating a service (about 850, with search and tags): a card with description and links, a parameter form, a **schema preview** and one-click deployment to the chosen panel (the project is created automatically).
 
-Как это работает: EasyAdmin читает публичный репозиторий [easypanel-io/templates](https://github.com/easypanel-io/templates) (`list.json`, `meta.yaml` и `index.ts` каждого шаблона), получает схему `{services:[{type,data}]}` и передаёт её панели процедурой `templates.createFromSchema` — как «Create from JSON».
-Функция `generate` из `index.ts` — это TypeScript-код из репозитория. **Он выполняется на сервере EasyAdmin**, поэтому: запуск доступен только администратору; код идёт в пустом изолированном контексте `node:vm` (нет `process`, `require`, сети, файлов; `eval`/`Function` запрещены; случайные значения передаются строкой из `crypto`; таймаут 2 с; размер результата ограничен); шаблоны, которым нужны сторонние модули или криптография (ключи, хеши), помечаются как неподдерживаемые. Изоляция `vm` — не граница безопасности уровня ОС, поэтому при недоверии к источнику используйте своё зеркало (`EASYADMIN_CATALOG_URL`, зафиксируйте версию) или отключите каталог (`EASYADMIN_CATALOG=off`).
-Проверка на всём каталоге: `node scripts/catalog-check.js /путь/к/templates` (локальная копия репозитория).
+How it works: EasyAdmin reads the public [easypanel-io/templates](https://github.com/easypanel-io/templates) repository (`list.json`, and each template's `meta.yaml` and `index.ts`), obtains a `{services:[{type,data}]}` schema and hands it to the panel through `templates.createFromSchema` — the same as “Create from JSON”.
+The `generate` function in `index.ts` is TypeScript code from that repository. **It runs on the EasyAdmin server**, therefore: only admins can trigger it; it runs in an empty, isolated `node:vm` context (no `process`, `require`, network or files; `eval`/`Function` are forbidden; random values are passed in as a string from `crypto`; 2 s timeout; capped result size); templates that need third-party modules or cryptography (keys, hashes) are marked as unsupported. `vm` isolation is not an OS-level security boundary, so if you do not trust the source, use your own mirror (`EASYADMIN_CATALOG_URL`, pinned to a revision) or disable the catalog (`EASYADMIN_CATALOG=off`).
+Check the whole catalog: `node scripts/catalog-check.js /path/to/templates` (a local clone of the repository).
 
-Кроме каталога: *Импорт схемы Easypanel* (вставить JSON из «Create from JSON» и развернуть на панели) и экспорт сохранённого шаблона в такую схему.
+Besides the catalog: *Import Easypanel schema* (paste JSON from “Create from JSON” and deploy it to a panel) and export of a saved template as such a schema.
 
-## Консоль сервиса и настройки панели
+## Service console and panel settings
 
-**Переименование и перенос** (значок карандаша у названия сервиса, только администратор): переименование сервиса и перенос в другой проект (в том числе в новый) средствами самой Easypanel — вместе с образом, файлами и доменами. Сервис останавливается, переименовывается и запускается снова; если панель отказала, прежний запускается обратно. После этого в EasyAdmin обновляются расписания, вебхуки, история нагрузки и охват копий. Нельзя для compose-стеков. Адрес сервиса внутри сети Docker меняется (`проект_сервис`) — подключения по старому имени нужно перенастроить.
+**Rename and move** (the pencil icon next to the service name, admins only): rename a service and move it to another project (including a new one) using Easypanel itself — together with its image, files and domains. The service is stopped, renamed and started again; if the panel refuses, the original is started back. EasyAdmin then updates its schedules, webhooks, load history and backup scope. Not available for compose stacks. The service address inside the Docker network changes (`project_service`) — connections by the old name must be reconfigured.
 
-**Консоль сервиса** (карточка сервиса → *Консоль*, только администратор): терминал внутри контейнера. Ввод команд с историей (↑↓), Ctrl+C, быстрые команды, скачивание вывода. Терминал Easypanel работает по WebSocket: `/ws/containerShell` (нужны `container` и `command` в base64) и `/ws/hostShell`, формат `{"input":…}` → `{"output":…}`. Панель делает `JSON.parse` каждого кадра без защиты, поэтому голый текст роняет её процесс — автоопределение шлёт только JSON, `raw` включается лишь вручную. Для других версий панели EasyAdmin перебирает известные пути и пути из интерфейса панели и определяет формат ввода пробной командой `echo __EA$((a+b))__`; при неудаче показываются все попытки; свои пути — `EASYPANEL_CONSOLE_PATHS` / `EASYPANEL_SERVER_CONSOLE_PATHS`. У сервиса с несколькими контейнерами (compose) контейнер выбирается в списке. До трёх консолей на пользователя, закрываются через 10 минут без ввода и через час. В журнал пишутся открытие/закрытие сеанса и *число* команд, сами команды не сохраняются (там бывают пароли). Отключить: `EASYADMIN_CONSOLE=off`; свои пути: `EASYPANEL_CONSOLE_PATHS`.
+**Service console** (service card → *Console*, admins only): a terminal inside the container. Command input with history (↑↓), Ctrl+C, quick commands, output download. The Easypanel terminal runs over a WebSocket: `/ws/containerShell` (needs `container` and base64 `command`) and `/ws/hostShell`, messages `{"input":…}` → `{"output":…}`. The panel calls `JSON.parse` on every frame unguarded, so plain text crashes its process — auto-detection sends JSON only, `raw` is manual only. For other panel versions EasyAdmin tries known paths and those found in the panel UI and detects the input format with `echo __EA$((a+b))__`; on failure all attempts are shown; custom paths via `EASYPANEL_CONSOLE_PATHS` / `EASYPANEL_SERVER_CONSOLE_PATHS`. For a multi-container (compose) service pick the container from the list. Up to three consoles per user; they close after 10 minutes without input and after an hour. The log records opening/closing a session and the *number* of commands, never the commands themselves (they may contain passwords). Disable with `EASYADMIN_CONSOLE=off`; custom paths via `EASYPANEL_CONSOLE_PATHS`.
 
-**Консоль сервера** (пункт меню *Консоль*, только администратор): терминал самого хоста через встроенную консоль Easypanel (*Настройки → Сервер → Консоль*) — SSH и пароли не нужны, работает по адресу панели (IP или домен). Та же автонастройка пути и формата, то же ограничение сеансов и аудит; сеанс и вывод сохраняются при переходах по страницам. Свои пути: `EASYPANEL_SERVER_CONSOLE_PATHS`.
+**Server console** (*Console* menu item, admins only): a terminal of the host itself through Easypanel’s built-in console (*Settings → Server → Console*) — no SSH or passwords needed, it works through the panel address (IP or domain). The same path and format auto-detection, the same session limits and audit; the session and its output survive page navigation. Custom paths via `EASYPANEL_SERVER_CONSOLE_PATHS`.
 
-**Настройки панели Easypanel** (страница панели → *Настройки*, только администратор): обычные формы вместо JSON — адреса (домен панели, базовый домен сервисов, IP, e-mail Let's Encrypt), общее (телеметрия, ночная очистка Docker, Google Analytics, токен GitHub), оформление (название, ссылки, страницы ошибок, свой код), обновления и Docker (версии, обновление Easypanel, очистка образов и кэша сборки, билдеры), пользователи Easypanel (создание, роль, пароль, API-токены, свои e-mail/пароль/2FA), метрики и сбор логов, Traefik (YAML и env с историей версий и возвратом), кластер Swarm, хранилища бэкапов, каналы уведомлений и журнал действий панели. «Расширенные» — прежний универсальный доступ к процедурам панели. Хранилища бэкапов (S3, SFTP, FTP, папка) и каналы уведомлений панели (Discord, Slack, Telegram, webhook, SMTP) создаются и правятся прямо здесь, с проверкой отправки; ключи и пароли не показываются, при правке пустое поле оставляет прежнее значение. Логотипы интерфейса загружаются файлами (PNG, JPEG, GIF, WebP, SVG до 500 КБ). У сервиса (база данных или приложение) есть вкладка *Бэкапы*: расписания копий базы или томов, запуск сразу, журнал копий и восстановление базы из успешной копии (с подтверждением `project/service`). **Установка новой панели по SSH** («Добавить панель» → «Установить новую…»): мастер подключается к чистому серверу (Ubuntu 22.04+ или Debian 11+, от 2 ГБ памяти) по паролю или ключу, показывает отпечаток ключа сервера для подтверждения, проверяет сервер (root/sudo, порты 80/443/3000, память, Swarm, интернет), затем запускает официальный скрипт Easypanel отдельным юнитом systemd (`easypanel-install`) и показывает ход установки. Первоначальная настройка (администратор, API-токен) выполняется через SSH-туннель к `127.0.0.1:3000`, поэтому пароль не идёт по открытому интернету; панель добавляется в EasyAdmin с токеном. Домен панели — сгенерированный `*.easypanel.host` или свой (он доступен и на бесплатном тарифе). Обязательно явное согласие с условиями Easypanel; e-mail администратора передаётся Easypanel при настройке. SSH-доступ и пароль нигде не сохраняются, в журнал не попадают; пароль, если его сгенерировали, показывается один раз. В образе используется системный `ssh` (openssh-client).  в «Обновления и Docker» кнопка «Обновить Docker» (когда есть новая версия) с предупреждением и подтверждением вводом названия панели. Перед этим сервер проверяется (только Ubuntu и Debian, apt, systemd, пакет `docker-ce` из репозитория Docker): если условия не выполнены, кнопка неактивна с причиной. Команда выполняется на хосте через встроенную консоль Easypanel отдельным юнитом systemd (`docker-upgrade-ea`), поэтому переживёт перезапуск Docker; если юнит завершился, а версия не изменилась, об этом сообщается; во время обновления все сервисы, включая Easypanel и EasyAdmin, остановятся на несколько минут. Ход виден в окне прогресса. **Лицензия Easypanel:** EasyAdmin читает лицензию панели (Portal и Lemon Squeezy) и по её правилам блокирует платные функции — метрики и сбор логов, каналы уведомлений, расписания бэкапов баз, брендинг, несколько пользователей, кластер, свой домен сервисов. Закрытые настройки неактивны и помечены ключом, запись отклоняется до обращения к панели (без лицензии панель либо возвращает ошибку, либо молча ничего не делает — результат проверяется перечитыванием). Тома, хранилища, Traefik, билдеры и остальное работают без лицензии; у баз доступны запуск копии вручную, журнал и восстановление. Лицензию можно активировать из EasyAdmin (ключ Lemon Squeezy, номер заказа или Portal) — ключ не сохраняется и в журнал не попадает. Все изменения записываются в журнал с прежним и новым значением (секреты маскируются); опасные — с подтверждением, для доменов и Traefik нужно ввести название панели. Пользователя, от имени которого EasyAdmin работает с панелью, удалить и сменить ему токен нельзя — доступ пропал бы.
+**Easypanel settings** (panel page → *Settings*, admins only): real forms instead of JSON — addresses (panel domain, base service domain, IP, Let's Encrypt e-mail), general (telemetry, nightly Docker cleanup, Google Analytics, GitHub token), branding (name, links, error pages, custom code), updates and Docker (versions, Easypanel update, image and build-cache cleanup, builders), Easypanel users (create, role, password, API tokens, own e-mail/password/2FA), metrics and log collection, Traefik (YAML and env with version history and restore), Swarm cluster, backup storage, notification channels and the panel's activity log. “Advanced” is the previous generic access to the panel's procedures. Backup storage (S3, SFTP, FTP, folder) and the panel's notification channels (Discord, Slack, Telegram, webhook, SMTP) are created and edited right here with a send test; keys and passwords are never shown, and an empty field keeps the current value when editing. Interface logos are uploaded as files (PNG, JPEG, GIF, WebP, SVG up to 500 KB). A service (database or app) has a *Backups* tab: schedules for database or volume copies, run now, a log of copies and restoring a database from a successful copy (confirmed with `project/service`). **Installing a new panel over SSH** (“Add panel” → “Install a new one…”): the wizard connects to a clean server (Ubuntu 22.04+ or Debian 11+, 2 GB of memory or more) with a password or key, shows the server key fingerprint for confirmation, checks the server (root/sudo, ports 80/443/3000, memory, Swarm, internet), then runs the official Easypanel script as a separate systemd unit (`easypanel-install`) and shows the progress. The initial setup (administrator, API token) goes through an SSH tunnel to `127.0.0.1:3000`, so the password never crosses the open internet; the panel is added to EasyAdmin with its token. The panel domain is the generated `*.easypanel.host` or your own (available on the free plan too). An explicit agreement with the Easypanel terms is required; the administrator e-mail is passed to Easypanel during setup. The SSH access and passwords are never stored or logged; a generated password is shown once. The image uses the system `ssh` (openssh-client).  “Update Docker” in “Updates and Docker” (when a newer version exists), with a warning and a panel-name confirmation. The server is checked first (Ubuntu and Debian only, apt, systemd, the `docker-ce` package from the Docker repository): if the conditions are not met the button is inactive and shows why. The command runs on the host through Easypanel's built-in console as a separate systemd unit (`docker-upgrade-ea`), so it survives the Docker restart; if the unit finishes and the version did not change, you are told; during the update all services, including Easypanel and EasyAdmin, stop for a few minutes. Progress is shown in a modal. **Easypanel license:** EasyAdmin reads the panel's license (Portal and Lemon Squeezy) and, following the panel's own rules, blocks paid features — metrics and log collection, notification channels, database backup schedules, branding, multiple users, cluster, custom service domain. Locked settings are inactive and marked with a key, and writes are rejected before reaching the panel (without a license the panel either returns an error or silently does nothing — the result is verified by re-reading). Volumes, storage, Traefik, builders and the rest work without a license; for databases, manual copies, the log and restore stay available. A license can be activated from EasyAdmin (Lemon Squeezy key, order number or Portal) — the key is not stored or logged. Every change is written to the audit log with the old and new value (secrets masked); dangerous ones need confirmation, and domains and Traefik require typing the panel name. The user EasyAdmin acts as on the panel can be neither deleted nor given a new token — access would be lost.
 
-**Настройки панели** (страница панели → *Настройки*, только администратор): процедуры `settings.*`, `branding.*`, `users.*` и др. берутся из интерфейса самой панели (публичного списка у Easypanel нет). Чтение безопасно, секреты скрыты (можно показать); запись отправляет JSON процедуре как есть — формат проверяет сама панель и возвращает причину ошибки; для парных `get…`/`set…` текущие значения подставляются автоматически, опасные действия (перезапуск, удаление, сброс) требуют ввода названия. Для произвольных вызовов остаётся *Консоль API*.
+**Panel settings** (panel page → *Settings*, admins only): `settings.*`, `branding.*`, `users.*` and other procedures are taken from the panel's own UI (Easypanel has no public list). Reading is safe and secrets are masked (they can be revealed); writing sends JSON to the procedure as is — the panel validates the format and returns the reason on error; for paired `get…`/`set…` procedures the current values are prefilled, dangerous actions (restart, delete, reset) require typing the name. The *API console* remains for arbitrary calls.
 
-## Живые логи
+## Live logs
 
-Логи идут по WebSocket самой панели Easypanel; EasyAdmin проксирует их в браузер через SSE. Точный путь WebSocket зависит от версии Easypanel и не документирован, поэтому пробуются `/ws/serviceLogs`, `/api/ws/serviceLogs`, `/ws/logs`. Если ваша версия использует другой путь, задайте `EASYPANEL_LOGS_PATHS`; при неудаче вкладка показывает, какие пути были испробованы.
+Logs come over the panel's own WebSocket; EasyAdmin proxies them to the browser via SSE. The exact WebSocket path depends on the Easypanel version and is undocumented, so `/ws/serviceLogs`, `/api/ws/serviceLogs` and `/ws/logs` are tried in turn. If your version uses another path, set `EASYPANEL_LOGS_PATHS`; on failure the tab shows which paths were tried.
 
-## Бэкап и восстановление
+## Backup and restore
 
-См. раздел «Резервные копии» ниже: копия системы с паролем, защита баз и томов, расписание, S3, проверка и восстановление.
+See the “Backups” section below: a password-protected system backup, protection of databases and volumes, schedule, S3, verification and restore.
 
-## Совместимость с Easypanel
+## Easypanel compatibility
 
-У Easypanel нет публичной документации API; используется его внутренний tRPC (`/api/trpc/...`, `Authorization: Bearer <token>`).
-Соответствие функций процедурам собрано в одном месте — `src/easypanel.js`, ответы разбираются защитно. Проверьте свою версию панели:
+Easypanel has no public API documentation; its internal tRPC is used (`/api/trpc/...`, `Authorization: Bearer <token>`). The mapping from features to procedures lives in one place — `src/easypanel.js` — and responses are parsed defensively. Check your panel version:
 
 ```bash
 npm run probe -- https://panel.example.com <API_TOKEN>
 ```
 
-Скрипт покажет форму ответов ключевых процедур. Состояние контейнеров, сроки сертификатов, логи операций и потребление сервисов разбираются по предположениям о формате ответа — при расхождении эти блоки просто не показываются (или показывают «срок неизвестен»), остальное работает. Если у вашей версии отличаются имена полей — правится один файл; до тех пор доступна «Консоль API».
+The script prints the shape of key responses. In the UI, open **Diagnostics** on a panel page for the same report (secrets redacted). Until a field is recognized, that block is simply not shown (or shows "expiry unknown") and everything else keeps working.
 
-## Локализация
+## Localization
 
-Тексты интерфейса в исходниках русские и переводятся при отображении через единый словарь `public/js/i18n-dict.js` (общий для браузера и сервера, поэтому ошибки API, уведомления и письма тоже переводятся). Язык выбирается кнопкой RU/EN (по умолчанию — язык браузера) и хранится в браузере; язык уведомлений задаётся в *Настройки → Уведомления* (по умолчанию `EASYADMIN_LANG`). Чтобы добавить строку, добавьте пару `[ru, en]` в словарь — `npm test` падает, если у русского литерала в коде нет перевода; `node e2e/i18n.mjs` обходит все экраны на английском и показывает непереведённое.
+All UI texts are Russian in the source and translated at render time through the single dictionary `public/js/i18n-dict.js` (shared by the browser and the server, so API errors, notifications and emails are translated too). To add a string, add a `[ru, en]` pair — `npm test` fails if a Russian literal in the code has no translation; `node e2e/i18n.mjs` walks every screen in English and reports anything left untranslated.
 
-## Разработка
+## Development
 
 ```bash
-npm test      # тесты API против имитации Easypanel (test/mock-easypanel.js)
-node e2e/ui.mjs  # сквозная проверка UI в браузере (нужен playwright и запущенный npm run demo); в CI выполняется автоматически
-npm run dev   # запуск с перезагрузкой
+npm test         # API tests against an Easypanel mock (test/mock-easypanel.js) + localization checks
+npm run dev      # run with auto-reload
+node e2e/ui.mjs  # end-to-end UI check in a browser (needs playwright and a running npm run demo); runs in CI
 ```
 
-Структура: `src/` — сервер (`app.js` маршруты и права, `routes-ext.js` шаблоны/расписания/вебхуки/инвентарь, `easypanel.js` клиент и операции, `manager.js` кэш и статусы, `alerts.js` уведомления, `scheduler.js`, `totp.js`), `public/` — интерфейс, `test/` — тесты и мок панели, `docs/archive/TZ.md` — исходное ТЗ (архив).
+Layout: `src/` — server (`app.js` routes and permissions, `routes-ext.js` templates/schedules/webhooks/inventory, `easypanel.js` client and operations, `manager.js` cache and statuses, `alerts.js` notifications, `scheduler.js`, `totp.js`, `oidc.js`, `smtp.js`, `ws.js`), `public/` — UI, `test/` — tests and the panel mock, `docs/archive/TZ.md` — the original specification (archive).
 
-## Нагрузка сервера (бета)
+## Server load (beta)
 
-Вкладка «Нагрузка» у каждой панели: графики CPU и памяти сервера (сервисы / система и прочее), таблица сервисов, история сервиса в карточке «Ресурсы», кнопка «Что грузит сервер?» (снимок процессов с хоста). Настройки — Настройки → «Мониторинг нагрузки»: как часто замерять (1–15 минут), срок хранения, уведомления о перегрузке, очистка истории.
+A “Load” tab on each panel: server CPU/memory charts (services vs. system and other), a services table, per-service history in the “Resources” tab, and “What is loading the server?” (a process snapshot from the host). Settings → “Load monitoring”: measuring interval (1–15 minutes), retention, overload alerts, clear history.
 
-## Резервные копии
+## Backups
 
-Меню → «Бэкапы». Вкладки: **Обзор** (по каждому сервису всех панелей: копируется ли он расписанием Easypanel и/или копиями данных EasyAdmin, чем закончился последний запуск; отдельно отмечены «не настроено» и «последний запуск с ошибкой»), **Данные** (защита баз и томов: Easypanel и/или EasyAdmin), **Система** (копия самого EasyAdmin и конфигураций панелей), **Настройки** (общие: расписание, S3, пароль копии системы). Файл `.eabak` шифруется паролем (scrypt + AES-256-GCM) и содержит: систему EasyAdmin (база без истории нагрузки и сессий + ключ приложения) и/или конфигурации панелей Easypanel (все или выбранные: проекты, сервисы, env, источники, домены, порты, тома). Данные баз и томов не копируются — их защищают бэкапы Easypanel.
+Menu → “Backups”. Tabs: **Overview** (for every service on all panels: whether it is backed up by an Easypanel schedule and/or by EasyAdmin data backups, and how the last run ended; “not set up” and “last run failed” are flagged), **Data** (database dumps and volumes), **System** (a backup of EasyAdmin itself and the panel configurations) and **Settings** (shared: schedule, S3, password). A `.eabak` file is encrypted with a password (scrypt + AES-256-GCM) and contains the EasyAdmin system (database without load history and sessions, plus the app key) and/or Easypanel panel configurations (all or selected: projects, services, env, sources, domains, ports, volumes). Database and volume data is not copied — Easypanel’s own backups cover it.
 
-- Расписание: каждый день или раз в неделю в заданный час, ротация по числу копий; при ошибке — уведомление («Ошибка резервного копирования»).
-- Хранилище: папка `data/backups` или S3-совместимое (подпись SigV4, без зависимостей).
-- «Проверить копию» — расшифровка и проверка целостности. «Восстановить систему» — подготавливает базу и перезапускает EasyAdmin; прежняя база сохраняется в `before-restore-*`. «Вернуть сервис» создаёт один сервис из копии на выбранной панели.
-- На новом сервере: положите файл в `data/backups/`, создайте администратора и восстановите копию.
-- Пароль копии системы восстановить нельзя — храните его отдельно.
+- Schedule: daily or weekly at a chosen hour, rotation by copy count; a failure sends a “Backup failure” notification.
+- Storage: the `data/backups` folder or any S3-compatible storage (SigV4, no dependencies).
+- “Verify backup” decrypts and checks integrity. “Restore system” stages the database and restarts EasyAdmin; the previous database is kept in `before-restore-*`. “Restore a service” creates one service from the backup on a chosen panel.
+- On a new server: put the file in `data/backups/`, create an admin and restore.
+- The system copy password cannot be recovered — store it separately.
 
-### Данные баз и томов
+### Database and volume data
 
-Вкладка «Данные» — одно место, где выбирается, **что** копировать (все сервисы или выбранные) и **чем**. Способов два, их можно включить по отдельности или вместе (тогда копии лягут в два разных места); расписание и число копий общие.
+The “Data” tab is the one place to choose **what** to back up (all services or selected) and **how**. There are two methods; turn them on separately or together (the copies then go to two different places). The schedule and the number of copies are shared.
 
-**Расписание Easypanel.** EasyAdmin сам создаёт расписания бэкапов в панелях (как если бы вы настроили их вручную во вкладке «Бэкапы» сервиса), обновляет их при смене настроек и удаляет, когда сервис выведен из охвата или способ выключен. Копии делает и хранит сама панель в своём хранилище; базы восстанавливаются из карточки сервиса. Хранилище выбирается для каждой панели (единственное берётся само). Свои расписания в панелях EasyAdmin не трогает: если для базы или тома уже есть включённое собственное расписание, второе не создаётся. Для баз Easypanel требует лицензию — без неё такие сервисы пропускаются (для них есть копии EasyAdmin). Сверка выполняется после сохранения настроек и далее раз в несколько часов; в обзоре такие расписания помечены «авто».
+**Easypanel schedule.** EasyAdmin creates the backup schedules in the panels itself (as if you had set them up by hand in the service’s “Backups” tab), updates them when the settings change and removes them when a service leaves the scope or the method is turned off. The panel makes and stores the copies in its own storage; databases are restored from the service card. The storage is chosen per panel (a single one is picked automatically). Your own schedules in the panels are left alone: if a database or volume already has its own enabled schedule, a second one is not created. Easypanel needs a license for database schedules — without it those services are skipped (use EasyAdmin copies for them). The sync runs after the settings are saved and then every few hours; such schedules are marked “auto” in the overview.
 
-**Копии данных EasyAdmin.** Дампы Postgres/MySQL/MariaDB/Mongo/Redis и копии томов снимаются скриптом прямо на сервере панели (отдельный процесс systemd, запуск через консоль хоста), через EasyAdmin данные не проходят. Пароли баз остаются в контейнере: дамп берёт их из его окружения.
+**EasyAdmin data copies.** Postgres/MySQL/MariaDB/Mongo/Redis dumps and volume copies. A script on the panel’s own server makes them (a separate systemd process started through the host console); the data never passes through EasyAdmin. Database passwords stay in the container: the dump reads them from its environment.
 
-- Базы и тома внутри compose-стеков находятся автоматически (по меткам контейнеров), Redis снимается дампом RDB.
-- Тома: «как есть», «приостановить» (docker pause) или «остановить» на время копирования; сервис всегда возвращается (в том числе при ошибке).
-- Куда: в папку на сервере панели (по умолчанию `/var/backups/easyadmin`) или в S3 из настроек EasyAdmin (сервер загружает файл по временным подписанным ссылкам, ключи S3 на него не передаются; большие тома — частями).
-- Ротация по числу копий, проверка свободного места, уведомление при ошибке.
-- Копии баз и томов паролем **не шифруются** (расписания Easypanel — тем более): храните их там, куда доступ ограничен — права на папку, шифрование на стороне S3 или диска. Пароль нужен только копии самой системы EasyAdmin. Старые файлы `.enc` (сделанные прежними версиями с паролем) по-прежнему восстанавливаются — подсказка покажет команду расшифровки.
-- «Копии данных» → «Как восстановить» показывает команды восстановления. Тома копируются «на живую» — для согласованности остановите сервис.
+- Databases and volumes inside compose stacks are found automatically (by container labels); Redis is dumped as RDB.
+- Volumes: “as is”, “pause” (docker pause) or “stop” while copying; the service always comes back (even on failure).
+- Destination: a folder on the panel’s server (default `/var/backups/easyadmin`) or the S3 configured in EasyAdmin (the server uploads via temporary signed links, S3 keys are never sent to it; large volumes go in parts).
+- Rotation by copy count, free-space check, failure notification.
+- Database and volume copies are **not** password-encrypted (neither are Easypanel schedules): keep them where access is restricted — folder permissions, S3-side or disk encryption. The password is only for the copy of the EasyAdmin system itself. Old `.enc` files (made by earlier versions with a password) can still be restored — the hint shows the decryption command.
+- “Data backups” → “How to restore” shows restore commands. Volumes are copied live — stop the service for consistency.
 
-## Участие и лицензия
+## Contributing and license
 
-[CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) · лицензия [MIT](LICENSE).
+[CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) · [MIT](LICENSE) license.
