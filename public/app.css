@@ -421,3 +421,6 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .dom-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .dom-chips .chip { text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
 .card.flat > h4 + .facts { margin-top: 8px; }
+
+/* индикатор выполнения должен вращаться и при «уменьшить анимацию» в системе (общее правило выше отключает остальные анимации) */
+@media (prefers-reduced-motion: reduce) { .spinner, .spin .icon { animation: rot 1.4s linear infinite !important; } }

@@ -1,6 +1,6 @@
 import { get, post } from './api.js';
 import { clear, confirmDialog, h, host, icon, modal, spinner, toast } from './dom.js';
-import { STATUS, TYPE_LABEL, allServices, can, favorites, isDb, notify, refresh, store, svcKey } from './store.js';
+import { STATUS, TYPE_LABEL, allServices, can, favorites, isDb, notify, patchService, refresh, store, svcKey } from './store.js';
 
 export const statusBadge = (status) => {
   const [label, kind] = STATUS[status] || STATUS.unknown;
@@ -82,10 +82,13 @@ export async function runServiceAction(s, action) {
     let tracked = null;
     if (known) {
       tracked = await waitDeploy(s, known);
-      if (tracked && FAILED.test(tracked)) { toast(`${s.name}: деплой завершился с ошибкой — лог во вкладке «История»`, 'error', 9000); await refresh(true, { silent: true }); return false; }
+      if (tracked && FAILED.test(tracked)) { busy.delete(key); paintBusy(key); toast(`${s.name}: деплой завершился с ошибкой — лог во вкладке «История»`, 'error', 9000); refresh(true, { silent: true }); return false; }
     }
+    // действие выполнено: сразу снимаем «занято» и показываем новое состояние — не ждём перечитывания списка панели
+    busy.delete(key); paintBusy(key);
+    if (action === 'start' || action === 'restart') patchService(s, { enabled: true }); else if (action === 'stop') patchService(s, { enabled: false });
     toast(`${tracked ? 'Деплой завершён' : done}: ${s.name}`, 'success');
-    await refresh(true, { silent: true });
+    refresh(true, { silent: true });
     return true;
   } catch (e) { toast(`${s.name}: ${e.message}`, 'error', 7000); return false; }
   finally { busy.delete(key); paintBusy(key); }

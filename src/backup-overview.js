@@ -71,7 +71,7 @@ export function createBackupOverview({ db, manager, backups, treeOf, now = () =>
     const panel = dl?.panels?.find((p) => p.name === row.name);
     const failed = !!panel?.failed?.some((f) => String(f).startsWith(label));
     const last = covered && dl ? { state: failed || panel?.error ? 'error' : 'ok', ts: dl.ts, error: panel?.failed?.find((f) => String(f).startsWith(label)) ?? panel?.error ?? null } : null;
-    return { covered, auto: !!s.enabled && covered, possible: type !== 'compose' || d.mode === 'all', last, planned: inScope && d.methods.easypanel };
+    return { covered, auto: !!s.enabled && covered, possible: true, last, planned: inScope && d.methods.easypanel };
   }
 
   async function overview(accessiblePanels, { force = false } = {}) {
