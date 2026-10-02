@@ -1461,6 +1461,9 @@ export const EN = [
   ['{0} · {1}: расписание создано, но найти его не удалось — им придётся управлять вручную', '{0} · {1}: the schedule was created but could not be found — you will have to manage it by hand'],
   ['создано {0}, обновлено {1}, удалено {2}', 'created {0}, updated {1}, removed {2}'],
   /* --- переименование и перенос сервиса --- */
+  ['Сервис будет остановлен на время операции: Easypanel переименует и перенесёт его вместе с образом, файлами и доменами, затем EasyAdmin запустит его снова. Если не получится, прежний сервис запустится обратно.', 'The service will be stopped during the operation: Easypanel renames and moves it together with its image, files and domains, then EasyAdmin starts it again. If that fails, the original service is started back.'],
+  ['Переименовать или перенести', 'Rename or move'],
+  ['Переименовать или перенести сервис', 'Rename or move the service'],
   ['требуют внимания', 'need attention'],
   ['Все события сервиса. У деплоя можно открыть лог.', 'All service events. A deployment’s log can be opened.'],
   ['Имя и проект', 'Name and project'],
