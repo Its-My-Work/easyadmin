@@ -104,13 +104,13 @@ await step('backups section', async () => {
   await p.click('.seg-btn:text-is("Selected")'); await p.waitForSelector('details.diag'); await scan('backups data selected');
   await p.click('.seg-btn:text-is("All services")'); await p.click('.seg-btn:text-is("To S3")'); await scan('backups data s3');
   await p.goto(U + '#/backups/system'); await p.waitForSelector('button:has-text("Back up now")'); await scan('backups system');
-  await p.goto(U + '#/backups/settings'); await p.waitForSelector('h4:has-text("Backup password")'); await scan('backups settings');
+  await p.goto(U + '#/backups/settings'); await p.waitForSelector('h4:has-text("System copy password")'); await scan('backups settings');
 });
 await step('settings', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card'); await p.waitForTimeout(500);
   await p.click('button:has-text("Add channel")'); await p.waitForSelector('.modal'); await scan('channel telegram'); await p.selectOption('.modal select', 'email'); await scan('channel email'); await p.selectOption('.modal select', 'webhook'); await scan('channel webhook'); await p.click('.modal-foot button:has-text("Save")'); await p.waitForTimeout(300); await scan('channel error'); await esc();
 });
-await step('profile', async () => { await p.click('.side-foot a.user'); await p.waitForSelector('.profile-hero'); await p.waitForSelector('.list-item:has-text("This device")'); await scan('profile'); await p.click('button:has-text("Change password")'); await p.waitForTimeout(300); await scan('profile password error'); });
+await step('profile', async () => { await p.click('.topbar a.user'); await p.waitForSelector('.profile-hero'); await p.waitForSelector('.list-item:has-text("This device")'); await scan('profile'); await p.click('button:has-text("Change password")'); await p.waitForTimeout(300); await scan('profile password error'); });
 await step('users', async () => {
   await p.click('.nav-item:has-text("Users")'); await p.waitForSelector('.tbl'); await scan('users');
   await p.click('button:has-text("Add user")'); await p.waitForSelector('.modal'); await scan('user form (new)'); await p.click('.modal-foot button:has-text("Save")'); await p.waitForTimeout(300); await scan('user form error'); await esc();
@@ -118,7 +118,7 @@ await step('users', async () => {
   await p.locator('tr.row', { hasText: 'Прод' }).count(); await scan('users after');
 });
 await step('palette', async () => { await p.keyboard.press('Control+k'); await p.waitForSelector('.pal-item'); await scan('palette'); await esc(); });
-await step('logout → login page', async () => { await p.click('.side-foot button[title="Sign out"]'); await p.waitForSelector('input[type=password]'); await p.fill('input[type=password]', 'x'); await p.fill('input[placeholder="Username"]', 'nobody'); await p.click('button[type=submit]'); await p.waitForTimeout(600); });
+await step('logout → login page', async () => { await p.click('.topbar button[title="Sign out"]'); await p.waitForSelector('input[type=password]'); await p.fill('input[type=password]', 'x'); await p.fill('input[placeholder="Username"]', 'nobody'); await p.click('button[type=submit]'); await p.waitForTimeout(600); });
 
 console.log(found.size ? `Непереведено (${found.size}):` : 'Всё переведено ✔');
 for (const [t, w] of found) console.log(` - ${JSON.stringify(t)}   [${w}]`);

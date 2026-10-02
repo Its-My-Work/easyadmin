@@ -252,15 +252,15 @@ await step('email channel form', async () => {
   await p.waitForSelector('.modal input[placeholder="smtp.example.com"]:visible'); await p.screenshot({ path: 'v3-email.png' }); await p.keyboard.press('Escape');
 });
 await step('профиль: данные, сессии, имя, 2FA и вход с кодом', async () => {
-  await p.click('.side-foot a.user'); await p.waitForSelector('.profile-hero'); await p.waitForSelector('.list-item:has-text("Это устройство")');
+  await p.click('.topbar a.user'); await p.waitForSelector('.profile-hero'); await p.waitForSelector('.list-item:has-text("Это устройство")');
   await p.fill('input[placeholder="admin"]', 'Главный админ'); await p.click('button:has-text("Сохранить")'); await p.waitForSelector('.toast.success:has-text("Профиль сохранён")');
-  await p.waitForSelector('.profile-hero h2:has-text("Главный админ")'); await p.waitForSelector('.side-foot .user b:has-text("Главный админ")');
+  await p.waitForSelector('.profile-hero h2:has-text("Главный админ")'); await p.waitForSelector('.topbar .user b:has-text("Главный админ")');
   await p.click('button:has-text("Включить 2FA")'); await p.waitForSelector('.modal .secret');
   const secret = (await p.textContent('.modal .secret')).trim();
   await p.fill('.modal input[placeholder="123456"]', totp(secret)); await p.click('.modal-foot button:has-text("Включить")');
   await p.waitForSelector('.badge:has-text("Включена")'); await p.screenshot({ path: 'v5-profile.png', fullPage: true });
   // выход и вход с 2FA
-  await p.click('.side-foot button[title="Выйти"]'); await p.waitForSelector('input[placeholder="Логин"]');
+  await p.click('.topbar button[title="Выйти"]'); await p.waitForSelector('input[placeholder="Логин"]');
   await p.fill('input[placeholder="Логин"]', 'admin'); await p.fill('input[type=password]', 'demo12345'); await p.click('button[type=submit]');
   await p.waitForSelector('input[placeholder^="Код 2FA"]:visible');
   await p.fill('input[placeholder^="Код 2FA"]', totp(secret)); await p.click('button[type=submit]'); await p.waitForSelector('.panel-card');
