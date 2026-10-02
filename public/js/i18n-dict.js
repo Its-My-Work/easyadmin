@@ -1488,6 +1488,7 @@ export const EN = [
   ['Путь назначения: начинается с «/», без пробелов', 'Destination path: starts with “/”, no spaces'], ['Сервис compose: латиница, цифры, - _ .', 'Compose service: Latin letters, digits, - _ .'],
   ['У сервиса нет томов: Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются.', 'The service has no volumes: Easypanel only backs up volumes (Volume mount); file and bind mounts are not supported.'],
   ['{0}: нет томов для копирования — Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются', '{0}: no volumes to back up — Easypanel only backs up volumes (Volume mount); file and bind mounts are not supported'],
+  ['Панели недоступны, их сервисы не показаны', 'Panels are unavailable, their services are not shown'],
 ];
 
 /* ------------------------------------------------------------------ */

@@ -10,7 +10,7 @@ const LICENSES = {
   lemonFull: { lemon: { valid: true, meta: { product_id: 108143 } }, portal: null },
 };
 
-export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2.36.0', license = 'full', portalAvailable = false, hideLicense = false, fresh = false } = {}) {
+export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2.36.0', license = 'full', portalAvailable = false, hideLicense = false, fresh = false, backups = null } = {}) {
   const st = {
     panelDomain: { customPanelDomain: null, defaultPanelDomain: 'mock.easypanel.host', serveOnIp: true },
     serviceDomain: { customServiceDomain: null, defaultServiceDomain: 'mock.easypanel.host' },
@@ -25,9 +25,9 @@ export function makePanelSettings({ reject = [], selfUserId = 'u1', version = '2
     providers: [{ id: 'p1', name: 'Backups', type: 's3', bucket: 'b1', region: 'eu', accessKeyId: 'AKIA', secretAccessKey: 'shh' }],
     channels: [{ id: 'c1', name: 'Ops', events: ['deploy'], target: { type: 'slack', url: 'https://hooks.example/x' } }],
     logos: { darkLogo: null, darkLogoMark: null, lightLogo: null, lightLogoMark: null },
-    dbBackups: [{ id: 'b1', projectName: 'web', serviceName: 'pg', databaseName: 'app', enabled: true, schedule: '0 2 * * *', retention: 7, storageProviderId: 'p1', storageProviderPath: 'pg' }],
-    volBackups: [{ id: 'v1', projectName: 'web', serviceName: 'site', volumeName: 'data', enabled: true, schedule: '0 3 * * *', storageProviderId: 'p1', storageProviderPath: 'site', storageProviderName: 'Backups' }],
-    actions: [{ id: 'a1', type: 'backup', status: 'done', projectName: 'web', serviceName: 'pg', description: 'Backup app', meta: { path: 'pg/2026-09-30.sql.gz', databaseName: 'app', storageProviderId: 'p1' } }, { id: 'a2', type: 'deploy', status: 'done', projectName: 'web', serviceName: 'pg' }],
+    dbBackups: backups?.db ?? [{ id: 'b1', projectName: 'web', serviceName: 'pg', databaseName: 'app', enabled: true, schedule: '0 2 * * *', retention: 7, storageProviderId: 'p1', storageProviderPath: 'pg' }],
+    volBackups: backups?.vol ?? [{ id: 'v1', projectName: 'web', serviceName: 'site', volumeName: 'data', enabled: true, schedule: '0 3 * * *', storageProviderId: 'p1', storageProviderPath: 'site', storageProviderName: 'Backups' }],
+    actions: backups?.actions ?? [{ id: 'a1', type: 'backup', status: 'done', projectName: 'web', serviceName: 'pg', description: 'Backup app', meta: { path: 'pg/2026-09-30.sql.gz', databaseName: 'app', storageProviderId: 'p1' } }, { id: 'a2', type: 'deploy', status: 'done', projectName: 'web', serviceName: 'pg' }],
     setupComplete: !fresh, setupInput: null, notified: [], twoFactor: false, changed: [], license: structuredClone(typeof license === 'string' ? LICENSES[license] : license), portalAvailable,
   };
   const ent = () => entitlements(st.license.lemon, st.license.portal).features;
