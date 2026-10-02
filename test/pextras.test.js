@@ -34,36 +34,6 @@ before(async () => {
 });
 after(async () => { app.stop(); app.server.closeAllConnections(); app.server.close(); await Promise.all(panels.map((p) => p.close())); fs.rmSync(tmp, { recursive: true, force: true }); });
 
-describe('хранилища бэкапов панели', () => {
-  test('список без секретов и с описанием полей; создание по типам с проверкой; только админ', async () => {
-    const { id, m } = await addPanel('S1');
-    assert.equal((await api('op', 'GET', `/api/panels/${id}/pstorage`)).status, 403);
-    const l = (await api('admin', 'GET', `/api/panels/${id}/pstorage`)).data;
-    assert.deepEqual(l.providers[0].values, { name: 'Backups', bucket: 'b1', region: 'eu', endpoint: '', storageClass: '' }); assert.deepEqual(l.providers[0].hasSecret, { accessKeyId: true, secretAccessKey: true });
-    assert.ok(!JSON.stringify(l).includes('shh') && !JSON.stringify(l).includes('AKIA')); assert.ok(l.specs.s3.fields.some((f) => f.name === 'secretAccessKey' && f.secret));
-    const create = (b) => api('admin', 'POST', `/api/panels/${id}/pstorage`, b);
-    assert.equal((await create({ type: 'dropbox', values: { name: 'x' } })).status, 400, 'Dropbox/Google подключаются в панели');
-    assert.equal((await create({ type: 'nope', values: {} })).status, 400);
-    assert.equal((await create({ type: 's3', values: { name: 'A', bucket: 'b', region: 'eu' } })).status, 400, 'нет ключей');
-    assert.equal((await create({ type: 'local', values: { name: 'Disk' } })).status, 400, 'нет пути');
-    assert.equal((await create({ type: 'local', values: { name: 'Disk', path: '/backups' } })).status, 200);
-    assert.equal((await create({ type: 's3', values: { name: 'R2', bucket: 'b', region: 'auto', accessKeyId: 'AKIANEW', secretAccessKey: 'newsecret', subtype: 'cloudflare-r2' } })).status, 200);
-    assert.equal((await create({ type: 'sftp', values: { name: 'Box', host: 'h', username: 'u', password: 'p' } })).status, 200);
-    const s3 = m.ps.providers.find((p) => p.name === 'R2'); assert.equal(s3.subtype, 'cloudflare-r2'); assert.equal(s3.secretAccessKey, 'newsecret');
-    assert.ok(!JSON.stringify(await auditOf('storage.provider')).includes('newsecret'), 'секрет не в журнале');
-  });
-  test('правка: пустой секрет — прежний, новый — заменяется; чужой id и пустые обязательные поля отклоняются', async () => {
-    const { id, m } = await addPanel('S2');
-    const put = (type, pid, values) => api('admin', 'PUT', `/api/panels/${id}/pstorage/${type}/${pid}`, { values });
-    assert.equal((await put('s3', 'p1', { name: 'Renamed', bucket: 'b1', region: 'eu', accessKeyId: '', secretAccessKey: '' })).status, 200);
-    const p = m.ps.providers[0]; assert.equal(p.name, 'Renamed'); assert.equal(p.secretAccessKey, 'shh'); assert.equal(p.accessKeyId, 'AKIA');
-    assert.equal((await put('s3', 'p1', { name: 'Renamed', bucket: 'b1', region: 'eu', secretAccessKey: 'rotated' })).status, 200); assert.equal(m.ps.providers[0].secretAccessKey, 'rotated');
-    assert.equal((await put('s3', 'p1', { name: '', bucket: 'b1', region: 'eu' })).status, 400);
-    assert.equal((await put('s3', 'nope', { name: 'x', bucket: 'b', region: 'r' })).status, 400);
-    assert.equal((await put('dropbox', 'p1', { name: 'x' })).status, 400, 'такого хранилища нет');
-  });
-});
-
 describe('каналы уведомлений панели', () => {
   test('создание по типам, проверка полей, правка без показа секретов, тест и удаление', async () => {
     const { id, m } = await addPanel('N1');
@@ -105,49 +75,5 @@ describe('логотипы интерфейса панели', () => {
     assert.equal((await put('lightLogo', null)).status, 200); assert.equal(m.ps.logos.lightLogo, ''); assert.equal(m.ps.logos.darkLogo, 'data:image/png;base64,AAAA');
     assert.equal((await put('darkLogoMark', 'https://example.com/logo.svg')).status, 200);
     assert.equal((await api('op', 'GET', `/api/panels/${id}/plogos`)).status, 403);
-  });
-});
-
-describe('бэкапы баз данных и томов', () => {
-  const q = (t, n) => `type=${t}&project=web&name=${n}`;
-  test('база: расписания, список баз, хранилища, история копий; создание, правка, запуск, удаление с проверкой', async () => {
-    const { id, m } = await addPanel('B1');
-    assert.equal((await api('op', 'GET', `/api/panels/${id}/pbackups?${q('postgres', 'pg')}`)).status, 403);
-    const l = (await api('admin', 'GET', `/api/panels/${id}/pbackups?${q('postgres', 'pg')}`)).data;
-    assert.equal(l.kind, 'db'); assert.deepEqual(l.databases, ['app', 'analytics']); assert.deepEqual(l.providers, [{ id: 'p1', name: 'Backups' }]);
-    assert.equal(l.schedules[0].schedule, '0 2 * * *'); assert.equal(l.history.length, 1); assert.equal(l.history[0].restorable, true); assert.equal(l.history[0].path, 'pg/2026-09-30.sql.gz');
-    assert.equal((await api('admin', 'GET', `/api/panels/${id}/pbackups?${q('redis', 'cache')}`)).data.kind, null, 'у Redis бэкапов по расписанию нет');
-    assert.equal((await api('admin', 'GET', `/api/panels/${id}/pbackups?type=compose&project=web&name=x`)).data.kind, null);
-    const create = (schedule) => api('admin', 'POST', `/api/panels/${id}/pbackups`, { type: 'postgres', project: 'web', name: 'pg', schedule });
-    const ok = { databaseName: 'analytics', enabled: true, schedule: '30 1 * * *', retention: 14, storageProviderId: 'p1', storageProviderPath: 'pg/analytics' };
-    assert.equal((await create({ ...ok, schedule: 'daily' })).status, 400); assert.equal((await create({ ...ok, storageProviderPath: '../etc' })).status, 400);
-    assert.equal((await create({ ...ok, retention: 0 })).status, 400); assert.equal((await create({ ...ok, databaseName: 'a b;drop' })).status, 400); assert.equal((await create({ ...ok, storageProviderId: '' })).status, 400);
-    assert.equal((await create(ok)).status, 200);
-    const made = m.ps.dbBackups.find((b) => b.databaseName === 'analytics'); assert.equal(made.retention, 14); assert.equal(made.serviceName, 'pg');
-    const up = await api('admin', 'PUT', `/api/panels/${id}/pbackups/${made.id}`, { type: 'postgres', project: 'web', name: 'pg', schedule: { ...ok, enabled: false } });
-    assert.equal(up.status, 200); assert.equal(made.enabled, false);
-    assert.equal((await api('admin', 'PUT', `/api/panels/${id}/pbackups/zzz`, { type: 'postgres', project: 'web', name: 'pg', schedule: ok })).status, 400, 'чужое/несуществующее расписание');
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups/${made.id}/run`, { type: 'postgres', project: 'web', name: 'pg' })).status, 200);
-    assert.ok(m.ps.changed.includes('databaseBackups.runDatabaseBackup'));
-    assert.equal((await api('admin', 'DELETE', `/api/panels/${id}/pbackups/b1?${q('postgres', 'other')}`)).status, 400, 'расписание другого сервиса удалить нельзя');
-    assert.equal((await api('admin', 'DELETE', `/api/panels/${id}/pbackups/${made.id}?${q('postgres', 'pg')}`)).status, 200);
-    assert.ok((await auditOf('backup.db')).length >= 4);
-  });
-  test('том: расписание с томом и его запуск; восстановление базы — только из копии из журнала, с подтверждением', async () => {
-    const { id, m } = await addPanel('B2');
-    const l = (await api('admin', 'GET', `/api/panels/${id}/pbackups?${q('app', 'site')}`)).data;
-    assert.equal(l.kind, 'volume'); assert.deepEqual(l.mounts, [{ name: 'data', mountPath: '/data' }]); assert.equal(l.schedules[0].volumeName, 'data');
-    const c = await api('admin', 'POST', `/api/panels/${id}/pbackups`, { type: 'app', project: 'web', name: 'site', schedule: { volumeName: 'logs', enabled: true, schedule: '0 4 * * *', storageProviderId: 'p1', storageProviderPath: 'site/logs' } });
-    assert.equal(c.status, 200); assert.ok(m.ps.volBackups.some((b) => b.volumeName === 'logs'));
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups`, { type: 'app', project: 'web', name: 'site', schedule: { enabled: true, schedule: '0 4 * * *', storageProviderId: 'p1', storageProviderPath: '' } })).status, 400, 'том обязателен');
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups/v1/run`, { type: 'app', project: 'web', name: 'site' })).status, 200);
-    const restore = (b) => api('admin', 'POST', `/api/panels/${id}/pbackups/restore`, { type: 'postgres', project: 'web', name: 'pg', databaseName: 'app', path: 'pg/2026-09-30.sql.gz', storageProviderId: 'p1', confirm: 'web/pg', ...b });
-    assert.equal((await restore({ confirm: 'web/other' })).status, 400, 'без подтверждения');
-    assert.equal((await restore({ path: 'pg/../../etc/passwd' })).status, 400);
-    assert.equal((await restore({ path: 'pg/other.sql.gz' })).status, 400, 'такой копии нет в журнале');
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups/restore`, { type: 'app', project: 'web', name: 'site', databaseName: 'app', path: 'x', storageProviderId: 'p1', confirm: 'web/site' })).status, 400, 'у приложения нет восстановления БД');
-    assert.equal(m.ps.restored, undefined);
-    assert.equal((await restore({})).status, 200); assert.deepEqual(m.ps.restored, { databaseName: 'app', path: 'pg/2026-09-30.sql.gz', projectName: 'web', serviceName: 'pg', storageProviderId: 'p1' });
-    assert.match((await auditOf('backup.db.restore')).find((a) => a.ok === 1).detail, /app ← pg\/2026-09-30/);
   });
 });

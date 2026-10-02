@@ -22,6 +22,10 @@ const P = (o) => ({ member: `${o.tag}.${EXT[o.kind]}.gz`, slug: 'p1-x', ...o });
 const J = (project, service, parts, stamp = 's', extra = {}) => ({ project, service, label: `${project}/${service}`, slug: parts[0].slug ?? 'p1-x', prefix: `${project}__${service}__`, file: `${project}__${service}__${stamp}.tar`, parts: parts.map(P), ...extra });
 const tarList = (f) => spawnSync('tar', ['-tf', f], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean).sort();
 const tarMember = (f, m) => spawnSync('tar', ['-xOf', f, m], { encoding: 'buffer' }).stdout;
+// зашифрованный паролем копий архив (.tar.enc): расшифровка openssl, как в подсказке восстановления
+const decrypt = (f, pw = PW) => spawnSync('openssl', ['enc', '-d', '-aes-256-cbc', '-pbkdf2', '-iter', '100000', '-pass', `pass:${pw}`, '-in', f], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
+const encList = (f, pw) => spawnSync('tar', ['-tf', '-'], { input: decrypt(f, pw).stdout, encoding: 'utf8' }).stdout.split('\n').filter(Boolean).sort();
+const encMember = (f, m, pw) => spawnSync('tar', ['-xOf', '-', m], { input: decrypt(f, pw).stdout, encoding: 'buffer' }).stdout;
 const HAS_BASH = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 const PW = 'correct horse battery';
 let tmp, hostRoot, stubs, state, app, base, db, cookie = ''; const panels = []; const uploads = []; let s3srv, s3Port; const s3Objects = new Map(); const aborted = [];
@@ -82,6 +86,7 @@ describe('вспомогательное', () => {
     assert.equal(shq("a'b"), "'a'\\''b'"); assert.ok(validDir('/var/backups/x') && !validDir('/') && !validDir('rel') && !validDir('/a/../b') && !validDir('/a b'));
     assert.deepEqual(parseName('web__pg__db-postgres__20261001-020000.sql.gz.enc'), { project: 'web', service: 'pg', tag: 'db-postgres', stamp: '20261001-020000', ext: 'sql', encrypted: true });
     assert.deepEqual(parseName('web__pg__20261001-020000.tar'), { project: 'web', service: 'pg', tag: null, stamp: '20261001-020000', ext: 'tar', encrypted: false, archive: true });
+    assert.deepEqual(parseName('web__pg__20261001-020000.tar.enc'), { project: 'web', service: 'pg', tag: null, stamp: '20261001-020000', ext: 'tar', encrypted: true, archive: true });
     assert.equal(parseName('../../etc/passwd'), null); assert.equal(parseName('x__y__vol-data__1.tar.gz'), null); assert.equal(parseName('web__pg__2026.tar'), null);
     assert.deepEqual(parseStatus('START\nOK|web/pg · postgres|f.sql.gz|120\nFAIL|web/x · v|CMD|EA_NODIR:/data/v\nWARN|web/pg · postgres|EA_NODIR:/data/old\nDONE\n'), { started: true, done: true, items: [{ ok: true, label: 'web/pg · postgres', name: 'f.sql.gz', size: 120 }, { ok: false, label: 'web/x · v', error: 'Папки или файла /data/v нет на сервере' }], warns: [{ label: 'web/pg · postgres', text: 'Папки или файла /data/old нет на сервере' }] });
     const h = restoreHint('web__pg__db-postgres__20261001-020000.sql.gz.enc', { dir: '/var/backups/easyadmin/p1-x' });
@@ -89,6 +94,7 @@ describe('вспомогательное', () => {
     assert.match(restoreHint('web__site__vol-data__20261001-020000.tar.gz', { url: 'https://s3/x?sig' }).text, /curl -fL -o .*\ngunzip -c .* \| tar -xf - -C '\/etc\/easypanel\/projects\/web\/site\/volumes\/data'/s);
     const ah = restoreHint('web__pg__20261001-020000.tar', { dir: '/var/backups/easyadmin/p1-x' });
     assert.match(ah.text, /^cd '\/var\/backups\/easyadmin\/p1-x'\nmkdir -p restore && tar -xf 'web__pg__20261001-020000\.tar' -C restore/); assert.match(ah.text, /cat RESTORE\.txt/); assert.ok(ah.notes.length >= 2);
+    const eh = restoreHint('web__pg__20261001-020000.tar.enc', { dir: '/x' }); assert.match(eh.text, /openssl enc -d .*YOUR_BACKUP_PASSWORD.* \| tar -xf - -C restore/); assert.ok(!eh.text.includes(PW));
     assert.throws(() => restoreHint('evil.txt', {}), /Некорректное имя/);
   });
   test('подписанная ссылка S3 содержит подпись, срок и не содержит секретного ключа', () => {
@@ -146,11 +152,18 @@ describe('скрипт на сервере (настоящий bash)', { skip: !
     run(buildScript({ runId: 'rs3f', baseDir, dest: 's3', keep: 1, minFreeKb: 1, items: [item] }), { FAILCURL: '1' });
     assert.match(parseStatus(fs.readFileSync(path.join(baseDir, '.runs', 'rs3f.status'), 'utf8')).items[0].error, /Загрузка в S3.*AccessDenied/);
   });
-  test('копии не шифруются паролем: скрипт обходится без пароля, части читаются обычным gunzip', () => {
-    const baseDir = path.join(tmp, 'b4'); const item = J('a', 'mg', [{ kind: 'mongo', tag: 'db-mongo', project: 'a', service: 'mg', filter: F('a', 'mg'), label: 'a/mg · mongo', slug: 'p3-z' }], 's', { slug: 'p3-z' });
-    const sc = buildScript({ runId: 'rplain', baseDir, dest: 'host', keep: 1, minFreeKb: 1, items: [item] });
-    assert.ok(!/openssl|PASSF|\.pw/.test(sc), 'в скрипте нет шифрования и файла с паролем'); assert.equal(run(sc).status, 0);
-    const f = path.join(baseDir, 'p3-z', item.file); assert.match(zlib.gunzipSync(tarMember(f, 'db-mongo.archive.gz')).toString(), /-- dump --/);
+  test('пароль копий: без пароля архив открытый, с паролем — зашифрован (AES-256), пароль и скрипт не остаются на сервере', () => {
+    const baseDir = path.join(tmp, 'b4'); const mk = (file) => J('a', 'mg', [{ kind: 'mongo', tag: 'db-mongo', project: 'a', service: 'mg', filter: F('a', 'mg'), label: 'a/mg · mongo', slug: 'p3-z' }], 's', { slug: 'p3-z', file });
+    const plain = buildScript({ runId: 'rplain', baseDir, dest: 'host', keep: 1, minFreeKb: 1, items: [mk('a__mg__s.tar')] });
+    assert.ok(!/\.pw"; printf/.test(plain), 'без пароля файла с паролем в скрипте нет'); assert.equal(run(plain).status, 0);
+    assert.match(zlib.gunzipSync(tarMember(path.join(baseDir, 'p3-z', 'a__mg__s.tar'), 'db-mongo.archive.gz')).toString(), /-- dump --/);
+    const sc = buildScript({ runId: 'rcrypt', baseDir, dest: 'host', keep: 1, minFreeKb: 1, items: [mk('a__mg__s2.tar.enc')], password: 'пароль-копий 123' });
+    assert.ok(!sc.includes('пароль-копий'), 'пароль в скрипте только в base64'); assert.equal(run(sc).status, 0);
+    const f = path.join(baseDir, 'p3-z', 'a__mg__s2.tar.enc'); assert.ok(fs.readFileSync(f).subarray(0, 8).toString() === 'Salted__', 'формат openssl enc');
+    assert.deepEqual(encList(f, 'пароль-копий 123'), ['RESTORE.txt', 'db-mongo.archive.gz']); assert.match(zlib.gunzipSync(encMember(f, 'db-mongo.archive.gz', 'пароль-копий 123')).toString(), /-- dump --/);
+    assert.notEqual(decrypt(f, 'неверный пароль').status, 0, 'с чужим паролем не открывается');
+    assert.deepEqual(fs.readdirSync(path.join(baseDir, '.runs')).filter((x) => x.startsWith('rcrypt') && !x.endsWith('.status') && !x.endsWith('.err') && !x.endsWith('.perr')), [], 'файл с паролем и сам скрипт удалены');
+    assert.equal(parseStatus(fs.readFileSync(path.join(baseDir, '.runs', 'rcrypt.status'), 'utf8')).items[0].ok, true);
   });
   test('compose-сервис с несколькими базами и томами — всё равно один архив с RESTORE.txt для каждой части', () => {
     const baseDir = path.join(tmp, 'b5'); const v = path.join(tmp, 'cvol'); fs.mkdirSync(v, { recursive: true }); fs.writeFileSync(path.join(v, 'x'), 'x'.repeat(80));
@@ -166,8 +179,14 @@ describe('скрипт на сервере (настоящий bash)', { skip: !
 describe('через EasyAdmin', { skip: !HAS_BASH }, () => {
   const addPanel = async (name, seed) => { const m = createMockPanel({ token: 'T', seed }); panels.push(m); return (await api('POST', '/api/panels', { name, url: await m.listen(), token: 'T' })).data.id; };
   const dataDir = () => path.join(tmp, 'hostdir');
+  test('без пароля копии данных не запускаются и не включаются', async () => {
+    assert.equal((await api('PUT', '/api/backups/settings', { data: { mode: 'all' } })).status, 400, 'охват без пароля нельзя');
+    assert.equal((await api('PUT', '/api/backups/settings', { enabled: true })).status, 400);
+    assert.equal((await api('POST', '/api/backups/data/run')).status, 400);
+    assert.equal((await api('PUT', '/api/backups/settings', { password: PW })).status, 200);
+  });
   test('настройки данных: проверки значений', async () => {
-    for (const bad of [{ mode: 'x' }, { dest: 'ftp' }, { dir: 'rel' }, { dir: '/a/../b' }, { keep: 0 }, { keys: ['x'] }, { methods: { easyadmin: 'y' } }, { methods: 5 }, { providers: { a: 'x' } }, { providers: { 1: '../x' } }, { mode: 'selected', keys: [] }]) assert.equal((await api('PUT', '/api/backups/settings', { data: bad })).status, 400, JSON.stringify(bad));
+    for (const bad of [{ mode: 'x' }, { dest: 'ftp' }, { dir: 'rel' }, { dir: '/a/../b' }, { keep: 0 }, { keys: ['x'] }, { mode: 'selected', keys: [] }]) assert.equal((await api('PUT', '/api/backups/settings', { data: bad })).status, 400, JSON.stringify(bad));
     assert.equal((await api('PUT', '/api/backups/settings', { data: { mode: 'all', dest: 's3' } })).status, 400, 'S3 не настроен');
   });
   test('«на сервер»: базы и тома выбранных сервисов, без шифрования, список файлов и подсказка восстановления', async () => {
@@ -180,10 +199,11 @@ describe('через EasyAdmin', { skip: !HAS_BASH }, () => {
     assert.equal(st.result.ok, true, JSON.stringify(st)); assert.equal(st.result.files, 2, 'по одному архиву на сервис: pg и site; том pg, file-монтирование и несвязанный сервис не копируются');
     const labels = st.panels[0].items.map((x) => x.label); assert.deepEqual(labels.sort(), ['web/pg', 'web/site']);
     const files = (await api('GET', '/api/backups/data/files')).data.files; assert.equal(files.length, 2); assert.ok(files.every((f) => f.panel === 'Alpha Panel' && f.size > 0));
-    const pg = files.find((f) => f.name.startsWith('web__pg__')); assert.match(pg.name, /^web__pg__\d{8}-\d{6}\.tar$/); assert.ok(!pg.name.endsWith('.enc'), 'новые копии не шифруются паролем');
+    const pg = files.find((f) => f.name.startsWith('web__pg__')); assert.match(pg.name, /^web__pg__\d{8}-\d{6}\.tar\.enc$/, 'архив зашифрован паролем копий');
     const site = files.find((f) => f.name.startsWith('web__site__')); const dir = path.join(dataDir(), `p${id}-alpha-panel`);
-    assert.deepEqual(tarList(path.join(dir, pg.name)), ['RESTORE.txt', 'db-postgres.sql.gz']); assert.deepEqual(tarList(path.join(dir, site.name)), ['RESTORE.txt', 'bind-vol2.tar.gz']);
-    const hint = (await api('POST', '/api/backups/data/hint', { panelId: id, name: pg.name })).data; assert.match(hint.text, /tar -xf .*web__pg__/); assert.match(hint.text, /cat RESTORE\.txt/); assert.match(tarMember(path.join(dir, pg.name), 'RESTORE.txt').toString(), /psql/); assert.ok(Array.isArray(hint.notes)); assert.ok(!hint.text.includes(PW));
+    assert.deepEqual(encList(path.join(dir, pg.name)), ['RESTORE.txt', 'db-postgres.sql.gz']); assert.deepEqual(encList(path.join(dir, site.name)), ['RESTORE.txt', 'bind-vol2.tar.gz']);
+    assert.notEqual(decrypt(path.join(dir, pg.name), 'не тот пароль').status, 0);
+    const hint = (await api('POST', '/api/backups/data/hint', { panelId: id, name: pg.name })).data; assert.match(hint.text, /openssl enc -d .*web__pg__.* \| tar -xf - -C restore/); assert.match(hint.text, /cat RESTORE\.txt/); assert.match(encMember(path.join(dir, pg.name), 'RESTORE.txt').toString(), /psql/); assert.equal(hint.encrypted, true); assert.ok(Array.isArray(hint.notes)); assert.ok(!hint.text.includes(PW));
     assert.equal((await api('POST', '/api/backups/data/hint', { panelId: id, name: '../x' })).status, 400);
     assert.ok((await api('GET', '/api/backups')).data.settings.dataLast.ok);
     app.dataId = id;
@@ -206,7 +226,7 @@ describe('через EasyAdmin', { skip: !HAS_BASH }, () => {
     fs.rmSync(path.join(tmp, 'curl.log'), { force: true }); await api('POST', '/api/backups/data/run');
     const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
     assert.equal(st.result.ok, true, JSON.stringify(st)); const log = fs.readFileSync(path.join(tmp, 'curl.log'), 'utf8');
-    assert.match(log, /^http:\/\/127\.0\.0\.1:\d+\/bk\/ea\/data\/p\d+-alpha-panel\/web__pg__\d{8}-\d{6}\.tar\?X-Amz-Algorithm=AWS4-HMAC-SHA256.*X-Amz-Signature=[0-9a-f]{64}/m); assert.ok(!log.includes('TOPSECRETKEY'));
+    assert.match(log, /^http:\/\/127\.0\.0\.1:\d+\/bk\/ea\/data\/p\d+-alpha-panel\/web__pg__\d{8}-\d{6}\.tar\.enc\?X-Amz-Algorithm=AWS4-HMAC-SHA256.*X-Amz-Signature=[0-9a-f]{64}/m); assert.ok(!log.includes('TOPSECRETKEY'));
     cookie = ''; await api('POST', '/api/login', { username: 'admin', password: 'password1' });
   });
 });
@@ -251,10 +271,10 @@ describe('согласованность томов, compose, Redis, загру�
     const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
     const items = st.panels[0].items; assert.equal(items.length, 1, 'весь стек — одно задание'); assert.equal(items[0].label, 'main/stack'); assert.equal(items[0].status, 'ok');
     assert.match(items[0].note, /main_stack_appdata\/_data нет на сервере/, 'том, которого нет на сервере, пропущен с предупреждением, остальное скопировано');
-    const files = fs.readdirSync(path.join(tmp, 'hostdir2', `p${id}-compose-panel`)); assert.equal(files.length, 1); assert.match(files[0], /^main__stack__\d{8}-\d{6}\.tar$/);
+    const files = fs.readdirSync(path.join(tmp, 'hostdir2', `p${id}-compose-panel`)); assert.equal(files.length, 1); assert.match(files[0], /^main__stack__\d{8}-\d{6}\.tar\.enc$/);
     const f = path.join(tmp, 'hostdir2', `p${id}-compose-panel`, files[0]);
-    assert.deepEqual(tarList(f), ['RESTORE.txt', 'cbind~app~composebind.tar.gz', 'cdb~postgres~db.sql.gz', 'cdb~redis~cache.rdb.gz'], 'docker.sock, чужой проект и том postgres исключены');
-    const txt = tarMember(f, 'RESTORE.txt').toString(); assert.match(txt, /label=com\.docker\.compose\.service=db/); assert.match(txt, /psql/); assert.ok(txt.includes(`-C '${path.dirname(bindDir)}'`));
+    assert.deepEqual(encList(f), ['RESTORE.txt', 'cbind~app~composebind.tar.gz', 'cdb~postgres~db.sql.gz', 'cdb~redis~cache.rdb.gz'], 'docker.sock, чужой проект и том postgres исключены');
+    const txt = encMember(f, 'RESTORE.txt').toString(); assert.match(txt, /label=com\.docker\.compose\.service=db/); assert.match(txt, /psql/); assert.ok(txt.includes(`-C '${path.dirname(bindDir)}'`));
     const hint = (await api('POST', '/api/backups/data/hint', { panelId: id, name: files[0] })).data; assert.match(hint.text, /cat RESTORE\.txt/);
     assert.match(restoreHint('main__stack__cvol~app~main_stack_appdata__20261001-020000.tar.gz', { dir: '/x' }).text, /\/var\/lib\/docker\/volumes\/main_stack_appdata\/_data/);
   });
@@ -268,9 +288,10 @@ describe('согласованность томов, compose, Redis, загру�
     try {
       const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; }, 30000);
       assert.equal(st.result.ok, true, JSON.stringify(st));
-      const key = [...s3Objects.keys()].find((k) => /files__big__\d{8}-\d{6}\.tar$/.test(k)); assert.ok(key, [...s3Objects.keys()].join());
+      const key = [...s3Objects.keys()].find((k) => /files__big__\d{8}-\d{6}\.tar\.enc$/.test(k)); assert.ok(key, [...s3Objects.keys()].join());
       const parts = uploads.filter((u) => u.m === 'PUT' && /partNumber=/.test(u.u)); assert.ok(parts.length >= 3, `частей: ${parts.length}`);
-      const inner = spawnSync('bash', ['-c', 'tar -xOf - bind-bigvol.tar.gz | tar -tzf -'], { input: s3Objects.get(key), encoding: 'utf8' }); assert.match(inner.stdout, /bigvol\/big\.bin/);
+      const dec = spawnSync('openssl', ['enc', '-d', '-aes-256-cbc', '-pbkdf2', '-iter', '100000', '-pass', `pass:${PW}`], { input: s3Objects.get(key), encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 }); assert.equal(dec.status, 0);
+      const inner = spawnSync('bash', ['-c', 'tar -xOf - bind-bigvol.tar.gz | tar -tzf -'], { input: dec.stdout, encoding: 'utf8' }); assert.match(inner.stdout, /bigvol\/big\.bin/);
       assert.equal(aborted.length, 0, 'успешная загрузка не отменяется');
     } finally { delete process.env.EA_REALCURL; }
   });

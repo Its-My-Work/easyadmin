@@ -130,7 +130,7 @@ function renderView() {
   else if (r.a === 'templates') node = templatesPage();
   else if (r.a === 'schedules') node = schedulesPage();
   else if (r.a === 'audit') node = auditPage();
-  else if (r.a === 'backups') node = can('admin') ? backupsPage(r.b) : dashboard();
+  else if (r.a === 'backups') node = can('admin') ? backupsPage() : dashboard();
   else if (r.a === 'settings') node = can('admin') ? settingsPage() : profilePage();
   else if (r.a === 'profile') node = profilePage();
   else if (r.a === 'users') node = usersPage();

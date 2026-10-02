@@ -132,8 +132,6 @@ const maskDeep = (v, d = 0) => {
 };
 const listOf = (v, ...keys) => (Array.isArray(v) ? v : keys.map((k) => v?.[k]).find(Array.isArray) ?? []);
 const firstString = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' ? Object.values(v).map(firstString).find(Boolean) ?? null : null);
-const PROVIDER_TYPES = ['s3', 'sftp', 'ftp', 'local', 'dropbox', 'google'];
-const providerType = (p) => { const t = String(p?.type ?? p?.provider ?? '').toLowerCase(); if (PROVIDER_TYPES.includes(t)) return t; if (p?.bucket) return 's3'; if (p?.path && !p?.host) return 'local'; return null; };
 const BUILDER_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/;
 const id = (v) => { const s = String(v ?? ''); if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) throw new HttpError(400, 'Некорректный идентификатор'); return s; };
 
@@ -332,7 +330,7 @@ export function psettingsRoutes(d) {
       return { id: r.id, ts: r.ts, content: decrypt(key, r.content_enc) };
     }, { admin: true }],
 
-    /* ---------- кластер, хранилища бэкапов, каналы уведомлений панели ---------- */
+    /* ---------- кластер, каналы уведомлений панели ---------- */
     ['GET', '/api/panels/:id/pcluster', async (ctx) => {
       const { row, c } = access(ctx);
       if (!await lic.has(row, c, 'cluster')) return { nodes: [], workerCommand: null, error: null, locked: true };
@@ -340,11 +338,6 @@ export function psettingsRoutes(d) {
       return { nodes: nodes?.error ? [] : listOf(nodes, 'nodes').map((n) => ({ id: String(n.ID ?? n.id ?? ''), host: n.Description?.Hostname ?? n.hostname ?? n.name ?? '', role: n.Spec?.Role ?? n.role ?? null, state: n.Status?.State ?? n.status ?? null, manager: !!(n.ManagerStatus ?? n.manager) })), error: nodes?.error ?? null, workerCommand: typeof cmd === 'string' ? cmd : firstString(cmd) };
     }, { admin: true }],
     ['DELETE', '/api/panels/:id/pcluster/:nid', async (ctx) => { const { row, c } = access(ctx); const nid = id(ctx.params.nid); await write(ctx, row, 'cluster.node.remove', nid, () => c.mutate('cluster.removeNode', { id: nid })); return { ok: true }; }, { admin: true }],
-    ['DELETE', '/api/panels/:id/pstorage/:type/:pid', async (ctx) => {
-      const { row, c } = access(ctx); const type = ctx.params.type; need(PROVIDER_TYPES.includes(type), 'Неизвестный тип хранилища'); const pid = id(ctx.params.pid);
-      await write(ctx, row, 'storage.provider.delete', `${type}/${pid}`, () => c.mutate(`storageProviders.${type}.deleteProvider`, { id: pid }));
-      return { ok: true };
-    }, { admin: true }],
     ['DELETE', '/api/panels/:id/pnotify/:cid', async (ctx) => { const { row, c } = access(ctx); const cid = id(ctx.params.cid); await lic.require(row, c, 'notifications', 'Каналы уведомлений панели'); await write(ctx, row, 'panel.notify.destroy', ctx.url.searchParams.get('name') || cid, () => c.mutate('notifications.destroyNotificationChannel', { id: cid })); await applied(c, async () => !listOf(await c.query('notifications.listNotificationChannels'), 'channels').some((x) => String(x.id) === cid)); return { ok: true }; }, { admin: true }],
 
     /* ---------- журнал действий панели ---------- */

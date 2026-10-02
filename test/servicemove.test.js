@@ -90,6 +90,7 @@ describe('ссылки в EasyAdmin следуют за сервисом', () =>
     assert.equal(sch.status, 200, JSON.stringify(sch.data));
     const hook = await api('admin', 'POST', '/api/hooks', { panelId: pid, type: 'app', project: 'infra', name: 'site', label: 'CI' }); assert.equal(hook.status, 200, JSON.stringify(hook.data));
     db.prepare('INSERT INTO svc_metrics (panel_id, ts, res, project, service, containers) VALUES (?,?,?,?,?,?)').run(pid, Date.now(), 60, 'infra', 'site', 1);
+    await api('admin', 'PUT', '/api/backups/settings', { password: 'correct horse battery' }); // без пароля копий охват не включить
     assert.equal((await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${pid}|infra|site`, `${pid}|infra|pg`] } })).status, 200);
     const r = await move('admin', { project: 'infra', name: 'site', newProject: 'web', newName: 'site-new' }); assert.equal(r.status, 200, JSON.stringify(r.data));
     assert.deepEqual(r.data.updated, { metrics: 1, hooks: 1, schedules: 1 });

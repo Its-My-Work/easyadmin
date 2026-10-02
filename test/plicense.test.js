@@ -81,30 +81,12 @@ describe('бесплатная панель: закрытое отклоняет
     assert.ok(!(await auditOf('panel.user')).some((a) => a.ok === 1), 'в журнале нет ложных «успехов»');
   });
 
-  test('бэкапы: тома бесплатны, базы по расписанию — нет, но запуск вручную, журнал и восстановление доступны', async () => {
-    const { id, m } = await addPanel('FREE-B', { license: 'free' });
-    const q = 'project=web&name=pg&type=postgres';
-    const d = (await api('admin', 'GET', `/api/panels/${id}/pbackups?${q}`)).data; assert.equal(d.kind, 'db'); assert.equal(d.scheduled, false);
-    const sched = { databaseName: 'app', enabled: true, schedule: '0 2 * * *', storageProviderId: 'p1', storageProviderPath: 'pg' };
-    const r = await api('admin', 'POST', `/api/panels/${id}/pbackups`, { type: 'postgres', project: 'web', name: 'pg', schedule: sched });
-    assert.equal(r.status, 403); assert.match(r.data.error, /не выполняет/);
-    assert.equal((await api('admin', 'PUT', `/api/panels/${id}/pbackups/b1`, { type: 'postgres', project: 'web', name: 'pg', schedule: sched })).status, 403, 'включить расписание нельзя');
-    assert.equal((await api('admin', 'PUT', `/api/panels/${id}/pbackups/b1`, { type: 'postgres', project: 'web', name: 'pg', schedule: { ...sched, enabled: false } })).status, 200, 'выключить можно');
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups/b1/run`, { type: 'postgres', project: 'web', name: 'pg' })).status, 200, 'запуск вручную работает');
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups/restore`, { type: 'postgres', project: 'web', name: 'pg', databaseName: 'app', path: 'pg/2026-09-30.sql.gz', storageProviderId: 'p1', confirm: 'web/pg' })).status, 200, 'восстановление работает');
-    assert.equal((await api('admin', 'DELETE', `/api/panels/${id}/pbackups/b1?${q}`)).status, 200);
-    const v = (await api('admin', 'GET', `/api/panels/${id}/pbackups?type=app&project=web&name=site`)).data; assert.equal(v.scheduled, true);
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups`, { type: 'app', project: 'web', name: 'site', schedule: { volumeName: 'logs', enabled: true, schedule: '0 4 * * *', storageProviderId: 'p1', storageProviderPath: 'x' } })).status, 200, 'тома бесплатны');
-    assert.ok(m.ps.volBackups.some((b) => b.volumeName === 'logs'));
-  });
-
-  test('Lemon-ключ (обычный продукт): мониторинг, уведомления, бэкапы и домен открыты; брендинг, пользователи, кластер — нет', async () => {
+  test('Lemon-ключ (обычный продукт): мониторинг, уведомления и домен открыты; брендинг, пользователи, кластер — нет', async () => {
     const { id } = await addPanel('LEMON', { license: 'lemon' });
     const put = (k, v) => api('admin', 'PUT', `/api/panels/${id}/psettings/${k}`, { value: v });
     assert.equal((await put('metrics', { enabled: true, retentionType: 'days', retentionValue: 7, scrapeInterval: 15 })).status, 200);
     assert.equal((await put('serviceDomain', { customServiceDomain: 'apps.example.com' })).status, 200);
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/pnotify`, { type: 'slack', name: 'S', target: { url: 'https://hooks.example/x' }, events: {} })).status, 200);
-    assert.equal((await api('admin', 'POST', `/api/panels/${id}/pbackups`, { type: 'postgres', project: 'web', name: 'pg', schedule: { databaseName: 'app', enabled: true, schedule: '0 2 * * *', storageProviderId: 'p1', storageProviderPath: 'pg' } })).status, 200);
     assert.equal((await put('customCode', { customCode: 'x' })).status, 403);
     assert.equal((await api('admin', 'POST', `/api/panels/${id}/pusers`, { email: 'n@example.com', password: 'longenough1' })).status, 403);
     assert.equal((await api('admin', 'GET', `/api/panels/${id}/pcluster`)).data.locked, true);

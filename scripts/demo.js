@@ -20,18 +20,10 @@ const seeds = [
   ['Стейджинг', { shop: [{ name: 'web', image: 'ghcr.io/acme/shop:1.9.0-rc1' }, { name: 'api', enabled: false, image: 'ghcr.io/acme/api:2.5.0-rc' }, { name: 'mongo', type: 'mongo' }] }, { cpu: 12, mem: 30, disk: 22 }],
   ['Клиент Acme', { acme: [{ name: 'site', crash: true }, { name: 'stack', type: 'compose', parts: ['web', 'db'] }] }, { cpu: 91, mem: 88, disk: 93 }],
 ];
-// расписания бэкапов самих панелей (для скриншота раздела «Бэкапы»): у Прод·EU один запуск с ошибкой, у Стейджинга и Клиента — ничего
-const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
-const sched = (project, service, db = true) => ({ id: `b-${project}-${service}`, projectName: project, serviceName: service, [db ? 'databaseName' : 'volumeName']: db ? 'app' : 'data', enabled: true, schedule: '0 2 * * *', retention: 7, storageProviderId: 'p1', storageProviderPath: service });
-const act = (project, service, status, h) => ({ id: `a-${project}-${service}`, type: 'backup', status, projectName: project, serviceName: service, createdAt: ago(h) });
-const BK = process.env.DEMO_BACKUPS ? {
-  'Прод · EU': { db: [sched('shop', 'db'), sched('blog', 'mysql')], vol: [sched('shop', 'web', false)], actions: [act('shop', 'db', 'done', 3), act('blog', 'mysql', 'error', 27), act('shop', 'web', 'done', 3)] },
-  'Прод · US': { db: [sched('crm', 'db'), sched('analytics', 'pg')], vol: [], actions: [act('crm', 'db', 'done', 5), act('analytics', 'pg', 'done', 5)] },
-} : {};
 const port = Number(process.env.PORT || 3100);
 const panels = [];
 for (const [name, seed, stats] of seeds) {
-  const m = createMockPanel({ deployMs: Number(process.env.DEMO_DEPLOY_MS || 0), psettings: { backups: BK[name], license: name.includes('Стейджинг') ? 'free' : name.includes('Клиент') ? 'lemon' : 'full', portalAvailable: true }, consolePath: '/ws/terminal', consoleFraming: 'json-input', token: 'demo-' + name.length, seed, stats, certs: [{ domain: `${name.length}.shop.example.com`, expiresAt: soon(name.length * 7) }, { domain: 'www.example.com', expiresAt: soon(name.length % 2 ? 4 : 75) }] });
+  const m = createMockPanel({ deployMs: Number(process.env.DEMO_DEPLOY_MS || 0), psettings: { license: name.includes('Стейджинг') ? 'free' : name.includes('Клиент') ? 'lemon' : 'full', portalAvailable: true }, consolePath: '/ws/terminal', consoleFraming: 'json-input', token: 'demo-' + name.length, seed, stats, certs: [{ domain: `${name.length}.shop.example.com`, expiresAt: soon(name.length * 7) }, { domain: 'www.example.com', expiresAt: soon(name.length % 2 ? 4 : 75) }] });
   panels.push({ name: shown(name), m, url: await m.listen() });
 }
 // демо-каталог шаблонов Easypanel из нескольких образцов — чтобы вкладка «Каталог» работала без интернета
@@ -75,10 +67,16 @@ for (const { id } of db.prepare('SELECT id FROM panels').all()) {
     }
   }
 }
-if (process.env.DEMO_BACKUPS) { // копии данных EasyAdmin: две панели, последний запуск с одной ошибкой
+if (process.env.DEMO_BACKUPS) { // копии EasyAdmin: две панели в копиях, результаты прошлых запусков — в основном успешные, одна ошибка и одна давняя копия
   const keys = seeds.slice(0, 2).flatMap(([, seed], i) => Object.entries(seed).flatMap(([pr, svcs]) => svcs.map((x) => `${i + 1}|${pr}|${x.name}`)));
   await call('PUT', '/api/backups/settings', { password: 'demo-backup-pass', enabled: true, every: 'daily', hour: 3, data: { mode: 'selected', keys } });
-  db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_last', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify({ ts: Date.now() - 4 * 3600e3, ok: false, files: keys.length - 1, failed: 1, dest: 'host', reason: 'schedule', panels: [{ name: shown('Прод · EU'), status: 'partial', error: null, failed: ['shop/cache · redis: not enough free space'] }, { name: shown('Прод · US'), status: 'done', error: null, failed: [] }] }));
+  const ago = (h) => Date.now() - h * 3600e3; const svc = {};
+  keys.forEach((k, i) => { svc[k] = { ts: ago(3 + (i % 3)), ok: true, size: (4 + i * 7) * 1048576 }; });
+  svc['1|shop|cache'] = { ts: ago(4), ok: false, error: 'Мало места на диске сервера: свободно 312 МБ' };
+  svc['1|blog|mysql'] = { ts: ago(12 * 24), ok: true, size: 38 * 1048576 };
+  svc['1|shop|api'] = { ts: ago(4), ok: true, empty: true }; svc['1|shop|worker'] = { ts: ago(4), ok: true, empty: true }; delete svc['1|blog|wordpress'];
+  db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_svc', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify(svc));
+  db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_last', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify({ ts: ago(4), ok: false, files: keys.length - 1, failed: 1, dest: 'host', reason: 'schedule', panels: [] }));
   try { await call('POST', '/api/backups/run', {}); } catch (e) { console.error('Демо: системная копия не создана —', e.message); }
 }
 console.log(`Демо запущено: ${base}  (логин admin / пароль demo12345)`);

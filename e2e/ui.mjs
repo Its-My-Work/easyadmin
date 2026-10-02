@@ -10,7 +10,7 @@ const errors = [];
 p.on('pageerror', (e) => errors.push('PAGEERR ' + e.message));
 p.on('console', (m) => { if (m.type() === 'error') errors.push('CONSOLE ' + m.text()); });
 let failed = 0;
-const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); } catch (e) { failed++; console.log('FAIL', name, e.message.split('\n')[0]); await p.screenshot({ path: 'e2e-fail.png' }); } };
+const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); } catch (e) { failed++; console.log('FAIL', name, process.env.E2E_VERBOSE ? e.message : e.message.split('\n')[0]); await p.screenshot({ path: 'e2e-fail.png' }); } };
 // Playwright waitForFunction выполняет код в странице через eval, а CSP приложения запрещает unsafe-eval (иногда ловится как EvalError) — ждём опросом через evaluate
 const until = async (fn, arg = null, { timeout = 8000 } = {}) => { const t0 = Date.now(); for (;;) { if (await p.evaluate(fn, arg)) return; if (Date.now() - t0 > timeout) throw new Error('until: таймаут ' + timeout + ' мс'); await p.waitForTimeout(100); } };
 const U = 'http://127.0.0.1:3100/';
@@ -78,24 +78,21 @@ await step('settings: канал уведомлений + бэкап', async () 
   await p.click('.modal-foot button:has-text("Сохранить")'); await p.waitForSelector('.list-item:has-text("CI")');
   await p.screenshot({ path: 'v2-settings.png', fullPage: true });
 });
-await step('бэкапы: настройки, копия системы, данные, обзор', async () => {
-  await p.goto(U + '#/backups/settings'); await p.waitForSelector('.card:has(h4:has-text("Пароль копии системы"))');
-  await p.fill('.card:has(h4:has-text("Пароль копии системы")) input[type=password]', 'correct horse battery'); await p.click('button:has-text("Сохранить")'); await p.waitForSelector('.toast.success');
-  await p.goto(U + '#/backups/system'); await p.waitForSelector('button:has-text("Создать копию сейчас")');
-  await p.click('button:has-text("Создать копию сейчас")'); await p.waitForSelector('.list-item .mono', { timeout: 15000 });
-  await p.click('button[aria-label="Проверить копию"]'); await p.waitForSelector('.modal'); await p.click('.modal button:has-text("Продолжить")');
-  await p.waitForSelector('.modal:has-text("Копия в порядке")'); await p.keyboard.press('Escape');
-  await p.goto(U + '#/backups/data'); await p.waitForSelector('.seg-btn:text-is("Выбранные")');
-  await p.click('.seg-btn:text-is("Выбранные")'); await p.waitForSelector('details.diag');
-  await p.click('.seg-btn:text-is("Все сервисы")'); await p.waitForSelector('.seg-btn:text-is("В S3")'); await p.click('.seg-btn:text-is("В S3")'); await p.waitForSelector('text=Хранилище S3 не настроено');
+await step('бэкапы: пароль, включение сервиса, копия EasyAdmin, настройки, вкладка сервиса', async () => {
   await p.goto(U + '#/backups'); await p.waitForSelector('.kpis .kpi'); await p.waitForSelector('.tbl tbody tr');
-  const rows = await p.locator('.tbl tbody tr').count(); if (rows < 5) throw new Error('в обзоре мало сервисов: ' + rows);
+  const rows = await p.locator('.tbl tbody tr.row').count(); if (rows < 5) throw new Error('в обзоре мало сервисов: ' + rows);
+  await p.click('button:has-text("Задать пароль")'); await p.waitForSelector('.modal #bk-pass'); await p.fill('.modal #bk-pass', 'correct horse battery');
+  await p.click('.modal-foot button:has-text("Сохранить")'); await p.waitForSelector('.modal', { state: 'detached' }); await p.waitForSelector('.callout:has-text("зашифрованы паролем")');
+  await p.locator('tbody tr.row.dim .toggle').first().click();
+  await until((x) => document.querySelectorAll('tbody tr.row:not(.dim)').length > 0);
   await p.screenshot({ path: 'v2-backups.png' });
-  await p.click('.seg-btn:text-is("Не настроено")'); await p.waitForTimeout(200);
-  const bad = await p.locator('.tbl tbody tr:has(.badge.err)').count(); if (!bad) throw new Error('нет строк «Не настроено»');
-  await p.locator('.tbl button:has-text("Настроить")').first().click(); await p.waitForSelector('.modal:has-text("Расписание Easypanel")'); await p.waitForSelector('.modal:has-text("Копии данных EasyAdmin")');
-  await p.click('.modal-foot button:has-text("Включить защиту")'); await p.waitForSelector('.toast');
-  await p.goto(U + '#/backups/data'); await p.waitForSelector('.card:has(h4:has-text("Расписание Easypanel"))'); await p.waitForSelector('.card:has(h4:has-text("Копии данных EasyAdmin"))');
+  await p.click('button:has-text("Создать копию")'); await p.waitForSelector('button:has-text("Копии (1)")', { timeout: 15000 });
+  await p.click('button:has-text("Копии (1)")'); await p.waitForSelector('.modal .list-item .mono');
+  await p.click('.modal button[aria-label="Проверить копию"]'); await p.click('.modal-foot button:has-text("Продолжить")');
+  await p.waitForSelector('.modal:has-text("Копия в порядке")'); await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
+  await p.click('button:has-text("Настройки")'); await p.waitForSelector('.modal .seg-btn:text-is("В S3")'); await p.click('.modal .seg-btn:text-is("В S3")'); await p.waitForSelector('.modal input[placeholder="https://s3.example.com"]'); await p.keyboard.press('Escape');
+  await p.goto(U + '#/panel/1'); await p.waitForSelector('.project'); await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in');
+  await p.click('.drawer .dtab:has-text("Бэкапы")'); await p.waitForSelector('.drawer :text("Копировать этот сервис")'); await p.keyboard.press('Escape');
 });
 await step('drawer nav: вертикальное меню без горизонтальной прокрутки, цифры переключают разделы', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');

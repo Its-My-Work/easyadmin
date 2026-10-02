@@ -98,13 +98,10 @@ await step('load tab, service history, settings card', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card:has(h3:has-text("Load monitoring"))'); await scan('load settings');
 });
 await step('backups section', async () => {
-  await p.goto(U + '#/backups'); await p.waitForSelector('.kpis .kpi'); await p.waitForSelector('.tbl tbody tr'); await scan('backups overview');
-  await p.locator('.tbl button:has-text("Set up")').first().click(); await p.waitForSelector('.modal'); await scan('backups setup modal'); await esc();
-  await p.goto(U + '#/backups/data'); await p.waitForSelector('.seg-btn:text-is("Selected")'); await scan('backups data');
-  await p.click('.seg-btn:text-is("Selected")'); await p.waitForSelector('details.diag'); await scan('backups data selected');
-  await p.click('.seg-btn:text-is("All services")'); await p.click('.seg-btn:text-is("To S3")'); await scan('backups data s3');
-  await p.goto(U + '#/backups/system'); await p.waitForSelector('button:has-text("Back up now")'); await scan('backups system');
-  await p.goto(U + '#/backups/settings'); await p.waitForSelector('h4:has-text("System copy password")'); await scan('backups settings');
+  await p.goto(U + '#/backups'); await p.waitForSelector('.kpis .kpi'); await p.waitForSelector('.tbl tbody tr'); await scan('backups page');
+  await p.click('button:has-text("Settings")'); await p.waitForSelector('.modal .seg-btn:text-is("To S3")'); await scan('backups settings'); await p.click('.modal .seg-btn:text-is("To S3")'); await scan('backups settings s3');
+  await p.click('.modal summary:has-text("Advanced")'); await scan('backups settings advanced'); await esc();
+  await p.locator('tr.row').first().click(); await p.waitForSelector('.modal'); await p.waitForTimeout(500); await scan('backups service copies'); await esc();
 });
 await step('settings', async () => {
   await p.goto(U + '#/settings'); await p.waitForSelector('.card'); await p.waitForTimeout(500);

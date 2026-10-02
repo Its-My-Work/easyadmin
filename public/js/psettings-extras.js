@@ -3,7 +3,7 @@ import { clear, confirmDialog, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
 import { control } from './psettings-forms.js';
 
-/* Хранилища бэкапов и каналы уведомлений панели (создание, правка, проверка), логотипы интерфейса. */
+/* Каналы уведомлений панели (создание, правка, проверка), логотипы интерфейса. */
 const badge = (text, cls = '') => h('span', { class: `badge ${cls}` }, text);
 const card = (title, hint, ...body) => h('div', { class: 'card psf' }, h('div', { class: 'card-head' }, h('h4', null, title)), hint ? h('p', { class: 'muted small psf-hint' }, hint) : null, ...body);
 const lazy = (box, fn) => { clear(box).append(h('div', { class: 'skeleton', style: { height: '100px' } })); fn().then((n) => clear(box).append(...[n].flat()), (e) => clear(box).append(h('div', { class: 'callout err' }, icon('alert'), e.message))); return box; };
@@ -16,35 +16,6 @@ function specFields(fields, values, hasSecret, editing) {
     return { f, c: control({ ...field, max: f.max ?? 2000 }, f.secret ? '' : values?.[f.name] ?? (f.type === 'select' ? f.options[0][0] : ''), undefined) };
   });
   return { nodes: items.map(({ c }) => c.el), read: () => Object.fromEntries(items.map(({ f, c }) => [f.name, c.get()])) };
-}
-
-/* ---------- хранилища бэкапов ---------- */
-function storageModal(p, specs, type, item, reload) {
-  const spec = specs[type]; const editing = !!item;
-  const form = specFields(spec.fields, item?.values, item?.hasSecret, editing);
-  modal({ title: editing ? `${t('Хранилище')} · ${item.name}` : `${t('Новое хранилище')}: ${t(spec.label)}`, body: h('div', { class: 'stack' },
-    spec.renameOnly ? h('p', { class: 'muted small' }, 'Подключение Dropbox и Google Drive выполняется в самой Easypanel (нужна авторизация у провайдера). Здесь можно переименовать.') : null,
-    editing && !spec.renameOnly ? h('p', { class: 'muted small' }, 'Ключи и пароли не показываются: оставьте поле пустым, чтобы сохранить прежнее значение.') : null, ...form.nodes),
-  actions: [{ label: 'Отмена', kind: 'ghost' }, { label: editing ? 'Сохранить' : 'Создать', kind: 'primary', onClick: async () => {
-    if (editing) await put(`/api/panels/${p.id}/pstorage/${type}/${item.id}`, { values: form.read() }); else await post(`/api/panels/${p.id}/pstorage`, { type, values: form.read() });
-    toast(t('Сохранено'), 'success'); reload();
-  } }] });
-}
-export function storageCard(p) {
-  const box = h('div');
-  const draw = () => lazy(box, async () => {
-    const r = await get(`/api/panels/${p.id}/pstorage`);
-    const summary = (x) => Object.entries(x.values).filter(([k, v]) => v && k !== 'name').slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(' · ');
-    const typeSel = h('select', { class: 'input' }, ['s3', 'sftp', 'ftp', 'local'].map((k) => h('option', { value: k }, t(r.specs[k].label))));
-    return card('Хранилища бэкапов', 'Куда панель складывает резервные копии баз данных и томов. Ключи и пароли не показываются и в журнал не попадают.',
-      h('div', { class: 'list' }, r.providers.length ? r.providers.map((x) => h('div', { class: 'list-item' },
-        h('div', { class: 'psf-user' }, h('b', null, x.name || x.id), h('div', { class: 'chips' }, x.type ? badge(t(r.specs[x.type]?.label ?? x.type)) : badge('?')), h('div', { class: 'muted small mono' }, summary(x))),
-        h('div', { class: 'inline' }, x.type ? iconBtn('Изменить', 'edit', () => storageModal(p, r.specs, x.type, x, draw)) : null,
-          x.type ? iconBtn('Удалить', 'trash', async () => { if (await confirmDialog({ title: 'Удалить хранилище?', message: `${x.name}. Расписания бэкапов, которые его используют, перестанут работать.`, danger: true, confirmText: 'Удалить' })) { try { await del(`/api/panels/${p.id}/pstorage/${x.type}/${x.id}`); toast(t('Удалено'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } }) : null))) : [h('div', { class: 'muted pad' }, 'Хранилищ нет')]),
-      h('div', { class: 'inline psf-foot' }, typeSel, h('button', { class: 'btn sm', onclick: () => storageModal(p, r.specs, typeSel.value, null, draw) }, icon('plus', 13), 'Добавить хранилище')),
-      h('p', { class: 'muted small' }, 'Dropbox и Google Drive подключаются в самой Easypanel (нужна авторизация у провайдера).'));
-  });
-  return draw();
 }
 
 /* ---------- каналы уведомлений панели ---------- */

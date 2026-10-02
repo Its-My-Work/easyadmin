@@ -69,13 +69,12 @@ describe('формат файла копии', () => {
 describe('настройки и запуск', () => {
   test('права, проверки значений, секреты не отдаются', async () => {
     assert.equal((await api('GET', '/api/backups')).status, 200);
-    // расписание включается и без пароля (он нужен только копии системы): копии данных и расписания Easypanel паролем не пользуются
-    assert.equal((await api('PUT', '/api/backups/settings', { enabled: true })).status, 200);
+    // пароль копий общий для всех копий EasyAdmin: без него нельзя включить расписание и запустить копию
+    assert.equal((await api('PUT', '/api/backups/settings', { enabled: true })).status, 400);
     const noPw = await api('POST', '/api/backups/run'); assert.equal(noPw.status, 400); assert.match(noPw.data.error, /пароль/);
-    assert.equal((await api('PUT', '/api/backups/settings', { enabled: false })).status, 200);
     for (const bad of [{ password: 'short' }, { every: 'hourly' }, { hour: 24 }, { keep: 0 }, { storage: 'ftp' }, { panels: 'some' }, { panelIds: ['a'] }, { s3: { endpoint: 'ftp://x' } }, { s3: { prefix: '../x' } }]) assert.equal((await api('PUT', '/api/backups/settings', bad)).status, 400, JSON.stringify(bad));
     assert.equal((await api('PUT', '/api/backups/settings', { panels: 'selected', panelIds: [] })).status, 400, 'выбранные: нужна хотя бы одна');
-    assert.equal((await api('PUT', '/api/backups/settings', { system: false, panels: 'none' })).status, 400, 'нечего копировать');
+    assert.equal((await api('PUT', '/api/backups/settings', { system: false, panels: 'none' })).status, 200, 'копию самого EasyAdmin можно выключить'); await api('PUT', '/api/backups/settings', { system: true });
     const ok = await api('PUT', '/api/backups/settings', { password: PW, keep: 3, panels: 'all', s3: { endpoint: `http://127.0.0.1:${s3Port}`, bucket: 'bucket', accessKey: 'AK', secretKey: 'SECRETSECRET', prefix: 'ea' } });
     assert.equal(ok.status, 200); assert.deepEqual([ok.data.hasPassword, ok.data.s3.hasSecret, ok.data.s3.secretKey, ok.data.s3.prefix], [true, true, '', 'ea/']); assert.ok(!JSON.stringify(ok.data).includes(PW) && !JSON.stringify(ok.data).includes('SECRETSECRET'));
     assert.ok(!fs.readFileSync(path.join(tmp, 'easyadmin.db'), 'latin1').includes('SECRETSECRET'), 'в базе пароль и ключи S3 зашифрованы');

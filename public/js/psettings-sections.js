@@ -2,7 +2,7 @@ import { del, get, post, put } from './api.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
 import { settingsGroup } from './psettings-forms.js';
-import { logosCard, notifyCard, storageCard } from './psettings-extras.js';
+import { logosCard, notifyCard } from './psettings-extras.js';
 
 /* Разделы настроек панели Easypanel. Каждая функция получает панель p, общий entry (счётчик несохранённых форм) и go(section). */
 const skeleton = () => h('div', { class: 'skeleton', style: { height: '120px' } });
@@ -294,7 +294,7 @@ export function infra(p, entry) {
         h('div', { class: 'list' }, cl.nodes.length ? cl.nodes.map((n) => h('div', { class: 'list-item' }, h('div', null, h('b', null, n.host || n.id), ' ', badge(n.manager ? 'manager' : (n.role ?? 'worker'), n.manager ? 'ok' : ''), n.state ? h('span', { class: 'muted small' }, ` · ${n.state}`) : null),
           n.manager ? null : h('button', { class: 'btn sm icon ghost', title: 'Удалить узел', 'aria-label': 'Удалить узел', onclick: rm('узел', `/api/panels/${p.id}/pcluster/${n.id}`, n.host || n.id) }, icon('trash', 14)))) : [h('div', { class: 'muted pad' }, 'Узлов нет')]),
         cl.workerCommand ? h('div', { class: 'stack-sm' }, h('div', { class: 'field-label' }, 'Подключение worker'), h('pre', { class: 'code' }, cl.workerCommand), h('button', { class: 'btn sm', onclick: () => copyText(cl.workerCommand) }, icon('copy', 13), 'Копировать')) : null),
-      storageCard(p), notifyCard(p, entry),
+      notifyCard(p, entry),
     ];
   });
   return draw();

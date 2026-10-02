@@ -58,7 +58,7 @@ export function parseDiscovery(text) {
 }
 
 /** Цели копирования панели. Тома баз не копируются (есть дамп); compose-стеки разбираются по обнаруженным контейнерам. */
-export async function resolveTargets(client, row, projects, { mode, keys, consistency = 'none' }, stamp, { compose = [] } = {}) {
+export async function resolveTargets(client, row, projects, { mode, keys, consistency = 'none' }, stamp, { compose = [], encrypt = false } = {}) {
   const wanted = (p, s) => mode === 'all' || keys.includes(`${row.id}|${p}|${s}`);
   const items = []; const services = projects.flatMap((p) => p.services.map((s) => ({ ...s, project: p.name }))).filter((s) => wanted(s.project, s.name));
   const slug = slugOf(row); const hold = (spec) => (consistency === 'none' ? null : spec);
@@ -91,15 +91,17 @@ export async function resolveTargets(client, row, projects, { mode, keys, consis
       } catch { /* сервис недоступен — пропускаем, ошибка конфигурации уже отражена в копии конфигураций */ }
     }
   }));
-  return groupJobs(items.sort((a, b) => a.label.localeCompare(b.label)), stamp);
+  const jobs = groupJobs(items.sort((a, b) => a.label.localeCompare(b.label)), stamp, encrypt);
+  jobs.empty = services.filter((x) => !jobs.some((j) => j.project === x.project && j.service === x.name)).map((x) => `${x.project}/${x.name}`); // выбраны, но копировать нечего (у приложения нет томов)
+  return jobs;
 }
 
 /** Части (база или том) → задания: один сервис — один архив, даже если это compose-стек. */
-export function groupJobs(parts, stamp) {
+export function groupJobs(parts, stamp, encrypt = false) {
   const by = new Map();
   for (const p of parts) {
     const label = `${p.project}/${p.service}`;
-    if (!by.has(label)) by.set(label, { project: p.project, service: p.service, label, slug: p.slug, prefix: `${p.project}__${p.service}__`, file: `${p.project}__${p.service}__${stamp}.tar`, parts: [] });
+    if (!by.has(label)) by.set(label, { project: p.project, service: p.service, label, slug: p.slug, prefix: `${p.project}__${p.service}__`, file: `${p.project}__${p.service}__${stamp}.tar${encrypt ? '.enc' : ''}`, parts: [] });
     by.get(label).parts.push(p);
   }
   return [...by.values()].sort((a, b) => a.label.localeCompare(b.label));
@@ -120,14 +122,15 @@ export async function measureVolumes(c, row, items, host = runOnHost) {
 }
 
 /** Скрипт для сервера панели (bash). Один элемент — одна запись в файле статуса: OK|метка|файл|байт или FAIL|метка|код|аргумент. */
-export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, consistency = 'none', mpMin = 5 * GIB - 1, partMb = 1024 }) {
+export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, consistency = 'none', mpMin = 5 * GIB - 1, partMb = 1024, password = '' }) {
   const lines = [
     '#!/bin/bash',
     `BASE=${shq(baseDir)}; RUN=${shq(runId)}; DEST=${shq(dest)}; KEEP=${Number(keep)}; MINFREE=${Number(minFreeKb)}; HOLDMODE=${shq(consistency)}; MPMIN=${Number(mpMin)}; PS=$((${Number(partMb)} * 1048576))`,
-    'LOGD="$BASE/.runs"; ST="$LOGD/$RUN.status"; TMPD="$BASE/.work"; HOLDS=()',
+    'LOGD="$BASE/.runs"; ST="$LOGD/$RUN.status"; TMPD="$BASE/.work"; HOLDS=(); PASSF=""',
     'umask 077; mkdir -p "$LOGD" "$TMPD" || exit 1',
     'hold_end() { local h; for h in "${HOLDS[@]}"; do case "$h" in pause:*) docker unpause ${h#pause:} >/dev/null 2>&1;; start:*) docker start ${h#start:} >/dev/null 2>&1;; scale:*) docker service scale -d "${h#scale:}" >/dev/null 2>&1;; esac; done; HOLDS=(); }',
-    'trap \'hold_end; rm -rf "${TMPD:?}/${RUN:?}".*\' EXIT',
+    'trap \'hold_end; rm -f "$LOGD/$RUN.pw" "$0"; rm -rf "${TMPD:?}/${RUN:?}".*\' EXIT', // пароль и сам скрипт (в нём пароль) не остаются на сервере
+    password ? `PASSF="$LOGD/$RUN.pw"; printf %s ${shq(Buffer.from(password).toString('base64'))} | base64 -d > "$PASSF"` : '',
     'echo START > "$ST"',
     'fail() { printf \'FAIL|%s|%s|%s\\n\' "$1" "$2" "$3" >> "$ST"; }',
     'avail=$(df -Pk "$BASE" | awk \'NR==2{print $4}\')',
@@ -172,6 +175,8 @@ export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, cons
     '  local label=$1 name=$2 url=$3 sub=$4 prefix=$5 fn=$6 mp=$7; local tmp="$TMPD/$RUN.$RANDOM" err="$LOGD/$RUN.err" rc size out',
     '  "$fn" "$tmp" 2>"$err"; rc=$?',
     '  if [ $rc -ne 0 ]; then fail "$label" CMD "$(tail -c 300 "$err" | tr \'\\n|\' \'  \')"; rm -f "${tmp:?}"; return; fi',
+    // все копии EasyAdmin шифруются одним паролем (AES-256, PBKDF2); пароль лежит на сервере только на время запуска
+    '  if [ -n "$PASSF" ]; then openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt -pass file:"$PASSF" -in "$tmp" -out "$tmp.enc" 2>"$err" && mv "$tmp.enc" "$tmp" || { fail "$label" CMD "$(tail -c 300 "$err" | tr \'\\n|\' \'  \')"; rm -f "${tmp:?}" "${tmp:?}.enc"; return; }; fi',
     '  size=$(stat -c %s "$tmp" 2>/dev/null || echo 0)',
     '  if [ "$DEST" = s3 ]; then',
     '    if [ "$size" -gt "$MPMIN" ] && [ -n "$mp" ] && [ -f "$mp" ]; then upload_mp "$tmp" "$size" "$mp"; rc=$?; if [ $rc -ne 0 ]; then fail "$label" S3MP "$rc"; rm -f "${tmp:?}"; return; fi',
@@ -268,10 +273,10 @@ export async function listHostFiles(c, row, baseDir, slug, host = runOnHost) {
 }
 
 const NAME_RE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__((?:db|vol|bind)-[A-Za-z0-9_.-]+|(?:cdb|cvol|cbind)~[A-Za-z0-9_.~-]+)__(\d{8}-\d{6})\.(sql|archive|tar|rdb)\.gz(\.enc)?$/; // прежний формат: файл на каждую базу или том
-const ARCHIVE_RE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__(\d{8}-\d{6})\.tar$/; // текущий формат: один архив на сервис
+const ARCHIVE_RE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__(\d{8}-\d{6})\.tar(\.enc)?$/; // текущий формат: один архив на сервис (.enc — зашифрован паролем копий)
 export const parseName = (n) => {
   const m = NAME_RE.exec(n); if (m) return { project: m[1], service: m[2], tag: m[3], stamp: m[4], ext: m[5], encrypted: !!m[6] };
-  const a = ARCHIVE_RE.exec(n); return a ? { project: a[1], service: a[2], tag: null, stamp: a[3], ext: 'tar', encrypted: false, archive: true } : null;
+  const a = ARCHIVE_RE.exec(n); return a ? { project: a[1], service: a[2], tag: null, stamp: a[3], ext: 'tar', encrypted: !!a[4], archive: true } : null;
 };
 export const groupKey = (n) => n.replace(/__\d{8}-\d{6}\..*$/, '');
 
@@ -321,8 +326,9 @@ export function restoreHint(name, where) {
   if (where?.url) steps.push(`curl -fL -o ${shq(name)} ${shq(where.url)}`);
   else if (where?.dir) steps.push(`cd ${shq(where.dir)}`);
   if (p.archive) {
-    steps.push(`mkdir -p restore && tar -xf ${shq(name)} -C restore && cd restore && ls`, 'cat RESTORE.txt   # ready-made commands for every database and volume of the service');
-    return { text: steps.join('\n'), notes: ['В архиве один файл на каждую базу или том сервиса и RESTORE.txt с командами для каждой части — выполните нужные из него.', NOTES.volume, NOTES.redis] };
+    const unpack = p.encrypted ? `mkdir -p restore && openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:'YOUR_BACKUP_PASSWORD' -in ${shq(name)} | tar -xf - -C restore && cd restore && ls` : `mkdir -p restore && tar -xf ${shq(name)} -C restore && cd restore && ls`;
+    steps.push(unpack, 'cat RESTORE.txt   # ready-made commands for every database and volume of the service');
+    return { text: steps.join('\n'), notes: ['В архиве один файл на каждую базу или том сервиса и RESTORE.txt с командами для каждой части — выполните нужные из него.', ...(p.encrypted ? ['Архив зашифрован паролем копий: подставьте его вместо YOUR_BACKUP_PASSWORD.'] : []), NOTES.volume, NOTES.redis] };
   }
   const stream = p.encrypted ? `openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:'YOUR_BACKUP_PASSWORD' -in ${shq(name)} | gunzip -c` : `gunzip -c ${shq(name)}`;
   const { kind, run } = restoreRun({ project: p.project, service: p.service, tag: p.tag, stream });

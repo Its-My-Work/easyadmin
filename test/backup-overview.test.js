@@ -5,12 +5,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { createApp } from '../src/app.js';
-import { actionState, combine } from '../src/backup-overview.js';
+import { statusOf } from '../src/backup-overview.js';
 import { loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { createMockPanel } from './mock-easypanel.js';
 
-/* Раздел «Бэкапы» → «Обзор»: что и чем копируется, по сервисам всех панелей. */
+/* Раздел «Бэкапы»: обзор по сервисам, включение в копии, пароль для всех копий, где хранить. */
 let app, base, tmp, db, M, pid, deadId; const jars = {};
 async function api(who, method, p, body) {
   const res = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'easyadmin', ...(jars[who] ? { Cookie: jars[who] } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -18,13 +18,13 @@ async function api(who, method, p, body) {
   const text = await res.text(); let data; try { data = JSON.parse(text); } catch { data = text; }
   return { status: res.status, data };
 }
-const ov = async (force = true) => (await api('admin', 'GET', `/api/backups/overview${force ? '?force=1' : ''}`)).data;
+const ov = async () => (await api('admin', 'GET', '/api/backups/overview')).data;
 const row = (o, name) => o.panels.flatMap((p) => p.rows).find((r) => r.name === name);
+const setSvc = (map) => db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_svc', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify(map));
 
 before(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ea-bov-'));
   db = openDb(tmp);
-  // web/pg и web/site уже имеют расписания в имитации настроек панели (pg — ещё и успешный запуск)
   M = createMockPanel({ token: 'T', seed: { web: [{ name: 'pg', type: 'postgres' }, { name: 'site' }, { name: 'cache', type: 'redis' }, { name: 'worker' }] } });
   const url = await M.listen();
   app = createApp({ config: { ...loadConfig({ EASYADMIN_DATA: tmp }), cacheTtlMs: 1, requestTimeoutMs: 3000, tlsProbe: false }, db, key: crypto.randomBytes(32) });
@@ -39,72 +39,73 @@ before(async () => {
 });
 after(async () => { app.stop(); app.server.closeAllConnections(); app.server.close(); await M.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
-describe('итоговый статус сервиса', () => {
-  const ep = (o = {}) => ({ supported: true, schedules: [], last: null, ...o });
-  const ea = (o = {}) => ({ covered: false, possible: true, last: null, ...o });
+describe('статус сервиса', () => {
   const NOW = Date.UTC(2026, 9, 1);
-  test('нигде не копируется → «не настроено»; нет такой возможности вообще → скрыто', () => {
-    assert.equal(combine({ easypanel: ep(), easyadmin: ea() }, NOW), 'none');
-    assert.equal(combine({ easypanel: ep({ supported: false }), easyadmin: ea({ possible: false }) }, NOW), 'na');
-    assert.equal(combine({ easypanel: ep({ schedules: [{ enabled: false }] }), easyadmin: ea() }, NOW), 'none', 'выключенное расписание — не защита');
-  });
-  test('ошибка любого источника важнее остального; запуска не было → pending; давно → stale; свежая копия → ok', () => {
-    const sched = [{ enabled: true }];
-    assert.equal(combine({ easypanel: ep({ schedules: sched, last: { state: 'ok', ts: NOW } }), easyadmin: ea({ covered: true, last: { state: 'error', ts: NOW } }) }, NOW), 'error');
-    assert.equal(combine({ easypanel: ep({ schedules: sched, last: { state: 'running', ts: NOW } }), easyadmin: ea() }, NOW), 'running');
-    assert.equal(combine({ easypanel: ep({ schedules: sched }), easyadmin: ea() }, NOW), 'pending');
-    assert.equal(combine({ easypanel: ep({ schedules: sched, last: { state: 'ok', ts: NOW - 9 * 86_400_000 } }), easyadmin: ea() }, NOW), 'stale');
-    assert.equal(combine({ easypanel: ep({ schedules: sched, last: { state: 'ok', ts: NOW - 3_600_000 } }), easyadmin: ea() }, NOW), 'ok');
-    assert.equal(combine({ easypanel: ep(), easyadmin: ea({ covered: true, last: { state: 'ok', ts: NOW } }) }, NOW), 'ok', 'достаточно копий EasyAdmin');
-  });
-  test('статусы действий панели', () => {
-    assert.deepEqual(['done', 'success', 'error', 'failed', 'running', 'pending'].map(actionState), ['ok', 'ok', 'error', 'error', 'running', 'running']);
+  test('не выбран → off; идёт → running; ошибка → error; нечего копировать → empty; не было копии → pending; давно → stale; свежая → ok', () => {
+    assert.equal(statusOf({ included: false, last: { ok: true, ts: NOW } }, NOW), 'off');
+    assert.equal(statusOf({ included: true, running: true }, NOW), 'running');
+    assert.equal(statusOf({ included: true, last: { ok: false, ts: NOW } }, NOW), 'error');
+    assert.equal(statusOf({ included: true, last: { ok: true, empty: true, ts: NOW } }, NOW), 'empty');
+    assert.equal(statusOf({ included: true, last: null }, NOW), 'pending');
+    assert.equal(statusOf({ included: true, last: { ok: true, ts: NOW - 9 * 86_400_000 } }, NOW), 'stale');
+    assert.equal(statusOf({ included: true, last: { ok: true, ts: NOW - 3_600_000 } }, NOW), 'ok');
   });
 });
 
 describe('обзор по панелям', () => {
-  test('сервисы со статусами: расписание Easypanel и успешный запуск, расписание без запусков, без копий', async () => {
+  test('по умолчанию ничего не копируется; недоступная панель показана с причиной', async () => {
     const o = await ov();
-    const pg = row(o, 'pg'); assert.equal(pg.status, 'ok'); assert.equal(pg.easypanel.schedules.length, 1); assert.equal(pg.easypanel.last.state, 'ok'); assert.equal(pg.easyadmin.covered, false);
-    assert.equal(row(o, 'site').status, 'pending', 'расписание есть, запусков ещё не было');
-    assert.equal(row(o, 'cache').status, 'none', 'redis: у Easypanel нет расписаний, EasyAdmin не включён');
-    assert.equal(row(o, 'worker').status, 'none');
-    assert.equal(o.summary.total, 4); assert.equal(o.summary.none, 2); assert.equal(o.summary.ok, 1); assert.equal(o.summary.pending, 1);
+    assert.equal(o.mode, 'none'); assert.equal(o.summary.total, 4); assert.equal(o.summary.included, 0); assert.equal(o.summary.off, 4);
+    assert.ok(o.panels.find((p) => p.panelId === deadId).error); assert.deepEqual(o.panels.find((p) => p.panelId === deadId).rows, []);
+    assert.equal(o.system.hasPassword, false);
   });
-  test('недоступная панель показана с причиной, без сервисов', async () => {
-    const o = await ov(); const dead = o.panels.find((p) => p.panelId === deadId);
-    assert.ok(dead.error); assert.deepEqual(dead.rows, []);
+  test('пароль нужен для любых копий: без него сервис в копии не включить и расписание не включить', async () => {
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${pid}|web|pg`] } })).status, 400);
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { enabled: true })).status, 400);
+    assert.equal((await api('admin', 'POST', '/api/backups/data/run', {})).status, 400, 'запуск без пароля');
+    assert.equal((await api('admin', 'POST', '/api/backups/run')).status, 400);
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { password: 'short' })).status, 400);
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { password: 'correct horse battery' })).status, 200);
   });
-  test('копии данных EasyAdmin: «выбранные» покрывают сервис; ошибка последнего запуска — «error»', async () => {
-    await api('admin', 'PUT', '/api/backups/settings', { password: 'password123' });
-    const put = await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${pid}|web|cache`] } }); assert.equal(put.status, 200, JSON.stringify(put.data));
-    let c = row(await ov(), 'cache'); assert.equal(c.easyadmin.covered, true); assert.equal(c.easyadmin.auto, false, 'расписание EasyAdmin выключено — вручную'); assert.equal(c.status, 'pending');
-    db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_last', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify({ ts: Date.now(), ok: false, files: 0, failed: 1, dest: 'host', reason: 'manual', panels: [{ name: 'P', status: 'partial', error: null, failed: ['web/cache · redis: нет места'] }] }));
-    c = row(await ov(), 'cache'); assert.equal(c.status, 'error'); assert.match(c.easyadmin.last.error, /нет места/);
-    assert.equal(row(await ov(), 'pg').easyadmin.covered, false, 'остальные сервисы не затронуты');
+  test('включение сервисов, результаты запусков → статусы; «все» включает и новые', async () => {
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${pid}|web|pg`, `${pid}|web|site`, `${pid}|web|cache`] } })).status, 200);
+    const now = Date.now();
+    setSvc({ [`${pid}|web|pg`]: { ts: now - 3600e3, ok: true, size: 5 * 1048576 }, [`${pid}|web|site`]: { ts: now - 12 * 86400e3, ok: true, size: 1000 }, [`${pid}|web|cache`]: { ts: now - 3600e3, ok: false, error: 'Мало места' }, [`${pid}|web|worker`]: { ts: now, ok: true, empty: true } });
+    const o = await ov();
+    assert.equal(row(o, 'pg').status, 'ok'); assert.equal(row(o, 'pg').included, true); assert.equal(row(o, 'pg').last.size, 5 * 1048576);
+    assert.equal(row(o, 'site').status, 'stale'); assert.equal(row(o, 'cache').status, 'error'); assert.equal(row(o, 'cache').last.error, 'Мало места');
+    assert.equal(row(o, 'worker').status, 'off', 'не выбран — результат прошлых запусков не делает его «копируемым»');
+    assert.deepEqual([o.summary.included, o.summary.ok, o.summary.error, o.summary.stale], [3, 1, 1, 1]);
     await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'all' } });
-    assert.equal(row(await ov(), 'worker').easyadmin.covered, true);
+    const all = await ov(); assert.equal(all.summary.included, 4); assert.equal(row(all, 'worker').status, 'empty'); assert.equal(all.mode, 'all');
     await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'none' } });
   });
-  test('доступ только администратору; кэш: повторный запрос без force не ходит заново', async () => {
+  test('переименование сервиса переносит выбор и результат', async () => {
+    await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${pid}|web|pg`] } });
+    app.backups.repoint(pid, { project: 'web', name: 'pg' }, { project: 'data', name: 'postgres' });
+    assert.deepEqual(app.backups.view().data.keys, [`${pid}|data|postgres`]); assert.ok(app.backups.svcResults()[`${pid}|data|postgres`]); assert.equal(app.backups.svcResults()[`${pid}|web|pg`], undefined);
+    await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'none' } });
+  });
+  test('доступ только администратору', async () => {
     assert.equal((await api('op', 'GET', '/api/backups/overview')).status, 403);
-    const o1 = await ov(true); const o2 = await ov(false);
-    assert.equal(o1.at <= o2.at, true); assert.equal(o2.panels.find((p) => p.panelId === pid).rows.length, 4);
   });
 });
 
-describe('compose-стеки', () => {
-  test('виден в обзоре при любом охвате (его копируют копии данных EasyAdmin), а при выбранных сервисах не пропадает', async () => {
-    const C = createMockPanel({ token: 'T', seed: { stk: [{ name: 'stack', type: 'compose' }, { name: 'plain' }] } });
-    const id = (await api('admin', 'POST', '/api/panels', { name: 'Stacks', url: await C.listen(), token: 'T' })).data.id;
-    try {
-      await api('admin', 'GET', '/api/overview?force=1'); // панель попадает в обзор после первого опроса
-      await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'none' } });
-      let s = row(await ov(), 'stack'); assert.ok(s, 'стек показан даже без охвата'); assert.deepEqual([s.status, s.easyadmin.possible, s.easypanel.supported], ['none', true, false]);
-      await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${id}|stk|plain`] } });
-      s = row(await ov(), 'stack'); assert.ok(s, 'не пропадает и при режиме «Выбранные»'); assert.equal(s.easyadmin.possible, true);
-      await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${id}|stk|stack`] } });
-      assert.equal(row(await ov(), 'stack').easyadmin.covered, true, 'стек можно выбрать для копий данных');
-    } finally { await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'none' } }); await api('admin', 'DELETE', `/api/panels/${id}`); await C.close(); }
+describe('куда сохранять и что копировать', () => {
+  test('«на сервере»/«в S3» меняет и копии настроек, и копии данных; S3 без данных хранилища отклоняется', async () => {
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { where: 's3' })).status, 400);
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { where: 'cloud' })).status, 400);
+    const r = await api('admin', 'PUT', '/api/backups/settings', { where: 's3', s3: { endpoint: 'https://s3.example.com', bucket: 'b', accessKey: 'AK', secretKey: 'SK' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.where, 's3'); assert.equal(r.data.storage, 's3'); assert.equal(r.data.data.dest, 's3');
+    const back = (await api('admin', 'PUT', '/api/backups/settings', { where: 'server' })).data; assert.equal(back.where, 'server'); assert.equal(back.storage, 'local'); assert.equal(back.data.dest, 'host');
+  });
+  test('копия самого EasyAdmin: можно выключить совсем; тогда ручной запуск отказывает понятно', async () => {
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { system: false, panels: 'none' })).status, 200);
+    const r = await api('admin', 'POST', '/api/backups/run'); assert.equal(r.status, 400); assert.match(r.data.error, /выключено/);
+    assert.equal((await api('admin', 'PUT', '/api/backups/settings', { system: true, panels: 'all' })).status, 200);
+  });
+  test('запуск одного сервиса: имена проверяются', async () => {
+    assert.equal((await api('admin', 'POST', '/api/backups/data/run', { panelId: pid, project: 'Bad Name!', service: 'x' })).status, 400);
+    assert.equal((await api('admin', 'GET', `/api/backups/data/files?panel=${pid}&project=web&service=pg`)).status, 200);
   });
 });

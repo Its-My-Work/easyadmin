@@ -116,7 +116,7 @@ export function openService(s) {
   const tabs = [
     ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', 'Логи'], ['history', 'История'], ...(can('admin') ? [['console', 'Консоль']] : [])]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
     ['resources', 'Ресурсы'], ...(s.type === 'app' && !ro ? [['source', 'Источник']] : []),
-    ...(can('admin') && ['postgres', 'mysql', 'mariadb', 'mongo', 'app'].includes(s.type) ? [['backups', 'Бэкапы']] : []), ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
+    ...(can('admin') ? [['backups', 'Бэкапы']] : []), ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
   ];
   const remembered = lsGet('ea-drawer-tab');
   if (tabs.some(([id]) => id === remembered)) state.tab = remembered;
@@ -332,7 +332,7 @@ export function openService(s) {
   function logs() { return logsView({ s, ref, base, state }); }
   function history() { return historyView({ s, ref, base, state }); }
   function console_() { return consoleView({ s, ref, state }); }
-  function backups() { return backupsView({ s, ref, state }); }
+  function backups() { return backupsView({ s, ref }); }
 
   function automation() {
     const box = h('div', { class: 'stack' });

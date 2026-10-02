@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createEpSync, wantsEasypanel } from './ep-sync.js';
 import { decrypt, encrypt } from './crypto.js';
 import { HttpError, RawResponse } from './http.js';
 import { runOnHost } from './host-exec.js';
@@ -18,7 +17,7 @@ import { CONSISTENCY, DEFAULT_DIR, DISCOVER_CMD, buildScript, cleanupJob, deploy
  */
 const NAME_RE = /^easyadmin-\d{8}-\d{6}\.eabak$/;
 const DAY = 86400e3;
-const DATA_DEFAULTS = { mode: 'none', keys: [], dest: 'host', dir: DEFAULT_DIR, keep: 3, minFreeMb: 1024, consistency: 'none', methods: { easyadmin: true, easypanel: false }, providers: {} };
+const DATA_DEFAULTS = { mode: 'none', keys: [], dest: 'host', dir: DEFAULT_DIR, keep: 3, minFreeMb: 1024, consistency: 'none' };
 const DEFAULTS = { enabled: false, data: DATA_DEFAULTS, system: true, panels: 'all', panelIds: [], every: 'daily', hour: 3, keep: 7, storage: 'local', s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'easyadmin/', accessKey: '', secretKey: '', pathStyle: true }, password: '' };
 const stamp = (ts) => new Date(ts).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '').replace('T', '-');
 const sha = (d) => crypto.createHash('sha256').update(d).digest('hex');
@@ -126,15 +125,15 @@ export function s3Client(cfg, fetchImpl = globalThis.fetch) {
 export function createBackups({ db, key, config, alerts, manager, audit, fetchImpl = globalThis.fetch, now = () => Date.now(), restart = () => process.exit(0), dataPollMs = 10_000, hostRun, mpMin = 5 * 1024 ** 3 - 1, partMb = 1024 }) {
   const getRaw = (k) => db.prepare('SELECT v FROM settings WHERE k = ?').get(k)?.v;
   const setRaw = (k, v) => db.prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, v);
-  const freshData = (x = {}) => { const { encrypt: _legacy, ...rest } = x; return { ...DATA_DEFAULTS, ...rest, methods: { ...DATA_DEFAULTS.methods, ...(rest.methods ?? {}) }, providers: { ...(rest.providers ?? {}) } }; };
+  const freshData = (x = {}) => { const { encrypt: _legacy, methods: _m, providers: _p, ...rest } = x; return { ...DATA_DEFAULTS, ...rest }; }; // methods/providers — остатки прежних версий (расписания Easypanel убраны)
   const load = () => { try { const c = JSON.parse(decrypt(key, getRaw('backup_cfg'))); return { ...DEFAULTS, ...c, data: freshData(c.data), s3: { ...DEFAULTS.s3, ...(c.s3 ?? {}) } }; } catch { return { ...DEFAULTS, data: freshData(), s3: { ...DEFAULTS.s3 } }; } };
   const save = (c) => setRaw('backup_cfg', encrypt(key, JSON.stringify(c)));
   const lastRun = () => { try { return JSON.parse(getRaw('backup_last') ?? 'null'); } catch { return null; } };
   const dir = () => path.join(config.dataDir, 'backups');
-  let timer = null; let busy = false; let dataBusy = false; let epDirty = false;
+  let timer = null; let busy = false; let dataBusy = false;
   let dataState = { running: false, panels: {} };
+  const svcResults = () => { try { return JSON.parse(getRaw('backup_data_svc') ?? '{}'); } catch { return {}; } };
   const lastData = () => { try { return JSON.parse(getRaw('backup_data_last') ?? 'null'); } catch { return null; } };
-  const ep = manager ? createEpSync({ db, manager, getRaw, setRaw, load, audit, now }) : null;
 
   // каналам, получающим «диск заполнен», сообщаем и об ошибках копирования — один раз
   if (getRaw('backup_migrated') !== '1') {
@@ -147,7 +146,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
 
   const view = () => {
     const c = load(); const l = lastRun();
-    return { serverTime: { now: now(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', hour: new Date(now()).getHours(), minute: new Date(now()).getMinutes() }, enabled: c.enabled, data: c.data, dataLast: lastData(), system: c.system, panels: c.panels, panelIds: c.panelIds, every: c.every, hour: c.hour, keep: c.keep, storage: c.storage, hasPassword: !!c.password, s3: { ...c.s3, secretKey: '', hasSecret: !!c.s3.secretKey }, last: l, local: config.dataDir !== ':memory:' };
+    return { serverTime: { now: now(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', hour: new Date(now()).getHours(), minute: new Date(now()).getMinutes() }, enabled: c.enabled, where: c.storage === 's3' ? 's3' : 'server', data: c.data, dataLast: lastData(), system: c.system, panels: c.panels, panelIds: c.panelIds, every: c.every, hour: c.hour, keep: c.keep, storage: c.storage, hasPassword: !!c.password, s3: { ...c.s3, secretKey: '', hasSecret: !!c.s3.secretKey }, last: l, local: config.dataDir !== ':memory:' };
   };
   function update(b) {
     const c = load();
@@ -159,6 +158,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     if (b.hour !== undefined) { if (!Number.isInteger(b.hour) || b.hour < 0 || b.hour > 23) throw new Error('Час: от 0 до 23'); c.hour = b.hour; }
     if (b.keep !== undefined) { if (!Number.isInteger(b.keep) || b.keep < 1 || b.keep > 60) throw new Error('Сколько копий хранить: от 1 до 60'); c.keep = b.keep; }
     if (b.storage !== undefined) { if (!['local', 's3'].includes(b.storage)) throw new Error('Хранилище: local или s3'); c.storage = b.storage; }
+    if (b.where !== undefined) { if (!['server', 's3'].includes(b.where)) throw new Error('Куда сохранять: server или s3'); c.storage = b.where === 's3' ? 's3' : 'local'; c.data.dest = b.where === 's3' ? 's3' : 'host'; } // одно место для копий EasyAdmin и копий данных
     if (b.password) { if (String(b.password).length < 8) throw new Error('Пароль копии: не короче 8 символов'); c.password = String(b.password); }
     if (b.s3) {
       for (const k of ['endpoint', 'region', 'bucket', 'prefix', 'accessKey']) if (b.s3[k] !== undefined) c.s3[k] = String(b.s3[k]).trim();
@@ -174,24 +174,17 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
       if (x.keys !== undefined) { if (!Array.isArray(x.keys) || x.keys.some((k) => !/^\d+\|[a-z0-9_-]+\|[a-z0-9_-]+$/.test(String(k)))) throw new Error('Список сервисов для копирования некорректен'); c.data.keys = [...new Set(x.keys)]; }
       if (x.dest !== undefined) { if (!['host', 's3'].includes(x.dest)) throw new Error('Куда сохранять данные: host или s3'); c.data.dest = x.dest; }
       if (x.dir !== undefined) { if (!validDir(x.dir)) throw new Error('Папка на сервере: абсолютный путь без «..»'); c.data.dir = x.dir.replace(/\/$/, ''); }
-      if (x.methods !== undefined) {
-        if (!x.methods || typeof x.methods !== 'object' || Object.values(x.methods).some((v) => typeof v !== 'boolean')) throw new Error('Способы копирования: easyadmin и easypanel — да или нет');
-        for (const k of ['easyadmin', 'easypanel']) if (x.methods[k] !== undefined) c.data.methods[k] = x.methods[k];
-      }
-      if (x.providers !== undefined) {
-        if (!x.providers || typeof x.providers !== 'object' || Object.entries(x.providers).some(([k, v]) => !/^\d+$/.test(k) || !/^[A-Za-z0-9_-]{1,64}$/.test(String(v)))) throw new Error('Хранилище Easypanel: некорректный выбор');
-        c.data.providers = Object.fromEntries(Object.entries(x.providers).map(([k, v]) => [k, String(v)]));
-      }
       if (x.keep !== undefined) { if (!Number.isInteger(x.keep) || x.keep < 1 || x.keep > 30) throw new Error('Сколько копий данных хранить: от 1 до 30'); c.data.keep = x.keep; }
       if (x.consistency !== undefined) { if (!CONSISTENCY.includes(x.consistency)) throw new Error('Согласованность томов: none, pause или stop'); c.data.consistency = x.consistency; }
       if (x.minFreeMb !== undefined) { if (!Number.isInteger(x.minFreeMb) || x.minFreeMb < 0 || x.minFreeMb > 1_000_000) throw new Error('Минимум свободного места: МБ'); c.data.minFreeMb = x.minFreeMb; }
       if (c.data.mode === 'selected' && !c.data.keys.length) throw new Error('Отметьте хотя бы один сервис для копирования данных');
       if (c.data.dest === 's3' && c.data.mode !== 'none' && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Для данных в S3 заполните данные хранилища S3');
     }
-    if (!c.system && c.panels === 'none') throw new Error('Выберите, что копировать: систему или панели');
     if (c.panels === 'selected' && !c.panelIds.length) throw new Error('Отметьте хотя бы одну панель');
     if (c.storage === 's3' && c.enabled && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Заполните данные хранилища S3');
-    save(c); epDirty = true; return view();
+    if (b.where === 's3' && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Для хранения в S3 заполните данные хранилища S3');
+    if ((c.enabled || c.data.mode !== 'none') && !c.password) throw new Error('Сначала задайте пароль копий: им шифруются все копии EasyAdmin');
+    save(c); return view();
   }
 
   const store = (c) => {
@@ -259,7 +252,8 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
   async function run({ reason = 'manual' } = {}) {
     if (busy) throw new Error('Копия уже создаётся');
     const c = load();
-    if (!c.password) throw new Error('Для копии системы задайте пароль (Бэкапы → Настройки): в ней лежат ключ приложения и токены панелей');
+    if (!c.password) throw new Error('Задайте пароль копий (Бэкапы → Настройки): им шифруются все копии EasyAdmin');
+    if (!c.system && c.panels === 'none') throw new Error('Копирование настроек EasyAdmin выключено');
     busy = true;
     const t = now();
     try {
@@ -312,7 +306,8 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
   async function runDataPanel(c, row, stamp, state) {
     const client = manager.clientFor(row); const projects = (await manager.snapshot(row.id))?.tree?.projects ?? [];
     const compose = needsDiscovery(projects, c.data, row.id) ? parseDiscovery((await hostFn(client, row, DISCOVER_CMD, { timeoutMs: 60_000 }).catch(() => ({ output: '' }))).output) : [];
-    const items = (await resolveTargets(client, row, projects, c.data, stamp, { compose })).map((it) => ({ ...it }));
+    const targets = await resolveTargets(client, row, projects, c.data, stamp, { compose, encrypt: !!c.password }); state.empty = targets.empty ?? [];
+    const items = targets.map((it) => ({ ...it }));
     if (!items.length) { state.status = 'done'; state.note = 'Нет баз и томов для копирования'; return; }
     const s3 = c.data.dest === 's3' ? s3Of(c) : null; const keyOf = (it) => `${c.s3.prefix}data/${it.slug}/${it.file}`;
     const opened = []; // начатые загрузки частями: незавершённые отменяем
@@ -330,7 +325,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     }
     state.items = items.map((it) => ({ label: it.label, status: 'wait' }));
     const runId = `r${stamp}-${row.id}`;
-    const script = buildScript({ runId, baseDir: c.data.dir, dest: c.data.dest, keep: c.data.keep, minFreeKb: c.data.minFreeMb * 1024, items, consistency: c.data.consistency, mpMin, partMb });
+    const script = buildScript({ runId, baseDir: c.data.dir, dest: c.data.dest, keep: c.data.keep, minFreeKb: c.data.minFreeMb * 1024, items, consistency: c.data.consistency, mpMin, partMb, password: c.password });
     state.status = 'running';
     try { await deployJob(client, row, { baseDir: c.data.dir, runId, script }, hostFn); }
     catch (e) { for (const o of opened) await s3.abortMultipart(o.key, o.uploadId).catch(() => {}); throw e; }
@@ -356,11 +351,12 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     state.status = state.items.some((x) => x.status === 'fail') ? 'partial' : 'done';
   }
 
-  async function runData({ reason = 'manual' } = {}) {
+  async function runData({ reason = 'manual', only = null } = {}) { // only: { panelId, project, service } — копия одного сервиса
     if (dataBusy) throw new Error('Копирование данных уже идёт');
-    const c = load();
-    if (c.data.mode === 'none') throw new Error('Копирование данных выключено: выберите, что копировать');
-    if (!c.data.methods.easyadmin) throw new Error('Копии данных силами EasyAdmin выключены: включите их на вкладке «Данные»');
+    let c = load();
+    if (only) { const k = `${Number(only.panelId)}|${only.project}|${only.service}`; if (!/^\d+\|[a-z0-9_-]+\|[a-z0-9_-]+$/.test(k)) throw new Error('Некорректный сервис'); c = { ...c, data: { ...c.data, mode: 'selected', keys: [k] } }; }
+    if (!c.password) throw new Error('Задайте пароль копий (Бэкапы → Настройки): им шифруются все копии EasyAdmin');
+    if (c.data.mode === 'none') throw new Error('Копирование данных выключено: отметьте сервисы, которые нужно копировать');
     if (c.data.dest === 's3' && !(c.s3.endpoint && c.s3.bucket && c.s3.accessKey && c.s3.secretKey)) throw new Error('Заполните данные хранилища S3');
     if (!manager) throw new Error('Менеджер панелей недоступен');
     const rows = panelsInScope(c); if (!rows.length) throw new Error('Нет панелей для копирования данных');
@@ -378,7 +374,15 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
       const failed = panels.reduce((n, p) => n + (p.error ? 1 : 0) + (p.items ?? []).filter((x) => x.status === 'fail').length, 0);
       const okCount = panels.reduce((n, p) => n + (p.items ?? []).filter((x) => x.status === 'ok').length, 0);
       const res = { ts: t, ok: failed === 0, files: okCount, failed, dest: c.data.dest, reason, panels: panels.map((p) => ({ name: p.name, status: p.status, error: p.error ?? null, failed: (p.items ?? []).filter((x) => x.status === 'fail').map((x) => `${x.label}: ${x.error}`) })) };
-      setRaw('backup_data_last', JSON.stringify(res));
+      // результат по каждому сервису (для обзора): ключ «панель|проект|сервис»; сбой панели целиком помечает все её сервисы запуска
+      const svc = svcResults();
+      for (const [id, p] of Object.entries(dataState.panels)) for (const label of p.empty ?? []) svc[`${id}|${label.replace('/', '|')}`] = { ts: t, ok: true, empty: true };
+      for (const [id, p] of Object.entries(dataState.panels)) for (const x of p.items ?? []) {
+        if (x.status !== 'ok' && x.status !== 'fail') continue;
+        svc[`${id}|${x.label.replace('/', '|')}`] = x.status === 'ok' ? { ts: t, ok: true, size: x.size ?? null, name: x.file ?? null } : { ts: t, ok: false, error: x.error ?? 'ошибка' };
+      }
+      setRaw('backup_data_svc', JSON.stringify(svc));
+      if (!only) setRaw('backup_data_last', JSON.stringify(res)); // «последний запуск» — только полный; запуск одного сервиса его не затирает
       dataState.running = false; dataState.result = res;
       if (failed) alerts?.emit({ type: 'backup_failed', icon: '💾', text: `Копирование данных: ошибок ${failed}${res.panels.filter((p) => p.error || p.failed.length).slice(0, 2).map((p) => ` — ${p.name}: ${p.error ?? p.failed[0]}`).join('')}` }).catch?.(() => {});
     })().finally(() => { dataBusy = false; });
@@ -386,32 +390,33 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
   }
   const dataStatus = () => ({ ...dataState, panels: Object.entries(dataState.panels).map(([id, p]) => ({ id: Number(id), ...p })) });
 
-  async function listData() {
+  async function listData({ panelId = null, project = null, service = null } = {}) {
     const c = load(); const out = [];
+    const prefix = project && service ? `${project}__${service}__` : null;
     if (c.data.dest === 's3') {
       const s3 = s3Of(c);
       const files = await s3.list(`${c.s3.prefix}data/`);
-      for (const rowDb of db.prepare('SELECT * FROM panels').all()) {
+      for (const rowDb of db.prepare('SELECT * FROM panels').all().filter((r) => !panelId || r.id === Number(panelId))) {
         const slug = slugOf(rowDb);
         for (const o of files.filter((f) => f.key.startsWith(`${c.s3.prefix}data/${slug}/`))) out.push({ panelId: rowDb.id, panel: rowDb.name, name: o.key.split('/').pop(), size: o.size, ts: o.ts });
       }
     } else {
-      for (const row of panelsInScope(c)) {
+      for (const row of (panelId ? db.prepare('SELECT * FROM panels WHERE id = ?').all(Number(panelId)) : panelsInScope(c))) {
         try { for (const f of await listHostFiles(manager.clientFor(row), row, c.data.dir, slugOf(row), hostFn)) out.push({ panelId: row.id, panel: row.name, ...f }); }
         catch (e) { out.push({ panelId: row.id, panel: row.name, error: e.message }); }
       }
     }
-    return out.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+    return out.filter((f) => f.error || !prefix || f.name.startsWith(prefix)).sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
   }
   function dataHint(panelId, name) {
     const c = load(); const row = db.prepare('SELECT * FROM panels WHERE id = ?').get(Number(panelId)); if (!row) throw new Error('Панель не найдена');
     const where = c.data.dest === 's3' ? { url: s3Of(c).presign('GET', `${c.s3.prefix}data/${slugOf(row)}/${name}`, 3600) } : { dir: `${c.data.dir}/${slugOf(row)}` };
-    return { ...restoreHint(name, where), encrypted: name.endsWith('.enc') }; // .enc — копии прежних версий, сделанные с паролем
+    return { ...restoreHint(name, where), encrypted: name.endsWith('.enc') };
   }
 
   const dayKey = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
   async function tick(ts = now()) {
-    const c = load(); if (!c.enabled || !c.password || busy) return null;
+    const c = load(); if (!c.enabled || !c.password || busy || (!c.system && c.panels === 'none')) return null;
     const l = lastRun();
     if (l && ts - l.ts < 3600e3 && !l.ok) return null; // после ошибки пробуем не чаще раза в час
     const lastOk = l?.ok ? l.ts : 0;
@@ -420,47 +425,21 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     try { return await run({ reason: 'schedule' }); } catch { return null; }
   }
   async function tickData(ts = now()) {
-    const c = load(); if (c.data.mode === 'none' || !c.data.methods.easyadmin || dataBusy) return null;
+    const c = load(); if (c.data.mode === 'none' || !c.password || dataBusy) return null;
     const l = lastData(); if (l && !l.ok && ts - l.ts < 3600e3) return null;
     const lastOk = l?.ok ? l.ts : 0;
     const due = !lastOk || (c.every === 'weekly' ? ts - lastOk >= 6.5 * DAY : dayKey(ts) !== dayKey(lastOk));
     if (!due || !c.enabled || new Date(ts).getHours() < c.hour) return null;
     try { return await runData({ reason: 'schedule' }); } catch { return null; }
   }
-  /** Расписания Easypanel подгоняются под политику: после любого изменения настроек и не реже раза в 6 часов (раз в час после ошибки). */
-  async function tickEp(ts = now()) {
-    if (!ep || ep.busy()) return null;
-    if (!wantsEasypanel(load()) && !ep.managedCount()) { epDirty = false; return null; }
-    const l = ep.last();
-    if (!epDirty && l && ts - l.ts < (l.ok ? 6 * 3600e3 : 3600e3)) return null;
-    epDirty = false;
-    try { return await ep.sync({ reason: 'schedule' }); } catch { return null; }
-  }
-  /** Сервис переименован или перенесён: охват копий данных и реестр расписаний Easypanel следуют за ним. */
+  /** Сервис переименован или перенесён: охват копий данных и накопленные результаты следуют за ним. */
   function repoint(panelId, from, to) {
     const c = load(); const a = `${panelId}|${from.project}|${from.name}`; const b = `${panelId}|${to.project}|${to.name}`;
     if (c.data.keys.includes(a)) { c.data.keys = [...new Set(c.data.keys.map((k) => (k === a ? b : k)))]; save(c); }
-    ep?.repoint(panelId, from, to); epDirty = true;
-  }
-  const syncEp = (o = {}) => { if (!ep) throw new Error('Менеджер панелей недоступен'); return ep.sync({ reason: 'manual', ...o }); };
-  const epStatus = () => ({ syncing: !!ep?.busy(), last: ep?.last() ?? null, managed: ep?.managedCount() ?? 0 });
-
-  /** Защитить один сервис: добавляет его в охват и включает выбранные способы (способы, которые уже включены, не выключаются). */
-  async function protect({ panelId, project, service, methods = {}, providerId, enableSchedule = false, ctx }) {
-    const c = load(); const row = db.prepare('SELECT id FROM panels WHERE id = ?').get(Number(panelId));
-    if (!row) throw new Error('Панель не найдена');
-    if (!/^[a-z0-9_-]+$/.test(String(project)) || !/^[a-z0-9_-]+$/.test(String(service))) throw new Error('Некорректное имя проекта или сервиса');
-    if (!methods.easyadmin && !methods.easypanel) throw new Error('Выберите, чем копировать сервис');
-    const k = `${row.id}|${project}|${service}`;
-    const data = { mode: c.data.mode === 'all' ? 'all' : 'selected', keys: c.data.mode === 'all' ? c.data.keys : [...new Set([...(c.data.mode === 'selected' ? c.data.keys : []), k])],
-      methods: { easyadmin: c.data.methods.easyadmin || !!methods.easyadmin, easypanel: c.data.methods.easypanel || !!methods.easypanel } };
-    if (providerId) data.providers = { ...c.data.providers, [row.id]: String(providerId) };
-    update({ ...(enableSchedule ? { enabled: true } : {}), data });
-    const report = methods.easypanel ? await syncEp({ panelIds: [row.id], ctx }) : null;
-    return { settings: view(), sync: report?.panels.find((p) => p.id === row.id) ?? null };
+    const svc = svcResults(); if (svc[a]) { svc[b] = svc[a]; delete svc[a]; setRaw('backup_data_svc', JSON.stringify(svc)); }
   }
 
-  const start = () => { timer = setInterval(() => { tick().catch(() => {}); tickData().catch(() => {}); tickEp().catch(() => {}); }, 60_000); timer.unref(); };
+  const start = () => { timer = setInterval(() => { tick().catch(() => {}); tickData().catch(() => {}); }, 60_000); timer.unref(); };
   const stop = () => clearInterval(timer);
 
   /** Конфигурация одной панели из копии (для скачивания и восстановления сервисов). */
@@ -470,8 +449,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     if (!p) throw new Error('Этой панели нет в копии');
     return p;
   }
-  const epProviders = (o) => (ep ? ep.providers(o) : Promise.resolve([]));
-  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, tickEp, syncEp, epStatus, repoint, epProviders, epManaged: () => ep?.managedKeys() ?? new Set(), protect, list, download, remove, verify, restore, tick, start, stop, load };
+  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, repoint, svcResults, lastData, list, download, remove, verify, restore, tick, start, stop, load };
 }
 
 export function backupRoutes(d) {
@@ -490,22 +468,11 @@ export function backupRoutes(d) {
       catch (e) { audit(ctx, { action: 'backup.run', target: 'резервная копия', ok: false, detail: e.message }); throw e; }
     }), { admin: true }],
     ['POST', '/api/backups/data/run', w(async (ctx) => {
-      const r = await backups.runData({ reason: 'manual' }); r.wait.catch(() => {}); audit(ctx, { action: 'backup.data_run', target: 'данные баз и томов', detail: `панелей: ${r.panels}` }); return { started: true, panels: r.panels };
+      const b = ctx.body ?? {}; const only = b.project ? { panelId: b.panelId, project: b.project, service: b.service } : null;
+      const r = await backups.runData({ reason: 'manual', only }); r.wait.catch(() => {}); audit(ctx, { action: 'backup.data_run', target: only ? `${only.project}/${only.service}` : 'данные баз и томов', detail: `панелей: ${r.panels}` }); return { started: true, panels: r.panels };
     }), { admin: true }],
     ['GET', '/api/backups/data/status', w(() => backups.dataStatus()), { admin: true }],
-    // расписания Easypanel под управлением EasyAdmin: хранилища панелей, результат последней синхронизации, запуск, быстрая настройка сервиса
-    ['GET', '/api/backups/ep', w(async (ctx) => {
-      const ids = (ctx.url.searchParams.get('panel') ?? '').split(',').filter(Boolean).map(Number).filter(Number.isInteger);
-      return { ...backups.epStatus(), panels: await backups.epProviders(ids.length ? { panelIds: ids } : {}) };
-    }), { admin: true }],
-    ['POST', '/api/backups/ep/sync', w(async (ctx) => {
-      const r = await backups.syncEp({ ctx }); audit(ctx, { action: 'backup.ep_sync_run', target: 'расписания Easypanel', detail: `панелей: ${r.panels.length}` }); return r;
-    }), { admin: true }],
-    ['POST', '/api/backups/protect', w(async (ctx) => {
-      const b = ctx.body ?? {}; const r = await backups.protect({ ...b, ctx });
-      audit(ctx, { action: 'backup.protect', target: `${b.project}/${b.service}`, detail: ['easyadmin', 'easypanel'].filter((m) => b.methods?.[m]).join(' + ') }); return r;
-    }), { admin: true }],
-    ['GET', '/api/backups/data/files', w(async () => ({ files: await backups.listData() })), { admin: true }],
+    ['GET', '/api/backups/data/files', w(async (ctx) => { const q = ctx.url.searchParams; return { files: await backups.listData({ panelId: q.get('panel'), project: q.get('project'), service: q.get('service') }) }; }), { admin: true }],
     ['POST', '/api/backups/data/hint', w((ctx) => backups.dataHint(ctx.body?.panelId, String(ctx.body?.name ?? ''))), { admin: true }],
     ['GET', '/api/backups/download', w(async (ctx) => {
       const n = name(ctx); const buf = await backups.download(n); audit(ctx, { action: 'backup.download', target: n });

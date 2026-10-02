@@ -220,10 +220,6 @@ describe('настройки панели: билдеры, пользовате�
     assert.deepEqual(cl.nodes.map((n) => [n.id, n.host, n.role, n.manager]), [['n1', 'main', 'manager', true], ['n2', 'w1', 'worker', false]]);
     assert.match(cl.workerCommand, /docker swarm join/);
     assert.equal((await api('admin', 'DELETE', `/api/panels/${id}/pcluster/n2`)).status, 200); assert.equal(m.ps.nodes.length, 1);
-    const st = await api('admin', 'GET', `/api/panels/${id}/pstorage`);
-    assert.equal(st.data.providers[0].type, 's3'); assert.ok(!JSON.stringify(st.data).includes('shh') && !JSON.stringify(st.data).includes('AKIA'), 'ключи хранилища замаскированы');
-    assert.equal((await api('admin', 'DELETE', `/api/panels/${id}/pstorage/ftp-evil/p1`)).status, 400);
-    assert.equal((await api('admin', 'DELETE', `/api/panels/${id}/pstorage/s3/p1`)).status, 200); assert.equal(m.ps.providers.length, 0);
     const nf = await api('admin', 'GET', `/api/panels/${id}/pnotify`); assert.deepEqual([nf.data.channels[0].id, nf.data.channels[0].name, nf.data.channels[0].type, nf.data.channels[0].hasSecret], ['c1', 'Ops', 'slack', { url: true }]);
     assert.ok(!JSON.stringify(nf.data).includes('hooks.example'));
     assert.equal((await api('admin', 'DELETE', `/api/panels/${id}/pnotify/c1`)).status, 200);
