@@ -74,7 +74,7 @@ async function setupModal(row, svc, reload) {
     option(useEp, 'Расписание Easypanel', 'Копии делает сама панель в её хранилище; EasyAdmin создаёт расписание и поддерживает его. Базы можно восстановить прямо из карточки сервиса.',
       epWhy ? h('div', { class: 'small danger-text' }, t(epWhy), !info.providers.length && row.easypanel.supported && !row.easypanel.noData ? [' ', h('a', { href: `#/panel/${panelId}/settings`, onclick: () => { try { localStorage.setItem('ea-pset-section', 'infra'); } catch { /* приватный режим */ } } }, t('Добавить хранилище'))] : null)
         : prov ? h('div', { class: 'small', style: { marginTop: '6px' } }, `${t('Хранилище')}: `, prov) : h('div', { class: 'small muted' }, `${t('Хранилище')}: ${info.providers[0].name || info.providers[0].id}`)),
-    option(useEa, 'Копии данных EasyAdmin', 'Дамп базы или копия томов на сервере панели (или в S3), расписание и хранилище общие для всех сервисов. Восстановление — вручную по подсказке.', eaOk ? null : h('div', { class: 'small danger-text' }, t('Для стека compose включите «Все сервисы» на вкладке «Данные».'))),
+    option(useEa, 'Копии данных EasyAdmin', 'Дамп базы или копия томов на сервере панели (или в S3), расписание и хранилище общие для всех сервисов. Восстановление — вручную по подсказке.'),
     h('div', { class: 'callout compact' }, icon('clock', 14), h('span', { class: 'small' }, `${s.every === 'weekly' ? t('Раз в неделю') : t('Каждый день')}, ${pad2(s.hour)}:00 · ${t('Расписание общее, оно меняется на вкладке «Настройки».')}`)),
     s.enabled ? null : h('label', { class: 'check' }, enable, t('Включить автоматические копии по расписанию (сейчас они выключены)'))),
   actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Включить защиту', kind: 'primary', onClick: async () => {
@@ -146,7 +146,6 @@ function overviewTab() {
         kpi('В порядке', `${sum.ok}/${sum.total}`, sum.running ? `${sum.running} ${t('копируются сейчас')}` : 'сервисов', sum.ok === sum.total && sum.total ? 'ok' : '', 'check')),
       down.length ? h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, `${t('Панели недоступны, их сервисы не показаны')}: ${down.map((p) => p.panelName).join(', ')}`)) : null,
       h('div', { class: 'audit-bar' }, showSeg, panelSel, h('div', { class: 'input-icon' }, icon('search', 15), q), count, h('span', { class: 'spacer' }), h('button', { class: 'btn sm', onclick: () => load(true) }, icon('refresh', 14), 'Обновить')),
-      h('p', { class: 'muted small' }, 'Показаны оба способа: расписания Easypanel (EasyAdmin создаёт и поддерживает их сам, такие помечены «авто») и копии данных EasyAdmin. «Не настроено» — сервис не копируется ни одним из них. Включить способы можно кнопкой «Настроить» или на вкладке «Данные».'),
       list,
       can('admin') ? h('section', { class: 'card stack' }, h('div', { class: 'card-head' }, h('h4', null, 'Копия самого EasyAdmin'), h('a', { class: 'btn sm ghost', href: '#/backups/system' }, 'Открыть')),
         sl ? h('div', { class: `callout compact ${sl.ok ? '' : 'err'}` }, icon(sl.ok ? 'activity' : 'alert', 14), h('span', { class: 'small' }, sl.ok ? `${t('Последняя копия')}: ${fmtTime(sl.ts)} · ${size(sl.size)}` : `${t('Последняя копия не создана')}: ${sl.error}`))

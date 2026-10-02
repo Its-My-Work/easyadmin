@@ -27,6 +27,15 @@ export async function refresh(force = false, { silent = false } = {}) {
   finally { store.loading = false; notify(); store.quiet = false; }
 }
 
+/** Действие над сервисом выполнено: новое состояние показываем сразу, а список панели перечитывается фоном. */
+export function patchService(s, patch) {
+  const svc = store.panels.find((p) => p.id === s.panelId)?.tree?.projects.find((p) => p.name === s.project)?.services.find((x) => x.name === s.name);
+  if (!svc) return;
+  Object.assign(svc, patch); if ('enabled' in patch) delete svc.health;
+  last = ''; // следующий ответ панели заменит предположение, даже если выглядит как прежний
+  notify();
+}
+
 export const panelById = (id) => store.panels.find((p) => p.id === Number(id));
 
 /** Плоский список сервисов всех панелей. */

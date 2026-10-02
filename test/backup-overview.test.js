@@ -92,3 +92,19 @@ describe('обзор по панелям', () => {
     assert.equal(o1.at <= o2.at, true); assert.equal(o2.panels.find((p) => p.panelId === pid).rows.length, 4);
   });
 });
+
+describe('compose-стеки', () => {
+  test('виден в обзоре при любом охвате (его копируют копии данных EasyAdmin), а при выбранных сервисах не пропадает', async () => {
+    const C = createMockPanel({ token: 'T', seed: { stk: [{ name: 'stack', type: 'compose' }, { name: 'plain' }] } });
+    const id = (await api('admin', 'POST', '/api/panels', { name: 'Stacks', url: await C.listen(), token: 'T' })).data.id;
+    try {
+      await api('admin', 'GET', '/api/overview?force=1'); // панель попадает в обзор после первого опроса
+      await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'none' } });
+      let s = row(await ov(), 'stack'); assert.ok(s, 'стек показан даже без охвата'); assert.deepEqual([s.status, s.easyadmin.possible, s.easypanel.supported], ['none', true, false]);
+      await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${id}|stk|plain`] } });
+      s = row(await ov(), 'stack'); assert.ok(s, 'не пропадает и при режиме «Выбранные»'); assert.equal(s.easyadmin.possible, true);
+      await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'selected', keys: [`${id}|stk|stack`] } });
+      assert.equal(row(await ov(), 'stack').easyadmin.covered, true, 'стек можно выбрать для копий данных');
+    } finally { await api('admin', 'PUT', '/api/backups/settings', { data: { mode: 'none' } }); await api('admin', 'DELETE', `/api/panels/${id}`); await C.close(); }
+  });
+});
