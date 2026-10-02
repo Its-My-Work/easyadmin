@@ -1489,6 +1489,9 @@ export const EN = [
   ['У сервиса нет томов: Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются.', 'The service has no volumes: Easypanel only backs up volumes (Volume mount); file and bind mounts are not supported.'],
   ['{0}: нет томов для копирования — Easypanel копирует только тома (Volume mount), файловые и bind-монтирования не поддерживаются', '{0}: no volumes to back up — Easypanel only backs up volumes (Volume mount); file and bind mounts are not supported'],
   ['Панели недоступны, их сервисы не показаны', 'Panels are unavailable, their services are not shown'],
+  ['пропущено', 'skipped'], ['Папки или файла {0} нет на сервере', 'Folder or file {0} does not exist on the server'],
+  ['Нечего копировать: ни одна часть сервиса не скопирована', 'Nothing to back up: no part of the service was copied'],
+  ['Замените SOURCE_PARENT_FOLDER на папку, в которой лежала скопированная папка или файл.', 'Replace SOURCE_PARENT_FOLDER with the folder that contained the copied folder or file.'],
 ];
 
 /* ------------------------------------------------------------------ */

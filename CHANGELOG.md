@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Data backups: one archive per service** (also for compose stacks) instead of one file per database or volume; the archive holds a `.gz` per part and `RESTORE.txt` with restore commands. Fixed: a bind-mounted single file (e.g. `claude.json`) was reported as "folder not found"; a missing volume source is now a warning instead of a failure of the whole service.
 - Docs: the English README is now the default (`README.md`), the Russian one moved to `README.ru.md` and is linked from the top of the English one; README screenshots are in English with English panel names (`DEMO_NAMES=en DEMO_BACKUPS=1 npm run demo`, then `node scripts/screenshots.mjs`) and include the new Backups overview.
 - Menu: "Services" (was "All services"); order Overview, Console, Services, Inventory, Templates, Schedules, Log, Users, Settings.
 - **Service history** tab in the service card: panel actions (deploys with their logs, updated live while a deploy runs) together with operations made through EasyAdmin.

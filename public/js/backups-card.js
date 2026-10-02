@@ -85,7 +85,7 @@ export function dataProgress(onDone) {
       if (st.panels?.length) box.append(h('h4', null, st.running ? 'Идёт копирование данных…' : 'Результат последнего запуска'), ...st.panels.map((p) => h('div', { class: 'list-item', style: { display: 'block' } },
         h('div', { class: 'inline' }, h('b', null, p.name), h('span', { class: `badge ${p.status === 'done' ? 'ok' : p.status === 'error' || p.status === 'partial' ? 'err' : ''}` }, STATUS[p.status] ?? p.status)),
         p.error ? h('div', { class: 'small danger-text' }, p.error) : null, p.note ? h('div', { class: 'small muted' }, p.note) : null,
-        (p.items ?? []).map((x) => h('div', { class: 'small' }, `${x.status === 'ok' ? '✓' : x.status === 'fail' ? '✗' : '…'} ${x.label}`, x.size ? h('span', { class: 'muted' }, ` · ${size(x.size)}`) : null, x.error ? h('span', { class: 'danger-text' }, ` — ${x.error}`) : null)))));
+        (p.items ?? []).map((x) => h('div', { class: 'small' }, `${x.status === 'ok' ? '✓' : x.status === 'fail' ? '✗' : '…'} ${x.label}`, x.size ? h('span', { class: 'muted' }, ` · ${size(x.size)}`) : null, x.error ? h('span', { class: 'danger-text' }, ` — ${x.error}`) : null, x.note ? h('span', { class: 'warn-text' }, ` — ${t('пропущено')}: ${x.note}`) : null)))));
       if (st.running) setTimeout(draw, 3000); else { stop = true; onDone?.(); }
     } catch { setTimeout(draw, 5000); }
   };

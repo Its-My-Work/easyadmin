@@ -9,6 +9,8 @@ import { inspectService } from './easypanel.js';
  *  - «в S3»: сервер сам загружает файл по временным подписанным ссылкам (ключи S3 на него не передаются); большие файлы — частями (multipart).
  * Пароли баз не покидают контейнер: дамп запускается внутри него и берёт пароль из его окружения.
  * Согласованность томов: «как есть» / «приостановить» (docker pause) / «остановить» на время копирования; сервис всегда возвращается.
+ * Один сервис — один архив `проект__сервис__метка.tar`: внутри по файлу на каждую базу или том (`*.gz`) и RESTORE.txt с готовыми командами
+ * восстановления (в том числе для compose-стека с несколькими базами и томами).
  */
 export const DB_ENGINES = ['postgres', 'mysql', 'mariadb', 'mongo', 'redis'];
 export const DEFAULT_DIR = '/var/backups/easyadmin';
@@ -60,7 +62,7 @@ export async function resolveTargets(client, row, projects, { mode, keys, consis
   const wanted = (p, s) => mode === 'all' || keys.includes(`${row.id}|${p}|${s}`);
   const items = []; const services = projects.flatMap((p) => p.services.map((s) => ({ ...s, project: p.name }))).filter((s) => wanted(s.project, s.name));
   const slug = slugOf(row); const hold = (spec) => (consistency === 'none' ? null : spec);
-  const add = (it) => { it.prefix = `${it.project}__${it.service}__${it.tag}__`; it.file = `${it.prefix}${stamp}.${EXT[it.kind]}.gz`; it.slug = slug; items.push(it); };
+  const add = (it) => { it.member = `${it.tag}.${EXT[it.kind]}.gz`; it.slug = slug; items.push(it); };
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(3, services.length) }, async () => {
     while (i < services.length) {
@@ -73,7 +75,7 @@ export async function resolveTargets(client, row, projects, { mode, keys, consis
           if (eng) { add({ kind: eng, tag: `cdb~${eng}~${csv}`, project: s.project, service: s.name, filter, label: `${s.project}/${s.name} · ${c.svc} (${eng})` }); continue; }
           for (const m of c.mounts) {
             if (m.type === 'volume' && SAFE.test(m.name) && !seen.has(m.name)) { seen.add(m.name); add({ kind: 'volume', tag: `cvol~${csv}~${m.name}`, project: s.project, service: s.name, volume: m.name, hostPath: `/var/lib/docker/volumes/${m.name}/_data`, hold: hold(`ids:${filter}`), label: `${s.project}/${s.name} · ${c.svc}: ${m.name}` }); }
-            else if (m.type === 'bind' && validDir(m.source) && !BAD_BIND.test(m.source) && !seen.has(m.source)) { seen.add(m.source); add({ kind: 'volume', tag: `cbind~${csv}~${m.source.split('/').filter(Boolean).pop().replace(/[^A-Za-z0-9_.-]/g, '_')}`, project: s.project, service: s.name, volume: m.source, hostPath: m.source, hold: hold(`ids:${filter}`), label: `${s.project}/${s.name} · ${c.svc}: ${m.source}` }); }
+            else if (m.type === 'bind' && validDir(m.source) && !BAD_BIND.test(m.source) && !seen.has(m.source)) { seen.add(m.source); add({ kind: 'volume', bind: true, tag: `cbind~${csv}~${m.source.split('/').filter(Boolean).pop().replace(/[^A-Za-z0-9_.-]/g, '_')}`, project: s.project, service: s.name, volume: m.source, hostPath: m.source, hold: hold(`ids:${filter}`), label: `${s.project}/${s.name} · ${c.svc}: ${m.source}` }); }
           }
         }
         continue;
@@ -84,19 +86,31 @@ export async function resolveTargets(client, row, projects, { mode, keys, consis
         for (const m of Array.isArray(mounts) ? mounts : []) {
           const type = m.type ?? m.mountType; const h = hold(`swarm:${s.project}_${s.name}`);
           if (type === 'volume' && SAFE.test(String(m.name ?? ''))) add({ kind: 'volume', tag: `vol-${m.name}`, project: s.project, service: s.name, volume: m.name, hostPath: `/etc/easypanel/projects/${s.project}/${s.name}/volumes/${m.name}`, hold: h, label: `${s.project}/${s.name} · ${m.name}` });
-          else if (type === 'bind' && typeof m.hostPath === 'string' && validDir(m.hostPath)) add({ kind: 'volume', tag: `bind-${m.hostPath.split('/').filter(Boolean).pop().replace(/[^A-Za-z0-9_.-]/g, '_')}`, project: s.project, service: s.name, volume: m.hostPath, hostPath: m.hostPath, hold: h, label: `${s.project}/${s.name} · ${m.hostPath}` });
+          else if (type === 'bind' && typeof m.hostPath === 'string' && validDir(m.hostPath)) add({ kind: 'volume', bind: true, tag: `bind-${m.hostPath.split('/').filter(Boolean).pop().replace(/[^A-Za-z0-9_.-]/g, '_')}`, project: s.project, service: s.name, volume: m.hostPath, hostPath: m.hostPath, hold: h, label: `${s.project}/${s.name} · ${m.hostPath}` });
         }
       } catch { /* сервис недоступен — пропускаем, ошибка конфигурации уже отражена в копии конфигураций */ }
     }
   }));
-  return items.sort((a, b) => a.label.localeCompare(b.label));
+  return groupJobs(items.sort((a, b) => a.label.localeCompare(b.label)), stamp);
+}
+
+/** Части (база или том) → задания: один сервис — один архив, даже если это compose-стек. */
+export function groupJobs(parts, stamp) {
+  const by = new Map();
+  for (const p of parts) {
+    const label = `${p.project}/${p.service}`;
+    if (!by.has(label)) by.set(label, { project: p.project, service: p.service, label, slug: p.slug, prefix: `${p.project}__${p.service}__`, file: `${p.project}__${p.service}__${stamp}.tar`, parts: [] });
+    by.get(label).parts.push(p);
+  }
+  return [...by.values()].sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export const needsDiscovery = (projects, { mode, keys }, rowId) => projects.some((p) => p.services.some((s) => s.type === 'compose' && (mode === 'all' || keys.includes(`${rowId}|${p.name}|${s.name}`))));
 
-/** Оценка размера томов (байт, без сжатия): по ней решаем, нужна ли загрузка частями. */
+/** Оценка размера томов (байт, без сжатия): по ней решаем, нужна ли загрузка частями. Размер архива сервиса — сумма его томов (оценка сверху). */
+export const jobVolumeBytes = (job, sizes) => job.parts.filter((x) => x.kind === 'volume').reduce((n, x) => n + (sizes.get(x.hostPath) ?? 0), 0);
 export async function measureVolumes(c, row, items, host = runOnHost) {
-  const paths = [...new Set(items.filter((x) => x.kind === 'volume').map((x) => x.hostPath))]; const sizes = new Map();
+  const paths = [...new Set(items.flatMap((x) => x.parts ?? [x]).filter((x) => x.kind === 'volume').map((x) => x.hostPath))]; const sizes = new Map();
   for (let i = 0; i < paths.length; i += 12) {
     const batch = paths.slice(i, i + 12);
     const r = await host(c, row, `for p in ${batch.map(shq).join(' ')}; do du -sb "$p" 2>/dev/null | cut -f1 | tr '\\n' ' '; echo "$p"; done; true`, { timeoutMs: 120_000 }).catch(() => ({ output: '' }));
@@ -113,7 +127,7 @@ export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, cons
     'LOGD="$BASE/.runs"; ST="$LOGD/$RUN.status"; TMPD="$BASE/.work"; HOLDS=()',
     'umask 077; mkdir -p "$LOGD" "$TMPD" || exit 1',
     'hold_end() { local h; for h in "${HOLDS[@]}"; do case "$h" in pause:*) docker unpause ${h#pause:} >/dev/null 2>&1;; start:*) docker start ${h#start:} >/dev/null 2>&1;; scale:*) docker service scale -d "${h#scale:}" >/dev/null 2>&1;; esac; done; HOLDS=(); }',
-    'trap \'hold_end; rm -f "${TMPD:?}/${RUN:?}".*\' EXIT',
+    'trap \'hold_end; rm -rf "${TMPD:?}/${RUN:?}".*\' EXIT',
     'echo START > "$ST"',
     'fail() { printf \'FAIL|%s|%s|%s\\n\' "$1" "$2" "$3" >> "$ST"; }',
     'avail=$(df -Pk "$BASE" | awk \'NR==2{print $4}\')',
@@ -140,14 +154,25 @@ export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, cons
     '  curl -sS -f -X POST -H \'Content-Type: application/xml\' --data "<CompleteMultipartUpload>$etags</CompleteMultipartUpload>" -o "$TMPD/$RUN.c" "$(sed -n 1p "$spec")" || return 13',
     '  ! grep -q \'<Error>\' "$TMPD/$RUN.c" || return 14',
     '}',
-    'run_item() {',
-    '  local label=$1 name=$2 url=$3 sub=$4 prefix=$5 fn=$6 hold=$7 mp=$8; local tmp="$TMPD/$RUN.$RANDOM" err="$LOGD/$RUN.err" rc size out',
+    // одна часть сервиса (база или том) → сжатый файл в каталоге задания → дописывается в архив сервиса и сразу удаляется (на диске — архив и одна часть)
+    // args: stage member fn hold tolerate; uses OUT, LABEL, NPARTS, SKIPS of the calling job
+    'do_part() {',
+    '  local stage=$1 member=$2 fn=$3 hold=$4 tol=$5 rc perr="$LOGD/$RUN.perr"',
     '  hold_start "$hold"',
-    '  ( set -o pipefail; "$fn" | gzip -c > "$tmp" ) 2>"$err"; rc=$?',
+    '  ( set -o pipefail; "$fn" | gzip -c > "$stage/$member" ) 2>"$perr"; rc=$?',
     '  hold_end',
+    '  if [ $rc -ne 0 ]; then',
+    '    if [ "$tol" = 1 ] && grep -q EA_NODIR "$perr"; then SKIPS="$SKIPS $(grep -o \'EA_NODIR:[^ ]*\' "$perr" | head -n1)"; printf \'WARN|%s|%s\\n\' "$LABEL" "$(grep -o \'EA_NODIR:[^ ]*\' "$perr" | head -n1)" >> "$ST"; rm -f "$stage/$member"; return 0; fi',
+    '    tail -c 300 "$perr" >&2; return 1',
+    '  fi',
+    '  if [ "$(stat -c %s "$stage/$member" 2>/dev/null || echo 0)" -lt 30 ]; then echo EA_EMPTY >&2; return 1; fi',
+    '  tar -rf "$OUT" -C "$stage" "$member" && rm -f "$stage/$member" && NPARTS=$((NPARTS+1))',
+    '}',
+    'run_job() {',
+    '  local label=$1 name=$2 url=$3 sub=$4 prefix=$5 fn=$6 mp=$7; local tmp="$TMPD/$RUN.$RANDOM" err="$LOGD/$RUN.err" rc size out',
+    '  "$fn" "$tmp" 2>"$err"; rc=$?',
     '  if [ $rc -ne 0 ]; then fail "$label" CMD "$(tail -c 300 "$err" | tr \'\\n|\' \'  \')"; rm -f "${tmp:?}"; return; fi',
     '  size=$(stat -c %s "$tmp" 2>/dev/null || echo 0)',
-    '  if [ "$size" -lt 30 ]; then fail "$label" EMPTY ""; rm -f "${tmp:?}"; return; fi',
     '  if [ "$DEST" = s3 ]; then',
     '    if [ "$size" -gt "$MPMIN" ] && [ -n "$mp" ] && [ -f "$mp" ]; then upload_mp "$tmp" "$size" "$mp"; rc=$?; if [ $rc -ne 0 ]; then fail "$label" S3MP "$rc"; rm -f "${tmp:?}"; return; fi',
     '    else',
@@ -162,13 +187,22 @@ export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, cons
     '  printf \'OK|%s|%s|%s\\n\' "$label" "$name" "$size" >> "$ST"',
     '}',
   ];
-  items.forEach((it, n) => {
-    const fn = `p${n}`;
-    if (it.kind === 'volume') lines.push(`${fn}() { [ -d ${shq(it.hostPath)} ] || { echo "EA_NODIR:${it.hostPath}" >&2; return 3; }; tar -C ${shq(it.hostPath)} -cf - .; }`);
-    else lines.push(`${fn}() { local C; C=$(docker ps -q ${it.filter} | head -n1); [ -n "$C" ] || { echo EA_NOCONT >&2; return 3; }; docker exec "$C" ${DUMP[it.kind]}; }`);
+  items.forEach((job, n) => {
+    const fn = `j${n}`;
+    job.parts.forEach((p, k) => {
+      const pf = `p${n}_${k}`;
+      if (p.kind === 'volume' && p.bind) lines.push(`${pf}() { [ -e ${shq(p.hostPath)} ] || { echo "EA_NODIR:${p.hostPath}" >&2; return 3; }; tar -C "$(dirname -- ${shq(p.hostPath)})" -cf - "$(basename -- ${shq(p.hostPath)})"; }`); // папка или файл: в архиве лежит под своим именем
+      else if (p.kind === 'volume') lines.push(`${pf}() { [ -d ${shq(p.hostPath)} ] || { echo "EA_NODIR:${p.hostPath}" >&2; return 3; }; tar -C ${shq(p.hostPath)} -cf - .; }`);
+      else lines.push(`${pf}() { local C; C=$(docker ps -q ${p.filter} | head -n1); [ -n "$C" ] || { echo EA_NOCONT >&2; return 3; }; docker exec "$C" ${DUMP[p.kind]}; }`);
+    });
+    lines.push(`${fn}() { local OUT=$1 LABEL=${shq(job.label.replace(/\|/g, '/'))} NPARTS=0 SKIPS="" stage="$TMPD/$RUN.s$RANDOM"; mkdir -p "$stage" && tar -cf "$OUT" -T /dev/null || return 1`);
+    job.parts.forEach((p, k) => lines.push(`  do_part "$stage" ${shq(p.member)} p${n}_${k} ${shq(p.hold ?? '-')} ${p.kind === 'volume' ? 1 : 0} || { rm -rf "$stage"; return 1; }`)); // у тома нет папки — пропускаем с предупреждением, у базы нет контейнера — отказ
+    lines.push(`  cat > "$stage/RESTORE.txt" <<'EA_RESTORE'`, restoreText(job).replace(/^EA_RESTORE$/gm, 'EA_RESTORE '), 'EA_RESTORE',
+      '  tar -rf "$OUT" -C "$stage" RESTORE.txt; rm -rf "$stage"',
+      '  [ "$NPARTS" -gt 0 ] || { echo "$SKIPS EA_NOPARTS" >&2; return 1; }', '}');
     let mp = "'-'";
-    if (it.mp) { mp = `"$LOGD/$RUN.mp${n}"`; lines.push(`cat > "$LOGD/$RUN.mp${n}" <<'EA_MP'`, it.mp.complete, it.mp.abort, ...it.mp.parts, 'EA_MP'); }
-    lines.push(`run_item ${shq(it.label.replace(/\|/g, '/'))} ${shq(it.file)} ${shq(it.url ?? '-')} ${shq(it.slug)} ${shq(it.prefix)} ${fn} ${shq(it.hold ?? '-')} ${mp}`);
+    if (job.mp) { mp = `"$LOGD/$RUN.mp${n}"`; lines.push(`cat > "$LOGD/$RUN.mp${n}" <<'EA_MP'`, job.mp.complete, job.mp.abort, ...job.mp.parts, 'EA_MP'); }
+    lines.push(`run_job ${shq(job.label.replace(/\|/g, '/'))} ${shq(job.file)} ${shq(job.url ?? '-')} ${shq(job.slug)} ${shq(job.prefix)} ${fn} ${mp}`);
   });
   lines.push('echo DONE >> "$ST"');
   return lines.filter(Boolean).join('\n') + '\n';
@@ -185,20 +219,23 @@ function describeFail(code, arg) {
     case 'SAVE': return `Не удалось сохранить файл в ${arg}`;
     default: {
       if (/EA_NOCONT/.test(arg)) return 'Контейнер сервиса не запущен';
-      const d = /EA_NODIR:(\S+)/.exec(arg); if (d) return `Папки ${d[1]} нет на сервере`;
+      const d = /EA_NODIR:(\S+)/.exec(arg); if (d) return `Папки или файла ${d[1]} нет на сервере`;
+      if (/EA_NOPARTS/.test(arg)) return 'Нечего копировать: ни одна часть сервиса не скопирована';
+      if (/EA_EMPTY/.test(arg)) return 'Получился пустой файл';
       return arg.trim() || 'Команда завершилась с ошибкой';
     }
   }
 }
 export function parseStatus(text) {
-  const items = []; let done = false; let started = false;
+  const items = []; const warns = []; let done = false; let started = false;
   for (const raw of String(text).split('\n')) {
     const l = raw.replace(/\r/g, '').trim();
     if (l === 'DONE') done = true; else if (l === 'START') started = true;
     else if (/^OK\|/.test(l)) { const [, label, name, size] = l.split('|'); items.push({ ok: true, label, name, size: Number(size) || 0 }); }
     else if (/^FAIL\|/.test(l)) { const [, label, code, ...rest] = l.split('|'); items.push({ ok: false, label, error: describeFail(code, rest.join('|')) }); }
+    else if (/^WARN\|/.test(l)) { const [, label, ...rest] = l.split('|'); warns.push({ label, text: describeFail('CMD', rest.join('|')) }); } // часть сервиса пропущена, архив сделан
   }
-  return { items, done, started };
+  return { items, done, started, ...(warns.length ? { warns } : {}) };
 }
 
 /** Доставка скрипта на сервер (в консоли строка ограничена, поэтому — сжатым и порциями) и запуск отдельным процессом. */
@@ -230,20 +267,24 @@ export async function listHostFiles(c, row, baseDir, slug, host = runOnHost) {
   return r.output.split('\n').map((l) => l.trim()).filter((l) => /^F\|/.test(l)).map((l) => { const [, name, size, ts] = l.split('|'); return { name, size: Number(size), ts: Math.round(Number(ts) * 1000) }; });
 }
 
-const NAME_RE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__((?:db|vol|bind)-[A-Za-z0-9_.-]+|(?:cdb|cvol|cbind)~[A-Za-z0-9_.~-]+)__(\d{8}-\d{6})\.(sql|archive|tar|rdb)\.gz(\.enc)?$/;
-export const parseName = (n) => { const m = NAME_RE.exec(n); return m ? { project: m[1], service: m[2], tag: m[3], stamp: m[4], ext: m[5], encrypted: !!m[6] } : null; };
+const NAME_RE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__((?:db|vol|bind)-[A-Za-z0-9_.-]+|(?:cdb|cvol|cbind)~[A-Za-z0-9_.~-]+)__(\d{8}-\d{6})\.(sql|archive|tar|rdb)\.gz(\.enc)?$/; // прежний формат: файл на каждую базу или том
+const ARCHIVE_RE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__(\d{8}-\d{6})\.tar$/; // текущий формат: один архив на сервис
+export const parseName = (n) => {
+  const m = NAME_RE.exec(n); if (m) return { project: m[1], service: m[2], tag: m[3], stamp: m[4], ext: m[5], encrypted: !!m[6] };
+  const a = ARCHIVE_RE.exec(n); return a ? { project: a[1], service: a[2], tag: null, stamp: a[3], ext: 'tar', encrypted: false, archive: true } : null;
+};
 export const groupKey = (n) => n.replace(/__\d{8}-\d{6}\..*$/, '');
 
-/** Команды восстановления для копии и пояснения. Копии с суффиксом .enc сделаны прежними версиями (с паролем) — для них оставлена расшифровка; пароль не подставляется. */
-export function restoreHint(name, where) {
-  const p = parseName(name); if (!p) throw new Error('Некорректное имя файла');
-  const stream = p.encrypted ? `openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:'YOUR_BACKUP_PASSWORD' -in ${shq(name)} | gunzip -c` : `gunzip -c ${shq(name)}`;
-  const compose = p.tag.startsWith('c') && p.tag.includes('~'); const parts = p.tag.split('~');
-  const composeSvc = compose ? (parts[0] === 'cdb' ? parts[2] : parts[1]) : null;
-  const sel = compose ? `--filter ${shq(`label=com.docker.compose.project=${p.project}_${p.service}`)} --filter ${shq(`label=com.docker.compose.service=${composeSvc}`)}` : `--filter ${shq(`name=^${p.project}_${p.service}\\.`)}`;
+/** Команда восстановления одной части (базы или тома). stream — команда, выдающая распакованные данные. */
+function restoreRun({ project, service, tag, hostPath, stream }) {
+  const parts = tag.split('~');
+  const compose = tag.startsWith('c') && tag.includes('~'); const composeSvc = compose ? (parts[0] === 'cdb' ? parts[2] : parts[1]) : null;
+  const sel = compose ? `--filter ${shq(`label=com.docker.compose.project=${project}_${service}`)} --filter ${shq(`label=com.docker.compose.service=${composeSvc}`)}` : `--filter ${shq(`name=^${project}_${service}\\.`)}`;
   const C = `"$(docker ps -q ${sel} | head -n1)"`;
-  const kind = p.tag.startsWith('db-') ? p.tag.slice(3) : parts[0] === 'cdb' ? parts[1] : 'volume';
-  const dir = p.tag.startsWith('vol-') ? shq(`/etc/easypanel/projects/${p.project}/${p.service}/volumes/${p.tag.slice(4)}`) : parts[0] === 'cvol' ? shq(`/var/lib/docker/volumes/${parts.slice(2).join('~')}/_data`) : "'SOURCE_FOLDER'";
+  const kind = tag.startsWith('db-') ? tag.slice(3) : parts[0] === 'cdb' ? parts[1] : 'volume';
+  const bind = tag.startsWith('bind-') || parts[0] === 'cbind';
+  // bind-монтирование (папка или файл) лежит в архиве под своим именем — распаковываем в родительскую папку; для прежних копий папка неизвестна
+  const dir = bind ? (hostPath ? shq(hostPath.replace(/\/[^/]*$/, '') || '/') : "'SOURCE_PARENT_FOLDER'") : tag.startsWith('vol-') ? shq(`/etc/easypanel/projects/${project}/${service}/volumes/${tag.slice(4)}`) : parts[0] === 'cvol' ? shq(`/var/lib/docker/volumes/${parts.slice(2).join('~')}/_data`) : "'SOURCE_FOLDER'";
   const run = {
     postgres: `${stream} | docker exec -i ${C} sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "\${POSTGRES_USER:-postgres}"'`,
     mysql: `${stream} | docker exec -i ${C} sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"'`,
@@ -252,9 +293,39 @@ export function restoreHint(name, where) {
     redis: `${stream} > dump.rdb`,
     volume: `${stream} | tar -xf - -C ${dir}`,
   }[kind];
+  return { kind, run };
+}
+const NOTES = {
+  volume: 'Остановите сервис в Easypanel перед восстановлением томов.',
+  redis: 'Остановите Redis, положите dump.rdb в папку его данных и запустите сервис снова.',
+  db: 'Восстановление дописывает данные в работающую базу; для чистого восстановления сначала очистите её.',
+};
+
+// RESTORE.txt лежит в архиве и читается администратором на сервере — пишем по-английски
+const RESTORE_NOTES = { volume: 'Stop the service in Easypanel before restoring volumes.', redis: 'Stop Redis, put dump.rdb into its data folder and start the service again.', db: 'The restore appends to the running database; for a clean restore empty it first.' };
+
+/** Содержимое RESTORE.txt внутри архива сервиса: готовые команды для каждой части (запускать из папки, куда распакован архив). */
+export function restoreText(job) {
+  const out = [`# ${job.label}: how to restore (run the commands from the folder this archive was extracted to)`, '# If the source of a part was missing on the server during the backup, its file is not in the archive.', ''];
+  for (const p of job.parts) {
+    const { kind, run } = restoreRun({ project: job.project, service: job.service, tag: p.tag, hostPath: p.hostPath, stream: `gunzip -c ${shq(p.member)}` });
+    out.push(`# ${p.label}`, `# ${RESTORE_NOTES[kind === 'volume' || kind === 'redis' ? kind : 'db']}`, run, '');
+  }
+  return out.join('\n');
+}
+
+/** Команды восстановления для копии и пояснения. Копии с суффиксом .enc сделаны прежними версиями (с паролем) — для них оставлена расшифровка; пароль не подставляется. */
+export function restoreHint(name, where) {
+  const p = parseName(name); if (!p) throw new Error('Некорректное имя файла');
   const steps = [];
   if (where?.url) steps.push(`curl -fL -o ${shq(name)} ${shq(where.url)}`);
   else if (where?.dir) steps.push(`cd ${shq(where.dir)}`);
+  if (p.archive) {
+    steps.push(`mkdir -p restore && tar -xf ${shq(name)} -C restore && cd restore && ls`, 'cat RESTORE.txt   # ready-made commands for every database and volume of the service');
+    return { text: steps.join('\n'), notes: ['В архиве один файл на каждую базу или том сервиса и RESTORE.txt с командами для каждой части — выполните нужные из него.', NOTES.volume, NOTES.redis] };
+  }
+  const stream = p.encrypted ? `openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 -pass pass:'YOUR_BACKUP_PASSWORD' -in ${shq(name)} | gunzip -c` : `gunzip -c ${shq(name)}`;
+  const { kind, run } = restoreRun({ project: p.project, service: p.service, tag: p.tag, stream });
   steps.push(run);
-  return { text: steps.join('\n'), notes: [kind === 'volume' ? 'Остановите сервис в Easypanel перед восстановлением томов.' : kind === 'redis' ? 'Остановите Redis, положите dump.rdb в папку его данных и запустите сервис снова.' : 'Восстановление дописывает данные в работающую базу; для чистого восстановления сначала очистите её.', ...(p.encrypted ? ['Подставьте пароль копии вместо YOUR_BACKUP_PASSWORD.'] : []), ...(/^c?bind/.test(p.tag) ? ['Замените SOURCE_FOLDER на папку, из которой копировали том.'] : [])] };
+  return { text: steps.join('\n'), notes: [kind === 'volume' ? NOTES.volume : kind === 'redis' ? NOTES.redis : NOTES.db, ...(p.encrypted ? ['Подставьте пароль копии вместо YOUR_BACKUP_PASSWORD.'] : []), ...(/^c?bind/.test(p.tag) ? ['Замените SOURCE_PARENT_FOLDER на папку, в которой лежала скопированная папка или файл.'] : [])] };
 }

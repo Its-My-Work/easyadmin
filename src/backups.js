@@ -9,7 +9,7 @@ import { HttpError, RawResponse } from './http.js';
 import { runOnHost } from './host-exec.js';
 import { inspectService, normalizeTree } from './easypanel.js';
 import { applyConfig, configFromService } from './templates.js';
-import { CONSISTENCY, DEFAULT_DIR, DISCOVER_CMD, buildScript, cleanupJob, deployJob, groupKey, listHostFiles, measureVolumes, needsDiscovery, parseDiscovery, readStatus, resolveTargets, restoreHint, slugOf, stampOf, validDir } from './data-backup.js';
+import { CONSISTENCY, DEFAULT_DIR, DISCOVER_CMD, buildScript, cleanupJob, deployJob, groupKey, jobVolumeBytes, listHostFiles, measureVolumes, needsDiscovery, parseDiscovery, readStatus, resolveTargets, restoreHint, slugOf, stampOf, validDir } from './data-backup.js';
 
 /**
  * Резервные копии EasyAdmin: зашифрованный паролем файл (.eabak) с базой (без истории нагрузки и сессий) и ключом приложения.
@@ -320,9 +320,10 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
       const sizes = await measureVolumes(client, row, items, hostFn);
       for (const it of items) {
         it.url = s3.presign('PUT', keyOf(it), 12 * 3600);
-        if (it.kind === 'volume' && (sizes.get(it.hostPath) ?? 0) > mpMin) { // том больше порога: готовим загрузку частями
+        const bytes = jobVolumeBytes(it, sizes);
+        if (bytes > mpMin) { // тома сервиса вместе больше порога: готовим загрузку архива частями
           const uploadId = await s3.createMultipart(keyOf(it)); opened.push({ key: keyOf(it), uploadId, label: it.label });
-          const n = Math.min(100, Math.ceil(sizes.get(it.hostPath) / (partMb * 1048576)) + 2);
+          const n = Math.min(100, Math.ceil(bytes / (partMb * 1048576)) + 2);
           it.mp = { complete: s3.presign('POST', keyOf(it), 12 * 3600, { uploadId }), abort: s3.presign('DELETE', keyOf(it), 12 * 3600, { uploadId }), parts: Array.from({ length: n }, (_, i) => s3.presign('PUT', keyOf(it), 12 * 3600, { partNumber: String(i + 1), uploadId })) };
         }
       }
@@ -337,7 +338,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     for (let polls = 0; !st.done; polls++) {
       await new Promise((r) => setTimeout(r, dataPollMs));
       try { st = await readStatus(client, row, c.data.dir, runId, hostFn); } catch { /* консоль может отвечать с задержкой — пробуем ещё */ }
-      state.items = items.map((it) => { const r = st.items.find((x) => x.label === it.label.replace(/\|/g, '/')); return { label: it.label, status: r ? (r.ok ? 'ok' : 'fail') : 'wait', file: r?.name, size: r?.size, error: r?.error }; });
+      state.items = items.map((it) => { const label = it.label.replace(/\|/g, '/'); const r = st.items.find((x) => x.label === label); const note = (st.warns ?? []).filter((w) => w.label === label).map((w) => w.text).join('; '); return { label: it.label, status: r ? (r.ok ? 'ok' : 'fail') : 'wait', file: r?.name, size: r?.size, error: r?.error, ...(note ? { note } : {}) }; });
       if (!st.started && now() - t0 > 180_000) throw new Error('Скрипт на сервере не стартовал');
       if (now() - t0 > 6 * 3600e3) throw new Error('Копирование идёт слишком долго (больше 6 часов)');
     }

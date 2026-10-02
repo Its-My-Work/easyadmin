@@ -161,12 +161,13 @@ The “Data” tab is the one place to choose **what** to back up (all services 
 
 **EasyAdmin data copies.** Postgres/MySQL/MariaDB/Mongo/Redis dumps and volume copies. A script on the panel’s own server makes them (a separate systemd process started through the host console); the data never passes through EasyAdmin. Database passwords stay in the container: the dump reads them from its environment.
 
+- **One service — one archive** (`project__service__stamp.tar`), even for a compose stack: inside is one `.gz` per database or volume plus `RESTORE.txt` with ready restore commands for every part. Folders and single files bind-mounted into a service are included too. If a volume’s source is missing on the server it is skipped with a warning and the rest is still backed up.
 - Databases and volumes inside compose stacks are found automatically (by container labels); Redis is dumped as RDB.
 - Volumes: “as is”, “pause” (docker pause) or “stop” while copying; the service always comes back (even on failure).
 - Destination: a folder on the panel’s server (default `/var/backups/easyadmin`) or the S3 configured in EasyAdmin (the server uploads via temporary signed links, S3 keys are never sent to it; large volumes go in parts).
 - Rotation by copy count, free-space check, failure notification.
 - Database and volume copies are **not** password-encrypted (neither are Easypanel schedules): keep them where access is restricted — folder permissions, S3-side or disk encryption. The password is only for the copy of the EasyAdmin system itself. Old `.enc` files (made by earlier versions with a password) can still be restored — the hint shows the decryption command.
-- “Data backups” → “How to restore” shows restore commands. Volumes are copied live — stop the service for consistency.
+- “Data backups” → “How to restore” shows how to unpack the archive and read `RESTORE.txt`. Volumes are copied live — stop the service for consistency.
 
 ## Contributing and license
 
