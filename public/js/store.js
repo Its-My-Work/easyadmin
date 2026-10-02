@@ -53,4 +53,6 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 export const favorites = () => new Set(lsGet('ea-fav', []));
 export function toggleFavorite(s) { const f = favorites(); const k = svcKey(s); f.has(k) ? f.delete(k) : f.add(k); lsSet('ea-fav', [...f]); return f.has(k); }
 export const recents = () => lsGet('ea-recent', []);
+/** Сервис переименован или перенесён: избранное и недавние в этом браузере следуют за ним. */
+export function renameLocal(from, to) { const a = svcKey(from), b = svcKey(to); lsSet('ea-fav', [...favorites()].map((k) => (k === a ? b : k))); lsSet('ea-recent', recents().map((k) => (k === a ? b : k))); }
 export function pushRecent(s) { lsSet('ea-recent', [svcKey(s), ...recents().filter((x) => x !== svcKey(s))].slice(0, 8)); }

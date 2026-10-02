@@ -10,7 +10,7 @@ import { settingsTab } from './panel-settings.js';
 import { loadSettingsCard, loadTab } from './load-tab.js';
 import { timeCard } from './time-card.js';
 import { actionLabel } from './action-names.js';
-import { channelsCard, cleanAllModal, hooksCard } from './views2.js';
+import { channelsCard, cleanAllModal } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
 
@@ -353,7 +353,7 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [timeCard(), loadSettingsCard(), channelsCard(), hooksCard()] : []));
+    ...(can('admin') ? [timeCard(), loadSettingsCard(), channelsCard()] : []));
   return page;
 }
 async function move(i, d) {

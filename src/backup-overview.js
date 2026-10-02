@@ -1,3 +1,5 @@
+import { parseTs } from './ts.js';
+
 /**
  * Обзор копирования: по каждому сервису всех панелей — чем он копируется (расписания самой Easypanel и/или копии данных EasyAdmin),
  * когда был последний запуск и чем он закончился. Ничего не меняет, только читает панели и настройки.
@@ -8,7 +10,7 @@ export const kindOf = (type) => (DB_TYPES.includes(type) ? 'db' : type === 'app'
 const STALE_MS = 8 * 86_400_000; // успешной копии давно не было
 const CACHE_MS = 60_000;
 
-const tsOf = (a) => { const v = a?.finishedAt ?? a?.createdAt ?? a?.startedAt ?? a?.date; const n = typeof v === 'number' ? v : Date.parse(v); return Number.isFinite(n) ? n : null; };
+const tsOf = (a) => parseTs(a?.finishedAt ?? a?.createdAt ?? a?.startedAt ?? a?.date);
 /** Статус действия панели → ok | error | running. */
 export const actionState = (st) => (/fail|error|cancel|kill|abort/i.test(String(st ?? '')) ? 'error' : /done|succe|complet|finish|\bok\b/i.test(String(st ?? '')) ? 'ok' : 'running');
 

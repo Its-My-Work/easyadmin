@@ -31,22 +31,26 @@ const SHOW = [['all', 'Все'], ['attention', 'Требуют внимания'
 const kpi = (label, value, sub, tone, ic) => h('div', { class: `kpi ${tone}` }, h('div', { class: 'kpi-ic' }, icon(ic, 18)), h('div', null, h('div', { class: 'kpi-label' }, label), h('div', { class: 'kpi-value' }, value), h('div', { class: 'kpi-sub' }, sub)));
 const statusBadge = (st) => { const [label, cls] = STATUS[st] ?? ['—', 'muted']; return h('span', { class: `badge ${cls}` }, h('i', { class: 'dot' }), label); };
 
-/** Ячейка «Easypanel»: расписания самой панели и результат последнего запуска. */
+const cell = (text, cls = 'muted', title) => h('span', { class: `cell-line ${cls}`, title: title ?? text }, text);
+const lastBit = (last, running) => (last ? `${last.state === 'error' ? t('ошибка') : last.state === 'running' && running ? t('идёт') : t('ок')}${last.ts ? ` ${relTime(last.ts)}` : ''}` : null);
+const lastTone = (last) => (last?.state === 'error' ? 'danger-text' : 'muted');
+/** Ячейка «Easypanel»: расписание панели и результат последнего запуска — одной строкой. */
 function easypanelCell(ep) {
-  if (!ep.supported) return h('span', { class: 'muted', title: t('У этого типа сервиса нет расписаний бэкапов Easypanel') }, '—');
-  if (ep.error) return h('span', { class: 'danger-text small', title: ep.error }, t('Нет данных'));
-  if (!ep.schedules.length) return ep.planned ? h('span', { class: 'warn-text small', title: t('Расписание должно быть создано автоматически: проверьте хранилище панели на вкладке «Данные».') }, t('запланировано, ещё не создано')) : h('span', { class: 'muted' }, ep.noData ? t('нет томов') : t('не настроено'));
-  const on = ep.schedules.filter((x) => x.enabled);
-  const first = on[0] ?? ep.schedules[0];
-  return h('div', null,
-    h('div', { class: 'small' }, on.length ? `${t(CRON_NAMES[first.schedule] ?? first.schedule)}${on.length > 1 ? ` +${on.length - 1}` : ''}` : t('расписание выключено'), ep.schedules.some((x) => x.managed) ? h('span', { class: 'muted', title: t('Расписание создано и поддерживается EasyAdmin') }, ` · ${t('авто')}`) : null),
-    ep.last ? h('div', { class: `small ${ep.last.state === 'error' ? 'danger-text' : 'muted'}` }, `${ep.last.state === 'error' ? t('ошибка') : ep.last.state === 'running' ? t('идёт') : t('ок')}${ep.last.ts ? ` · ${relTime(ep.last.ts)}` : ''}`) : on.length ? h('div', { class: 'small muted' }, t('ещё не запускалось')) : null);
+  if (!ep.supported) return cell('—', 'muted', t('У этого типа сервиса нет расписаний бэкапов Easypanel'));
+  if (ep.error) return cell(t('Нет данных'), 'danger-text', ep.error);
+  if (!ep.schedules.length) return ep.planned ? cell(t('запланировано, ещё не создано'), 'warn-text', t('Расписание должно быть создано автоматически: проверьте хранилище панели на вкладке «Данные».')) : cell(ep.noData ? t('нет томов') : t('не настроено'));
+  const on = ep.schedules.filter((x) => x.enabled); const first = on[0] ?? ep.schedules[0];
+  const when = on.length ? `${t(CRON_NAMES[first.schedule] ?? first.schedule)}${on.length > 1 ? ` +${on.length - 1}` : ''}` : t('расписание выключено');
+  const auto = ep.schedules.some((x) => x.managed);
+  const last = ep.last ? lastBit(ep.last, true) : on.length ? t('ещё не запускалось') : null;
+  return h('span', { class: 'cell-line', title: [when, auto ? t('Расписание создано и поддерживается EasyAdmin') : null, last].filter(Boolean).join(' · ') },
+    when, auto ? h('span', { class: 'muted' }, ` · ${t('авто')}`) : null, last ? h('span', { class: ep.last ? lastTone(ep.last) : 'muted' }, ` · ${last}`) : null);
 }
-/** Ячейка «EasyAdmin»: входит ли сервис в копии данных и чем закончился последний запуск. */
+/** Ячейка «EasyAdmin»: входит ли сервис в копии данных и результат последнего запуска — одной строкой. */
 function easyadminCell(ea) {
-  if (!ea.covered) return h('span', { class: 'muted' }, ea.possible ? t('не входит') : '—');
-  return h('div', null, h('div', { class: 'small' }, ea.auto ? t('по расписанию') : t('вручную')),
-    ea.last ? h('div', { class: `small ${ea.last.state === 'error' ? 'danger-text' : 'muted'}`, title: ea.last.error ?? '' }, `${ea.last.state === 'error' ? t('ошибка') : t('ок')} · ${relTime(ea.last.ts)}`) : h('div', { class: 'small muted' }, t('ещё не запускалось')));
+  if (!ea.covered) return cell(ea.possible ? t('не входит') : '—');
+  const last = ea.last ? lastBit(ea.last) : t('ещё не запускалось');
+  return h('span', { class: 'cell-line', title: ea.last?.error ?? '' }, ea.auto ? t('по расписанию') : t('вручную'), h('span', { class: ea.last ? lastTone(ea.last) : 'muted' }, ` · ${last}`));
 }
 
 const live = (panelId, project, name) => allServices().find((s) => s.panelId === panelId && s.project === project && s.name === name);
@@ -108,18 +112,25 @@ function overviewTab() {
       const rows = ov.panels.filter((p) => filters.panel === 'all' || String(p.panelId) === String(filters.panel))
         .flatMap((p) => p.rows.map((r) => ({ ...r, panel: p })))
         .filter((r) => (filters.show === 'all' || (filters.show === 'attention' ? ['none', 'error', 'stale', 'pending'].includes(r.status) : r.status === filters.show)) && (!q || `${r.name} ${r.project} ${r.panel.panelName}`.toLowerCase().includes(q)))
-        .sort((a, b) => STATUS[a.status][2] - STATUS[b.status][2] || a.panel.panelName.localeCompare(b.panel.panelName) || `${a.project}/${a.name}`.localeCompare(`${b.project}/${b.name}`));
+        .sort((a, b) => a.panel.panelName.localeCompare(b.panel.panelName) || STATUS[a.status][2] - STATUS[b.status][2] || `${a.project}/${a.name}`.localeCompare(`${b.project}/${b.name}`));
       count.textContent = `${rows.length}`;
-      clear(list).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' },
-        h('thead', null, h('tr', null, ['Сервис', 'Тип', 'Easypanel', 'EasyAdmin', 'Статус', ''].map((x) => h('th', null, x)))),
-        h('tbody', null, rows.map((r) => {
-          const svc = live(r.panel.panelId, r.project, r.name);
-          const act = r.status === 'none' ? h('button', { class: 'btn sm primary', onclick: (e) => { e.stopPropagation(); setupModal(r, svc, load); } }, 'Настроить')
-            : r.status === 'error' ? h('button', { class: 'btn sm', onclick: (e) => { e.stopPropagation(); problemModal(r, svc); } }, 'Подробнее') : null;
-          return h('tr', { class: 'row', tabindex: 0, onclick: () => { if (svc) (r.easypanel.supported ? openBackupsTab : openService)(svc); } },
-            h('td', null, h('b', null, r.name), h('span', { class: 'muted small' }, `  ${r.project}`), h('div', null, panelChip({ name: r.panel.panelName, color: r.panel.color }))),
-            h('td', { class: 'hide-sm' }, typeChip(r.type)), h('td', null, easypanelCell(r.easypanel)), h('td', null, easyadminCell(r.easyadmin)), h('td', null, statusBadge(r.status)), h('td', { class: 'w-actions' }, act));
-        })))) : empty(sum.total ? 'Ничего не найдено' : 'Нет сервисов', sum.total ? 'Измените фильтры.' : 'Подключите панель с сервисами, чтобы увидеть, что копируется.'));
+      const grouped = new Set(rows.map((r) => r.panel.panelId)).size > 1; // заголовок панели нужен, только если их несколько
+      const body = []; let prev = null;
+      for (const r of rows) {
+        if (grouped && r.panel.panelId !== prev) {
+          prev = r.panel.panelId; const mine = rows.filter((x) => x.panel.panelId === prev); const bad = mine.filter((x) => ['none', 'error', 'stale', 'pending'].includes(x.status)).length;
+          body.push(h('tr', { class: 'grp' }, h('td', { colspan: 5 }, h('div', { class: 'inline' }, panelChip({ name: r.panel.panelName, color: r.panel.color }), h('span', { class: 'muted small' }, `${mine.length}`), bad ? h('span', { class: 'badge warn' }, `${bad} ${t('требуют внимания')}`) : null))));
+        }
+        const svc = live(r.panel.panelId, r.project, r.name);
+        const act = r.status === 'none' ? h('button', { class: 'btn sm primary', onclick: (e) => { e.stopPropagation(); setupModal(r, svc, load); } }, 'Настроить')
+          : r.status === 'error' ? h('button', { class: 'btn sm', onclick: (e) => { e.stopPropagation(); problemModal(r, svc); } }, 'Подробнее') : null;
+        body.push(h('tr', { class: 'row', tabindex: 0, onclick: () => { if (svc) (r.easypanel.supported ? openBackupsTab : openService)(svc); } },
+          h('td', { class: 'svc-cell' }, h('b', null, r.name), h('span', { class: 'muted small' }, `  ${r.project}`), grouped ? null : h('span', { class: 'ml' }, panelChip({ name: r.panel.panelName, color: r.panel.color })), h('span', { class: 'ml hide-sm' }, typeChip(r.type))),
+          h('td', null, easypanelCell(r.easypanel)), h('td', null, easyadminCell(r.easyadmin)), h('td', null, statusBadge(r.status)), h('td', { class: 'w-actions' }, act)));
+      }
+      clear(list).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl compact' },
+        h('thead', null, h('tr', null, ['Сервис', 'Easypanel', 'EasyAdmin', 'Статус', ''].map((x) => h('th', null, x)))), h('tbody', null, body)))
+        : empty(sum.total ? 'Ничего не найдено' : 'Нет сервисов', sum.total ? 'Измените фильтры.' : 'Подключите панель с сервисами, чтобы увидеть, что копируется.'));
     };
     const q = h('input', { class: 'input search', placeholder: 'Поиск по сервису, проекту, панели…', value: filters.q, oninput: () => { filters.q = q.value; draw(); } });
     const panelSel = ov.panels.length > 1 ? h('select', { class: 'input', onchange: (e) => { filters.panel = e.target.value; draw(); } }, h('option', { value: 'all' }, t('Все панели')), ov.panels.map((p) => h('option', { value: p.panelId, selected: String(p.panelId) === String(filters.panel) }, p.panelName))) : null;
@@ -128,7 +139,7 @@ function overviewTab() {
     const down = ov.panels.filter((p) => p.error);
     const sl = sys.settings.last;
     clear(root).append(
-      h('div', { class: 'kpis' },
+      h('div', { class: 'kpis slim' },
         kpi('Без копий', sum.none, sum.none ? 'сервисов нигде не копируются' : 'всё покрыто', sum.none ? 'err' : 'ok', 'alert'),
         kpi('Ошибки', sum.error, sum.error ? 'последний запуск не удался' : 'ошибок нет', sum.error ? 'err' : 'ok', 'activity'),
         kpi('Нет свежей копии', waiting, `${sum.stale} ${t('устарели')} · ${sum.pending} ${t('ещё не запускались')}`, waiting ? 'warn' : 'ok', 'clock'),

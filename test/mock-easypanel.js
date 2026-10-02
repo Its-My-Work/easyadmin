@@ -97,6 +97,17 @@ export function createMockPanel({ deployMs = 0, token = 'tok', seed = {}, stats 
       for (const sv of i.schema.services) projects.get(i.projectName).push({ name: sv.data.serviceName, type: sv.type, enabled: true, env: sv.data.env ?? '', domains: [], ports: [], mounts: [], source: sv.data.source, image: sv.data.source?.image });
       return null;
     },
+    // как настоящая панель: только остановленный сервис, целевой проект должен существовать, имя в нём свободно
+    'services.common.renameService': (i) => {
+      const bad = (m, code = 'BAD_REQUEST') => Object.assign(new Error(m), { code });
+      const sv = need(find({ projectName: i.oldProjectName, serviceName: i.oldServiceName }));
+      if (sv.enabled) throw bad('Service must be stopped before renaming');
+      if (i.newServiceName === 'boom') throw bad('Cannot rename: docker error');
+      if (!projects.has(i.newProjectName)) throw bad('Project not found', 'NOT_FOUND');
+      if (projects.get(i.newProjectName).some((x) => x.name === i.newServiceName)) throw bad('Service already exists');
+      projects.set(i.oldProjectName, projects.get(i.oldProjectName).filter((x) => x !== sv));
+      sv.name = i.newServiceName; projects.get(i.newProjectName).push(sv); return null;
+    },
     'projects.destroyProject': (i) => { projects.delete(i.name ?? i.projectName); return null; },
     'monitor.getSystemStats': () => statsError ? (() => { throw Object.assign(new Error(''), { code: 'INTERNAL_SERVER_ERROR', noMessage: true }); })() : ({
       uptime: 123456,

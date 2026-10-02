@@ -36,7 +36,6 @@ code { background: var(--panel2); padding: 1px 6px; border-radius: 5px; font-siz
 .nav-panels { display: grid; gap: 1px; }
 .np-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .count { font-size: 11px; padding: 0 6px; border-radius: 99px; background: var(--panel2); } .count.warn { background: rgba(251,191,36,.16); color: var(--warn); }
-.side-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 6px 0; border-top: 1px solid var(--border); }
 .user { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .content { min-width: 0; display: flex; flex-direction: column; }
@@ -393,3 +392,32 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .hist-main { display: flex; gap: 10px; align-items: flex-start; min-width: 0; } .hist-main > .icon { margin-top: 3px; flex: none; color: var(--muted); }
 .hist-row { gap: 12px; } .hist-detail { overflow-wrap: anywhere; white-space: pre-wrap; margin-top: 2px; }
 .hist-log { max-height: 60vh; min-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* шапка: пояс времени, язык, профиль и выход собраны справа */
+.top-sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; flex: none; }
+.topbar .user-chip { gap: 8px; padding: 3px 10px 3px 4px; margin: 0; border-radius: 99px; flex: none; } .topbar .user-chip:hover { background: var(--panel2); }
+.topbar .user-chip b { font-size: 13px; line-height: 1.2; } .topbar .user-chip .small { font-size: 11px; line-height: 1.2; }
+@media (max-width: 900px) { .topbar .user-chip > div:last-child { display: none; } .topbar .user-chip { padding: 3px; } }
+
+/* «Бэкапы → Обзор»: компактные показатели и таблица в одну строку на сервис */
+.kpis.slim { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.kpis.slim .kpi { padding: 8px 12px; gap: 10px; }
+.kpis.slim .kpi-ic { width: 30px; height: 30px; border-radius: 9px; }
+.kpis.slim .kpi > div:last-child { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.kpis.slim .kpi-value { order: 1; font-size: 18px; } .kpis.slim .kpi-label { order: 2; } .kpis.slim .kpi-sub { display: none; }
+@media (max-width: 800px) { .kpis.slim { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tbl.compact th { padding: 7px 12px; } .tbl.compact td { padding: 5px 12px; }
+.tbl.compact tr.grp td { padding: 6px 12px; background: var(--panel2); font-size: 12.5px; cursor: default; }
+.tbl.compact tr.grp:hover td { background: var(--panel2); }
+.cell-line { display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.tbl.compact .svc-cell { white-space: nowrap; } .tbl.compact .svc-cell .chip, .tbl.compact .svc-cell .panel-chip { font-size: 11px; }
+.tbl.compact .btn.sm { padding: 2px 10px; }
+
+/* «Обзор» сервиса: факты в две колонки, домены чипами */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 22px; }
+.fact { min-width: 0; } .fact.wide { grid-column: 1 / -1; }
+.fact span { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 1px; }
+.fact b { display: block; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dom-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dom-chips .chip { text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+.card.flat > h4 + .facts { margin-top: 8px; }

@@ -2,7 +2,7 @@ import { del, get, post } from './api.js';
 import { busyAction, runServiceAction, svcBadge, typeChip } from './components.js';
 import { clear, confirmDialog, field, h, icon, modal, spinner, toast } from './dom.js';
 import { t } from './i18n.js';
-import { can, favorites, isDb, pushRecent, refresh, store, subscribe, svcKey, toggleFavorite } from './store.js';
+import { can, favorites, isDb, pushRecent, refresh, renameLocal, store, subscribe, svcKey, toggleFavorite } from './store.js';
 import { logsView } from './logs-console.js';
 import { historyView } from './history-tab.js';
 import { consoleView } from './service-console.js';
@@ -62,7 +62,7 @@ const composeServices = (yaml) => {
 const portOf = (x) => ({ id: x.id ?? x._id, published: x.published ?? x.publishedPort ?? x.external ?? x.hostPort ?? '', target: x.target ?? x.targetPort ?? x.internal ?? x.containerPort ?? '', protocol: String(x.protocol ?? 'tcp').toLowerCase() });
 const mountOf = (x) => ({ id: x.id ?? x._id, type: x.type ?? 'volume', name: x.name ?? x.volume ?? '', hostPath: x.hostPath ?? x.source ?? '', mountPath: x.mountPath ?? x.target ?? x.path ?? '', content: x.content ?? '' });
 
-const NAV_ICON = { history: 'clock', backups: 'database', overview: 'grid', env: 'edit', logs: 'terminal', console: 'terminal', domains: 'globe', storage: 'database', resources: 'activity', source: 'box', automation: 'link', raw: 'layers', danger: 'trash' };
+const NAV_ICON = { history: 'clock', backups: 'database', overview: 'grid', env: 'edit', logs: 'terminal', console: 'terminal', domains: 'globe', storage: 'database', resources: 'activity', source: 'box', automation: 'link', move: 'edit', raw: 'layers', danger: 'trash' };
 
 /** Открывает боковую панель сервиса. */
 export function openService(s) {
@@ -115,7 +115,7 @@ export function openService(s) {
   const tabs = [
     ['overview', 'Обзор'], ...(ro ? [] : [['env', 'Окружение'], ['logs', 'Логи'], ['history', 'История'], ...(can('admin') ? [['console', 'Консоль']] : [])]), ['domains', 'Домены'], ['storage', 'Порты и тома'],
     ['resources', 'Ресурсы'], ...(s.type === 'app' && !ro ? [['source', 'Источник']] : []),
-    ...(can('admin') && ['postgres', 'mysql', 'mariadb', 'mongo', 'app'].includes(s.type) ? [['backups', 'Бэкапы']] : []), ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['danger', 'Удаление']] : []),
+    ...(can('admin') && ['postgres', 'mysql', 'mariadb', 'mongo', 'app'].includes(s.type) ? [['backups', 'Бэкапы']] : []), ...(can('admin') ? [['automation', 'Автоматизация']] : []), ...(ro ? [] : [['raw', 'Данные']]), ...(can('admin') ? [['move', 'Имя и проект'], ['danger', 'Удаление']] : []),
   ];
   const remembered = lsGet('ea-drawer-tab');
   if (tabs.some(([id]) => id === remembered)) state.tab = remembered;
@@ -161,34 +161,35 @@ export function openService(s) {
     const svc = d.service || {};
     clear(body);
     if (d.warnings?.length) body.append(h('div', { class: 'callout warn' }, icon('alert'), h('div', null, d.warnings.join('; '))));
-    const views = { overview, env, logs, history, console: console_, backups, domains, storage, resources, source, raw, danger, automation };
+    const views = { overview, env, logs, history, console: console_, backups, domains, storage, resources, source, raw, danger, automation, move };
     body.append(views[state.tab](svc, d));
   }
 
   /* ---- Обзор ---- */
   function overview(svc, d) {
     const domainsList = asList(d.domains);
-    const notes = h('textarea', { class: 'input', rows: 4, placeholder: 'Заметки о сервисе…' }, pick(svc, 'notes') ?? '');
-    const kv = (k, v) => { if (v == null) return null; const str = String(v); return h('div', { class: 'kv' }, h('span', null, k), str.length > 44 ? h('b', { class: 'clip', title: str, onclick: (e) => e.currentTarget.classList.toggle('open') }, str) : h('b', null, str)); };
+    const notes = h('textarea', { class: 'input', rows: 2, placeholder: 'Заметки о сервисе…' }, pick(svc, 'notes') ?? '');
+    // компактный «факт»: подпись над значением, длинное значение растягивается на всю ширину, полный текст — в подсказке
+    const fact = (k, v) => { if (v == null || v === '') return null; const str = String(v); return h('div', { class: `fact ${str.length > 34 ? 'wide' : ''}` }, h('span', null, k), h('b', { title: str }, str)); };
     const statsBox = h('div');
     get(`${base}/service-stats?project=${encodeURIComponent(s.project)}&name=${encodeURIComponent(s.name)}`).then(({ stats }) => {
       const flat = Object.entries(stats && typeof stats === 'object' ? stats : {}).filter(([, v]) => typeof v === 'number' || typeof v === 'string').slice(0, 8);
-      if (flat.length) statsBox.append(h('div', { class: 'card flat' }, h('h4', { style: { marginBottom: '6px' } }, 'Ресурсы сейчас'), ...flat.map(([k, v]) => kv(k, typeof v === 'number' ? Math.round(v * 100) / 100 : v))));
+      if (flat.length) statsBox.append(h('div', { class: 'card flat' }, h('h4', null, 'Ресурсы сейчас'), h('div', { class: 'facts' }, ...flat.map(([k, v]) => fact(k, typeof v === 'number' ? Math.round(v * 100) / 100 : v)))));
     }).catch(() => {});
     const src = svc.source;
+    // панель, проект и тип уже в шапке карточки, число доменов, томов и портов — в счётчиках вкладок
+    const facts = [
+      fact('Источник', src ? t(SOURCES.find(([id]) => id === sourceKind(src))?.[1] ?? '') : undefined), fact('Образ', pick(src, 'image')),
+      fact('Репозиторий', ['github', 'git'].includes(sourceKind(src || {})) ? `${repoLabel(src)}${splitRepoUrl(src.repo).token ? ' 🔑' : ''}` : undefined),
+      fact('Сборка', svc.build?.type ? `${(BUILDS.find(([id]) => id === svc.build.type) ?? [, svc.build.type])[1]}${svc.build.file ? ` (${svc.build.file})` : ''}` : undefined)].filter(Boolean);
     return h('div', { class: 'stack' },
-      h('div', { class: 'card flat' },
-        kv('Панель', s.panel.name), kv('Проект', s.project), kv('Тип', s.type),
-        kv('Источник', src ? t(SOURCES.find(([id]) => id === sourceKind(src))?.[1] ?? '') : undefined), kv('Образ', pick(src, 'image')),
-        kv('Репозиторий', ['github', 'git'].includes(sourceKind(src || {})) ? `${repoLabel(src)}${splitRepoUrl(src.repo).token ? ' 🔑' : ''}` : undefined),
-        kv('Сборка', svc.build?.type ? `${(BUILDS.find(([id]) => id === svc.build.type) ?? [, svc.build.type])[1]}${svc.build.file ? ` (${svc.build.file})` : ''}` : undefined),
-        ...[['Доменов', domainsList.length], ['Томов', asList(d.mounts).length], ['Портов', asList(d.ports).length]].filter(([, n]) => n > 0).map(([l, n]) => kv(l, n))), // нулевые счётчики не показываем
-      domainsList.length ? h('div', { class: 'stack-sm' }, h('h4', null, 'Домены'), domainsList.map((x) => h('a', { class: 'link-row', href: `${x.https === false ? 'http' : 'https'}://${x.host}`, target: '_blank', rel: 'noopener' }, icon('globe', 14), x.host, icon('external', 12)))) : null,
+      facts.length ? h('div', { class: 'card flat' }, h('div', { class: 'facts' }, ...facts)) : null,
+      domainsList.length ? h('div', { class: 'dom-chips' }, h('span', { class: 'muted small' }, t('Домены')), ...domainsList.map((x) => h('a', { class: 'chip clickable', href: `${x.https === false ? 'http' : 'https'}://${x.host}`, target: '_blank', rel: 'noopener' }, icon('globe', 12), x.host, icon('external', 11)))) : null,
       statsBox,
       field('Заметки', notes),
-      ro ? null : h('div', { class: 'inline' }, h('button', { class: 'btn primary', onclick: () => op('notes', { notes: notes.value }) }, 'Сохранить заметки'),
-        can('admin') ? h('button', { class: 'btn', onclick: () => cloneModal({ ...s, ...live() }) }, icon('copy', 14), 'Клонировать…') : null,
-        can('admin') ? h('button', { class: 'btn', onclick: () => saveTemplateModal({ ...s, ...live() }) }, icon('layers', 14), 'Сохранить как шаблон') : null));
+      ro ? null : h('div', { class: 'inline' }, h('button', { class: 'btn sm primary', onclick: () => op('notes', { notes: notes.value }) }, 'Сохранить заметки'),
+        can('admin') ? h('button', { class: 'btn sm ghost', onclick: () => cloneModal({ ...s, ...live() }) }, icon('copy', 13), 'Клонировать…') : null,
+        can('admin') ? h('button', { class: 'btn sm ghost', onclick: () => saveTemplateModal({ ...s, ...live() }) }, icon('layers', 13), 'Сохранить как шаблон') : null));
   }
 
   /* ---- Окружение ---- */
@@ -358,6 +359,33 @@ export function openService(s) {
 
   const maskCreds = (t) => String(t).replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@"]*:)[^\s/@"]+@/gi, '$1***@');
   const raw = (_svc, d) => h('pre', { class: 'code' }, maskCreds(JSON.stringify(d, null, 2)));
+
+  /* ---- Имя и проект ---- */
+  function move() {
+    if (s.type === 'compose') return h('div', { class: 'callout' }, icon('alert'), h('div', null, h('b', null, 'Compose-сервисы переименовать и перенести нельзя'), h('p', null, 'Имена томов и сетей стека завязаны на проект и сервис. Чтобы сменить имя, создайте стек заново.')));
+    const NEW = '__new__'; const projects = (store.panels.find((p) => p.id === s.panelId)?.tree?.projects ?? []).map((p) => p.name);
+    const name = h('input', { class: 'input mono', value: s.name, maxlength: 63, spellcheck: 'false' });
+    const newProj = h('input', { class: 'input mono', placeholder: t('имя нового проекта'), spellcheck: 'false', style: { display: 'none', marginTop: '6px' } });
+    const proj = h('select', { class: 'input', onchange: () => { newProj.style.display = proj.value === NEW ? '' : 'none'; } }, projects.map((p) => h('option', { value: p, selected: p === s.project }, p)), h('option', { value: NEW }, t('— новый проект —')));
+    const btn = h('button', { class: 'btn primary', onclick: async () => {
+      const to = { project: proj.value === NEW ? newProj.value.trim() : proj.value, name: name.value.trim() };
+      if (!/^[a-z0-9-_]+$/.test(to.project) || !/^[a-z0-9-_]+$/.test(to.name)) return toast(t('Имена: строчные латинские буквы, цифры, - и _'), 'error');
+      if (to.project === s.project && to.name === s.name) return toast(t('Имя и проект не изменились'), 'error');
+      if (!await confirmDialog({ title: 'Переименовать или перенести сервис?', message: `${s.project}/${s.name} → ${to.project}/${to.name}. Сервис будет остановлен, переименован и запущен снова.`, confirmText: 'Применить', typeToConfirm: `${s.project}/${s.name}` })) return;
+      btn.disabled = true; btn.textContent = t('Выполняется…');
+      try {
+        const r = await post(`${base}/service/move`, { ...ref, newProject: to.project, newName: to.name, createProject: proj.value === NEW, confirm: `${s.project}/${s.name}` });
+        renameLocal({ ...s, ...ref }, { ...s, type: s.type, project: r.project, name: r.name });
+        toast(t('Готово'), 'success'); if (r.warnings?.length) toast(r.warnings.join('; '), 'error', 12000);
+        closeDrawer(); refresh(true);
+      } catch (e) { toast(e.message, 'error', 9000); btn.disabled = false; btn.textContent = t('Применить'); }
+    } }, 'Применить');
+    return h('div', { class: 'stack' },
+      h('div', { class: 'callout warn' }, icon('alert'), h('div', null, h('b', null, 'Сервис будет остановлен на время операции'), h('p', null, 'Easypanel переименовывает и переносит остановленный сервис вместе с образом, файлами и доменами; затем EasyAdmin запускает его снова. Если не получится, прежний сервис запускается обратно.'))),
+      h('div', { class: 'grid-2' }, field('Проект', h('div', null, proj, newProj)), field('Имя сервиса', name)),
+      h('div', { class: 'callout compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Адрес сервиса внутри сети Docker меняется (проект_сервис). Другие сервисы, которые подключаются к нему по старому имени, например через DATABASE_URL, нужно перенастроить.')),
+      h('div', null, btn));
+  }
 
   function danger() {
     return h('div', { class: 'stack' }, h('div', { class: 'callout err' }, icon('alert'), h('div', null, h('b', null, 'Удаление сервиса'), h('p', null, 'Контейнер и данные будут удалены с сервера панели. Отменить нельзя.'),

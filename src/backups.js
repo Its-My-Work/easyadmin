@@ -435,6 +435,12 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     epDirty = false;
     try { return await ep.sync({ reason: 'schedule' }); } catch { return null; }
   }
+  /** Сервис переименован или перенесён: охват копий данных и реестр расписаний Easypanel следуют за ним. */
+  function repoint(panelId, from, to) {
+    const c = load(); const a = `${panelId}|${from.project}|${from.name}`; const b = `${panelId}|${to.project}|${to.name}`;
+    if (c.data.keys.includes(a)) { c.data.keys = [...new Set(c.data.keys.map((k) => (k === a ? b : k)))]; save(c); }
+    ep?.repoint(panelId, from, to); epDirty = true;
+  }
   const syncEp = (o = {}) => { if (!ep) throw new Error('Менеджер панелей недоступен'); return ep.sync({ reason: 'manual', ...o }); };
   const epStatus = () => ({ syncing: !!ep?.busy(), last: ep?.last() ?? null, managed: ep?.managedCount() ?? 0 });
 
@@ -464,7 +470,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     return p;
   }
   const epProviders = (o) => (ep ? ep.providers(o) : Promise.resolve([]));
-  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, tickEp, syncEp, epStatus, epProviders, epManaged: () => ep?.managedKeys() ?? new Set(), protect, list, download, remove, verify, restore, tick, start, stop, load };
+  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, tickEp, syncEp, epStatus, repoint, epProviders, epManaged: () => ep?.managedKeys() ?? new Set(), protect, list, download, remove, verify, restore, tick, start, stop, load };
 }
 
 export function backupRoutes(d) {

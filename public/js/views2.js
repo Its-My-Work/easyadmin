@@ -413,13 +413,4 @@ export function twoFaCard() {
 }
 
 
-export function hooksCard() {
-  const box = h('div', { class: 'list' });
-  const load = () => get('/api/hooks').then((list) => clear(box).append(...(list.length ? list.map((x) => h('div', { class: 'list-item' },
-    h('div', null, h('b', null, x.label), h('div', { class: 'muted small' }, `${ACTION_RU[x.action]} · ${x.panelName} · ${x.project}/${x.name}${x.lastUsed ? ` · вызван ${relTime(x.lastUsed)}` : ' · не вызывался'}`)),
-    h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить вебхук?', message: 'Ссылка перестанет работать.', danger: true, confirmText: 'Удалить' })) { await del(`/api/hooks/${x.id}`); load(); } } }, icon('trash', 14)))) : [h('p', { class: 'muted' }, 'Вебхуков нет. Создайте его в карточке сервиса → «Автоматизация».')]))).catch(() => {});
-  load();
-  return h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Вебхуки для CI/CD')), box);
-}
-
 export { statusBadge };
