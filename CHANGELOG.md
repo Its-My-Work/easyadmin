@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Backups fix: runaway scheduled backups.** In “stop” mode the backup stopped EasyAdmin's own service while copying its volume, the progress tracking was lost and the schedule started a new run over and over (hundreds of archives, S3 full). Now EasyAdmin never stops or freezes itself during a backup, a started attempt is recorded so the schedule never repeats it the same day, results are saved per service as soon as each is ready, and a run that was in progress when EasyAdmin restarted is followed to the end (results, cleanup, rotation).
+- Rotation in S3 reads the listing page by page and runs both before and after a backup, so old archives are really removed.
+- The status column shows the queue: "Queued", "Copying…" with the volume or database being copied, then the result. New **Backup log** (every run with the full error text of each service) and a "Latest runs" list in each service's copies window.
 - **Backups are EasyAdmin-only and one page.** Easypanel's own backup schedules (service tab, schedule sync, storage providers in the panel settings) are removed from the code. The Backups section is a single page: a table of services with a switch, last backup and status, a switch for EasyAdmin itself, and one Settings dialog (schedule, where to store, how many copies, password). The service's **Backups** tab works with the same data (switch, back up now, copies, how to restore) for every service type.
 - **One password for all EasyAdmin backups**: system copies and database/volume archives are encrypted with it (AES-256, PBKDF2); nothing is backed up without it. Data archives are now `*.tar.enc` (older plain `.tar` files still open and restore).
 - New: back up a single service now; `where` setting (server/S3) for both kinds of copies.

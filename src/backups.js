@@ -115,9 +115,16 @@ export function s3Client(cfg, fetchImpl = globalThis.fetch) {
     abortMultipart: (key, uploadId) => call('DELETE', key, { query: { uploadId } }),
     get: async (key) => Buffer.from(await (await call('GET', key)).arrayBuffer()),
     del: (key) => call('DELETE', key),
+    /** Список объектов с префиксом; хранилище отдаёт не больше 1000 за запрос — читаем страницы, пока они есть. */
     async list(prefix) {
-      const x = await (await call('GET', '', { query: { 'list-type': '2', prefix } })).text();
-      return [...x.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)].map((m) => ({ key: /<Key>([^<]*)<\/Key>/.exec(m[1])?.[1], size: Number(/<Size>(\d+)<\/Size>/.exec(m[1])?.[1] ?? 0), ts: Date.parse(/<LastModified>([^<]*)<\/LastModified>/.exec(m[1])?.[1] ?? '') || 0 })).filter((o) => o.key);
+      const out = []; let token = '';
+      for (let page = 0; page < 200; page++) {
+        const x = await (await call('GET', '', { query: { 'list-type': '2', prefix, ...(token ? { 'continuation-token': token } : {}) } })).text();
+        for (const m of x.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) out.push({ key: /<Key>([^<]*)<\/Key>/.exec(m[1])?.[1], size: Number(/<Size>(\d+)<\/Size>/.exec(m[1])?.[1] ?? 0), ts: Date.parse(/<LastModified>([^<]*)<\/LastModified>/.exec(m[1])?.[1] ?? '') || 0 });
+        token = /<IsTruncated>true<\/IsTruncated>/.test(x) ? (/<NextContinuationToken>([^<]*)<\/NextContinuationToken>/.exec(x)?.[1] ?? '') : '';
+        if (!token) break;
+      }
+      return out.filter((o) => o.key);
     },
   };
 }
@@ -303,6 +310,48 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
   const panelsInScope = (c) => db.prepare('SELECT * FROM panels ORDER BY id').all().filter((r) => c.data.mode === 'all' || c.data.keys.some((k) => k.startsWith(`${r.id}|`)));
   const s3Of = (c) => s3Client(c.s3, fetchImpl);
 
+  /* ---- служебное состояние копирования данных (всё, что нужно пережить перезапуск EasyAdmin) ---- */
+  const readJson = (k, d) => { try { return JSON.parse(getRaw(k) ?? 'null') ?? d; } catch { return d; } };
+  const pendingRuns = () => readJson('backup_data_pending', {});
+  const setPending = (m) => setRaw('backup_data_pending', JSON.stringify(m));
+  /** Результат одного сервиса сразу по готовности: переживает перезапуск, обзор видит его не дожидаясь конца запуска. */
+  const recordItem = (panelId, label, rec) => { const m = svcResults(); m[`${panelId}|${label.replace('/', '|')}`] = rec; setRaw('backup_data_svc', JSON.stringify(m)); };
+  const LOG_MAX = 30;
+  const dataLog = () => readJson('backup_data_log', []);
+  const pushLog = (entry) => setRaw('backup_data_log', JSON.stringify([entry, ...dataLog()].slice(0, LOG_MAX)));
+
+  /** Ротация в S3: у каждого сервиса остаются keepN последних архивов (список читается постранично). */
+  async function rotateS3(c, row, keepN) {
+    const s3 = s3Of(c); const all = (await s3.list(`${c.s3.prefix}data/${slugOf(row)}/`)).map((o) => ({ name: o.key.split('/').pop(), key: o.key }));
+    const groups = new Map(); for (const f of all) { const g = groupKey(f.name); groups.set(g, [...(groups.get(g) ?? []), f]); }
+    let n = 0; for (const list of groups.values()) for (const f of list.sort((a, b) => b.name.localeCompare(a.name)).slice(keepN)) { await s3.del(f.key); n++; }
+    return n;
+  }
+
+  /** Следит за запущенным на сервере скриптом: обновляет ход, записывает результаты по мере готовности, в конце убирает за собой и делает ротацию. */
+  async function followRun({ c, row, runId, labels, state, opened = [], startedAt = now() }) {
+    const client = manager.clientFor(row); const done = new Set(); const t0 = now(); let st = { items: [], done: false, started: false };
+    for (let polls = 0; !st.done; polls++) {
+      await new Promise((r) => setTimeout(r, dataPollMs));
+      try { st = await readStatus(client, row, c.data.dir, runId, hostFn); } catch { /* консоль может отвечать с задержкой — пробуем ещё */ }
+      state.items = labels.map((label) => {
+        const r = st.items.find((x) => x.label === label); const note = (st.warns ?? []).filter((w) => w.label === label).map((w) => w.text).join('; ');
+        if (r && !done.has(label)) { done.add(label); recordItem(row.id, label, r.ok ? { ts: now(), ok: true, size: r.size ?? null, name: r.name ?? null, ...(note ? { note } : {}) } : { ts: now(), ok: false, error: r.error ?? 'ошибка' }); }
+        const running = !r && st.current?.label === label;
+        return { label, status: r ? (r.ok ? 'ok' : 'fail') : running ? 'run' : 'wait', ...(running ? { part: st.current.part } : {}), file: r?.name, size: r?.size, error: r?.error, ...(note ? { note } : {}) };
+      });
+      if (!st.started && now() - t0 > 180_000) throw new Error('Скрипт на сервере не стартовал');
+      if (now() - startedAt > 6 * 3600e3) throw new Error('Копирование идёт слишком долго (больше 6 часов)');
+    }
+    cleanupJob(client, row, c.data.dir, runId, hostFn);
+    const s3 = c.data.dest === 's3' ? s3Of(c) : null;
+    for (const o of opened) if (!st.items.some((x) => x.ok && x.label === o.label.replace(/\|/g, '/'))) await s3.abortMultipart(o.key, o.uploadId).catch(() => {});
+    const general = st.items.find((x) => !x.ok && x.label === '*');
+    if (general) throw new Error(general.error);
+    if (s3) { try { await rotateS3(c, row, c.data.keep); } catch (e) { state.note = `Ротация в S3 не выполнена: ${e.message}`; } }
+    state.status = state.items.some((x) => x.status === 'fail') ? 'partial' : 'done';
+  }
+
   async function runDataPanel(c, row, stamp, state) {
     const client = manager.clientFor(row); const projects = (await manager.snapshot(row.id))?.tree?.projects ?? [];
     const compose = needsDiscovery(projects, c.data, row.id) ? parseDiscovery((await hostFn(client, row, DISCOVER_CMD, { timeoutMs: 60_000 }).catch(() => ({ output: '' }))).output) : [];
@@ -312,6 +361,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     const s3 = c.data.dest === 's3' ? s3Of(c) : null; const keyOf = (it) => `${c.s3.prefix}data/${it.slug}/${it.file}`;
     const opened = []; // начатые загрузки частями: незавершённые отменяем
     if (s3) {
+      try { const n = await rotateS3(c, row, Math.max(1, c.data.keep - 1)); if (n) state.note = `Перед копированием удалено старых архивов в S3: ${n}`; } catch (e) { state.note = `Ротация в S3 не выполнена: ${e.message}`; } // освобождаем место заранее
       const sizes = await measureVolumes(client, row, items, hostFn);
       for (const it of items) {
         it.url = s3.presign('PUT', keyOf(it), 12 * 3600);
@@ -323,32 +373,32 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
         }
       }
     }
-    state.items = items.map((it) => ({ label: it.label, status: 'wait' }));
+    const labels = items.map((it) => it.label.replace(/\|/g, '/'));
+    state.items = labels.map((label) => ({ label, status: 'wait' }));
     const runId = `r${stamp}-${row.id}`;
-    const script = buildScript({ runId, baseDir: c.data.dir, dest: c.data.dest, keep: c.data.keep, minFreeKb: c.data.minFreeMb * 1024, items, consistency: c.data.consistency, mpMin, partMb, password: c.password });
+    const script = buildScript({ runId, baseDir: c.data.dir, dest: c.data.dest, keep: c.data.keep, minFreeKb: c.data.minFreeMb * 1024, items, consistency: c.data.consistency, mpMin, partMb, password: c.password, selfId: process.env.HOSTNAME });
     state.status = 'running';
     try { await deployJob(client, row, { baseDir: c.data.dir, runId, script }, hostFn); }
     catch (e) { for (const o of opened) await s3.abortMultipart(o.key, o.uploadId).catch(() => {}); throw e; }
-    const t0 = now(); let st = { items: [], done: false, started: false };
-    for (let polls = 0; !st.done; polls++) {
-      await new Promise((r) => setTimeout(r, dataPollMs));
-      try { st = await readStatus(client, row, c.data.dir, runId, hostFn); } catch { /* консоль может отвечать с задержкой — пробуем ещё */ }
-      state.items = items.map((it) => { const label = it.label.replace(/\|/g, '/'); const r = st.items.find((x) => x.label === label); const note = (st.warns ?? []).filter((w) => w.label === label).map((w) => w.text).join('; '); return { label: it.label, status: r ? (r.ok ? 'ok' : 'fail') : 'wait', file: r?.name, size: r?.size, error: r?.error, ...(note ? { note } : {}) }; });
-      if (!st.started && now() - t0 > 180_000) throw new Error('Скрипт на сервере не стартовал');
-      if (now() - t0 > 6 * 3600e3) throw new Error('Копирование идёт слишком долго (больше 6 часов)');
-    }
-    cleanupJob(client, row, c.data.dir, runId, hostFn);
-    for (const o of opened) if (!st.items.some((x) => x.ok && x.label === o.label.replace(/\|/g, '/'))) await s3.abortMultipart(o.key, o.uploadId).catch(() => {});
-    const general = st.items.find((x) => !x.ok && x.label === '*');
-    if (general) throw new Error(general.error);
-    if (s3) { // ротация в S3: оставляем keep последних по каждому источнику
-      try {
-        const all = (await s3.list(`${c.s3.prefix}data/${items[0].slug}/`)).map((o) => ({ name: o.key.split('/').pop(), key: o.key }));
-        const groups = new Map(); for (const f of all) { const g = groupKey(f.name); groups.set(g, [...(groups.get(g) ?? []), f]); }
-        for (const list of groups.values()) for (const f of list.sort((a, b) => b.name.localeCompare(a.name)).slice(c.data.keep)) await s3.del(f.key);
-      } catch (e) { state.note = `Ротация в S3 не выполнена: ${e.message}`; }
-    }
-    state.status = state.items.some((x) => x.status === 'fail') ? 'partial' : 'done';
+    // запуск записан: если EasyAdmin перезапустится до конца копирования, он подхватит этот запуск (resumeRuns)
+    const pend = pendingRuns(); pend[runId] = { panelId: row.id, labels, startedAt: now(), reason: dataState.reason, dest: c.data.dest, dir: c.data.dir, keep: c.data.keep, empty: state.empty }; setPending(pend);
+    try { await followRun({ c, row, runId, labels, state, opened, startedAt: now() }); }
+    finally { const p2 = pendingRuns(); delete p2[runId]; setPending(p2); }
+  }
+
+  /** Итог запуска: сводка, журнал, уведомление об ошибках. */
+  function finishData({ t, reason, only, dest }) {
+    const panels = Object.values(dataState.panels);
+    const failed = panels.reduce((n, p) => n + (p.error ? 1 : 0) + (p.items ?? []).filter((x) => x.status === 'fail').length, 0);
+    const okCount = panels.reduce((n, p) => n + (p.items ?? []).filter((x) => x.status === 'ok').length, 0);
+    const res = { ts: t, ok: failed === 0, files: okCount, failed, dest, reason, panels: panels.map((p) => ({ name: p.name, status: p.status, error: p.error ?? null, failed: (p.items ?? []).filter((x) => x.status === 'fail').map((x) => `${x.label}: ${x.error}`) })) };
+    for (const [id, p] of Object.entries(dataState.panels)) for (const label of p.empty ?? []) recordItem(id, label, { ts: t, ok: true, empty: true });
+    if (!only) setRaw('backup_data_last', JSON.stringify(res)); // «последний запуск» — только полный; запуск одного сервиса его не затирает
+    pushLog({ id: `${t}`, ts: t, endedAt: now(), reason, only: !!only, dest, ok: failed === 0, files: okCount, failed,
+      panels: panels.map((p) => ({ name: p.name, status: p.status, error: p.error ?? null, note: p.note ?? null, items: (p.items ?? []).map((x) => ({ label: x.label, status: x.status, size: x.size ?? null, error: x.error ?? null, note: x.note ?? null, file: x.file ?? null })), empty: p.empty ?? [] })) });
+    dataState.running = false; dataState.result = res;
+    if (failed) alerts?.emit({ type: 'backup_failed', icon: '💾', text: `Копирование данных: ошибок ${failed}${res.panels.filter((p) => p.error || p.failed.length).slice(0, 2).map((p) => ` — ${p.name}: ${p.error ?? p.failed[0]}`).join('')}` }).catch?.(() => {});
+    return res;
   }
 
   async function runData({ reason = 'manual', only = null } = {}) { // only: { panelId, project, service } — копия одного сервиса
@@ -361,7 +411,8 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     if (!manager) throw new Error('Менеджер панелей недоступен');
     const rows = panelsInScope(c); if (!rows.length) throw new Error('Нет панелей для копирования данных');
     dataBusy = true; const t = now(); const stamp = stampOf(t);
-    dataState = { running: true, startedAt: t, reason, dest: c.data.dest, panels: Object.fromEntries(rows.map((r) => [r.id, { name: r.name, status: 'wait', items: [] }])) };
+    setRaw('backup_data_attempt', String(t)); // попытка записана сразу: если EasyAdmin упадёт или перезапустится, расписание не запустит копирование заново в тот же день
+    dataState = { running: true, startedAt: t, reason, only: !!only, dest: c.data.dest, panels: Object.fromEntries(rows.map((r) => [r.id, { name: r.name, status: 'wait', items: [] }])) };
     const run = (async () => {
       let idx = 0;
       await Promise.all(Array.from({ length: Math.min(2, rows.length) }, async () => {
@@ -370,23 +421,28 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
           try { await runDataPanel(c, row, stamp, st); } catch (e) { st.status = 'error'; st.error = e.message; }
         }
       }));
-      const panels = Object.values(dataState.panels);
-      const failed = panels.reduce((n, p) => n + (p.error ? 1 : 0) + (p.items ?? []).filter((x) => x.status === 'fail').length, 0);
-      const okCount = panels.reduce((n, p) => n + (p.items ?? []).filter((x) => x.status === 'ok').length, 0);
-      const res = { ts: t, ok: failed === 0, files: okCount, failed, dest: c.data.dest, reason, panels: panels.map((p) => ({ name: p.name, status: p.status, error: p.error ?? null, failed: (p.items ?? []).filter((x) => x.status === 'fail').map((x) => `${x.label}: ${x.error}`) })) };
-      // результат по каждому сервису (для обзора): ключ «панель|проект|сервис»; сбой панели целиком помечает все её сервисы запуска
-      const svc = svcResults();
-      for (const [id, p] of Object.entries(dataState.panels)) for (const label of p.empty ?? []) svc[`${id}|${label.replace('/', '|')}`] = { ts: t, ok: true, empty: true };
-      for (const [id, p] of Object.entries(dataState.panels)) for (const x of p.items ?? []) {
-        if (x.status !== 'ok' && x.status !== 'fail') continue;
-        svc[`${id}|${x.label.replace('/', '|')}`] = x.status === 'ok' ? { ts: t, ok: true, size: x.size ?? null, name: x.file ?? null } : { ts: t, ok: false, error: x.error ?? 'ошибка' };
-      }
-      setRaw('backup_data_svc', JSON.stringify(svc));
-      if (!only) setRaw('backup_data_last', JSON.stringify(res)); // «последний запуск» — только полный; запуск одного сервиса его не затирает
-      dataState.running = false; dataState.result = res;
-      if (failed) alerts?.emit({ type: 'backup_failed', icon: '💾', text: `Копирование данных: ошибок ${failed}${res.panels.filter((p) => p.error || p.failed.length).slice(0, 2).map((p) => ` — ${p.name}: ${p.error ?? p.failed[0]}`).join('')}` }).catch?.(() => {});
-    })().finally(() => { dataBusy = false; });
+      finishData({ t, reason, only, dest: c.data.dest });
+    })().catch((e) => { dataState.running = false; dataState.error = e.message; }).finally(() => { dataBusy = false; });
     return { started: true, panels: rows.length, wait: run };
+  }
+
+  /** После перезапуска EasyAdmin: запуски, которые шли на серверах панелей, дослеживаются до конца (результаты, уборка, ротация). */
+  async function resumeRuns() {
+    const pend = pendingRuns(); const ids = Object.keys(pend);
+    if (!ids.length || dataBusy || !manager) return 0;
+    dataBusy = true; const c = load(); const t = Math.min(...ids.map((i) => pend[i].startedAt));
+    dataState = { running: true, startedAt: t, reason: 'resume', only: false, dest: c.data.dest, panels: {} };
+    (async () => {
+      await Promise.all(ids.map(async (runId) => {
+        const p = pend[runId]; const row = db.prepare('SELECT * FROM panels WHERE id = ?').get(p.panelId);
+        const st = dataState.panels[p.panelId] = { name: row?.name ?? `#${p.panelId}`, status: 'running', items: p.labels.map((label) => ({ label, status: 'wait' })), empty: p.empty ?? [] };
+        try { if (!row) throw new Error('Панель удалена'); await followRun({ c: { ...c, data: { ...c.data, dest: p.dest, dir: p.dir, keep: p.keep } }, row, runId, labels: p.labels, state: st, startedAt: p.startedAt }); }
+        catch (e) { st.status = 'error'; st.error = e.message; }
+        const p2 = pendingRuns(); delete p2[runId]; setPending(p2);
+      }));
+      finishData({ t, reason: 'resume', only: false, dest: c.data.dest });
+    })().catch((e) => { dataState.running = false; dataState.error = e.message; }).finally(() => { dataBusy = false; });
+    return ids.length;
   }
   const dataStatus = () => ({ ...dataState, panels: Object.entries(dataState.panels).map(([id, p]) => ({ id: Number(id), ...p })) });
 
@@ -427,8 +483,8 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
   async function tickData(ts = now()) {
     const c = load(); if (c.data.mode === 'none' || !c.password || dataBusy) return null;
     const l = lastData(); if (l && !l.ok && ts - l.ts < 3600e3) return null;
-    const lastOk = l?.ok ? l.ts : 0;
-    const due = !lastOk || (c.every === 'weekly' ? ts - lastOk >= 6.5 * DAY : dayKey(ts) !== dayKey(lastOk));
+    const lastOk = l?.ok ? l.ts : 0; const attempt = Number(getRaw('backup_data_attempt') ?? 0); const last = Math.max(lastOk, attempt); // незавершённая попытка тоже считается: иначе при сбое копирование шло бы по кругу
+    const due = !last || (c.every === 'weekly' ? ts - last >= 6.5 * DAY : dayKey(ts) !== dayKey(last));
     if (!due || !c.enabled || new Date(ts).getHours() < c.hour) return null;
     try { return await runData({ reason: 'schedule' }); } catch { return null; }
   }
@@ -439,7 +495,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     const svc = svcResults(); if (svc[a]) { svc[b] = svc[a]; delete svc[a]; setRaw('backup_data_svc', JSON.stringify(svc)); }
   }
 
-  const start = () => { timer = setInterval(() => { tick().catch(() => {}); tickData().catch(() => {}); }, 60_000); timer.unref(); };
+  const start = () => { setTimeout(() => resumeRuns().catch(() => {}), 15_000).unref?.(); timer = setInterval(() => { tick().catch(() => {}); tickData().catch(() => {}); }, 60_000); timer.unref(); };
   const stop = () => clearInterval(timer);
 
   /** Конфигурация одной панели из копии (для скачивания и восстановления сервисов). */
@@ -449,7 +505,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     if (!p) throw new Error('Этой панели нет в копии');
     return p;
   }
-  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, repoint, svcResults, lastData, list, download, remove, verify, restore, tick, start, stop, load };
+  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, repoint, svcResults, lastData, dataLog, resumeRuns, rotateS3, list, download, remove, verify, restore, tick, start, stop, load };
 }
 
 export function backupRoutes(d) {
@@ -472,6 +528,7 @@ export function backupRoutes(d) {
       const r = await backups.runData({ reason: 'manual', only }); r.wait.catch(() => {}); audit(ctx, { action: 'backup.data_run', target: only ? `${only.project}/${only.service}` : 'данные баз и томов', detail: `панелей: ${r.panels}` }); return { started: true, panels: r.panels };
     }), { admin: true }],
     ['GET', '/api/backups/data/status', w(() => backups.dataStatus()), { admin: true }],
+    ['GET', '/api/backups/data/log', w(() => ({ runs: backups.dataLog() })), { admin: true }],
     ['GET', '/api/backups/data/files', w(async (ctx) => { const q = ctx.url.searchParams; return { files: await backups.listData({ panelId: q.get('panel'), project: q.get('project'), service: q.get('service') }) }; }), { admin: true }],
     ['POST', '/api/backups/data/hint', w((ctx) => backups.dataHint(ctx.body?.panelId, String(ctx.body?.name ?? ''))), { admin: true }],
     ['GET', '/api/backups/download', w(async (ctx) => {

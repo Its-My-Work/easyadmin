@@ -41,9 +41,11 @@ after(async () => { app.stop(); app.server.closeAllConnections(); app.server.clo
 
 describe('статус сервиса', () => {
   const NOW = Date.UTC(2026, 9, 1);
-  test('не выбран → off; идёт → running; ошибка → error; нечего копировать → empty; не было копии → pending; давно → stale; свежая → ok', () => {
+  test('не выбран → off; идёт → running; ждёт → queued; ошибка → error; нечего копировать → empty; не было копии → pending; давно → stale; свежая → ok', () => {
     assert.equal(statusOf({ included: false, last: { ok: true, ts: NOW } }, NOW), 'off');
-    assert.equal(statusOf({ included: true, running: true }, NOW), 'running');
+    assert.equal(statusOf({ included: true, live: 'running' }, NOW), 'running');
+    assert.equal(statusOf({ included: true, live: 'queued', last: { ok: true, ts: NOW } }, NOW), 'queued', 'в очереди важнее прошлого результата');
+    assert.equal(statusOf({ included: false, live: 'running' }, NOW), 'off');
     assert.equal(statusOf({ included: true, last: { ok: false, ts: NOW } }, NOW), 'error');
     assert.equal(statusOf({ included: true, last: { ok: true, empty: true, ts: NOW } }, NOW), 'empty');
     assert.equal(statusOf({ included: true, last: null }, NOW), 'pending');

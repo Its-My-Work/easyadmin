@@ -4,10 +4,10 @@
  */
 const STALE_MS = 8 * 86_400_000; // успешной копии давно не было
 
-/** Статус сервиса: off — не копируется; error; running; stale; pending — выбран, но копии ещё не было; empty — копировать нечего; ok. */
-export function statusOf({ included, last, running }, now) {
+/** Статус сервиса: off — не копируется; queued — ждёт своей очереди в идущем запуске; running — копируется сейчас; error; stale; pending — копии ещё не было; empty — копировать нечего; ok. */
+export function statusOf({ included, last, live }, now) {
   if (!included) return 'off';
-  if (running) return 'running';
+  if (live === 'running' || live === 'queued') return live;
   if (last?.ok === false) return 'error';
   if (last?.empty) return 'empty';
   if (!last) return 'pending';
@@ -17,7 +17,8 @@ export function statusOf({ included, last, running }, now) {
 export function createBackupOverview({ db, backups, treeOf, now = () => Date.now() }) {
   async function overview(accessiblePanels) {
     const s = backups.view(); const t = now(); const results = backups.svcResults(); const live = backups.dataStatus();
-    const runningLabels = new Set(live.running ? live.panels.flatMap((p) => (p.items ?? []).filter((x) => x.status === 'wait').map((x) => `${p.id}|${x.label.replace('/', '|')}`)) : []);
+    // ход идущего запуска: сервис, который копируется сейчас (и какая его часть), и очередь за ним
+    const liveOf = new Map(live.running ? live.panels.flatMap((p) => (p.items ?? []).filter((x) => x.status === 'run' || x.status === 'wait').map((x) => [`${p.id}|${x.label.replace('/', '|')}`, { state: x.status === 'run' ? 'running' : 'queued', part: x.part ?? null }])) : []);
     const panels = await Promise.all(accessiblePanels.map(async (row) => {
       const up = ['online', 'degraded'].includes(row.status);
       if (!up) return { panelId: row.id, panelName: row.name, color: row.color, error: row.last_error || 'Панель недоступна', rows: [] };
@@ -27,7 +28,8 @@ export function createBackupOverview({ db, backups, treeOf, now = () => Date.now
         const key = `${row.id}|${p.name}|${sv.name}`;
         const included = s.data.mode === 'all' || (s.data.mode === 'selected' && s.data.keys.includes(key));
         const last = results[key] ?? null;
-        return { project: p.name, name: sv.name, type: sv.type, key, included, last, status: statusOf({ included, last, running: runningLabels.has(key) }, t) };
+        const lv = liveOf.get(key) ?? null;
+        return { project: p.name, name: sv.name, type: sv.type, key, included, last, ...(lv ? { live: lv } : {}), status: statusOf({ included, last, live: lv?.state }, t) };
       }));
       return { panelId: row.id, panelName: row.name, color: row.color, error: null, rows };
     }));
@@ -36,7 +38,7 @@ export function createBackupOverview({ db, backups, treeOf, now = () => Date.now
     const included = all.filter((r) => r.included).length;
     return {
       panels, at: t,
-      summary: { total: all.length, included, off: count('off'), error: count('error'), stale: count('stale'), pending: count('pending'), running: count('running'), empty: count('empty'), ok: count('ok') },
+      summary: { total: all.length, included, off: count('off'), error: count('error'), stale: count('stale'), pending: count('pending'), running: count('running'), queued: count('queued'), empty: count('empty'), ok: count('ok') },
       mode: s.data.mode, running: live.running,
       system: { enabled: s.enabled, system: s.system, panels: s.panels, last: s.last, where: s.where, hasPassword: s.hasPassword },
     };

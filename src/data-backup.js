@@ -122,12 +122,15 @@ export async function measureVolumes(c, row, items, host = runOnHost) {
 }
 
 /** Скрипт для сервера панели (bash). Один элемент — одна запись в файле статуса: OK|метка|файл|байт или FAIL|метка|код|аргумент. */
-export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, consistency = 'none', mpMin = 5 * GIB - 1, partMb = 1024, password = '' }) {
+export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, consistency = 'none', mpMin = 5 * GIB - 1, partMb = 1024, password = '', selfId = '' }) {
   const lines = [
     '#!/bin/bash',
     `BASE=${shq(baseDir)}; RUN=${shq(runId)}; DEST=${shq(dest)}; KEEP=${Number(keep)}; MINFREE=${Number(minFreeKb)}; HOLDMODE=${shq(consistency)}; MPMIN=${Number(mpMin)}; PS=$((${Number(partMb)} * 1048576))`,
     'LOGD="$BASE/.runs"; ST="$LOGD/$RUN.status"; TMPD="$BASE/.work"; HOLDS=(); PASSF=""',
     'umask 077; mkdir -p "$LOGD" "$TMPD" || exit 1',
+    'find "$LOGD" -type f -mtime +7 -delete 2>/dev/null', // следы старых запусков
+    // сам EasyAdmin (контейнер с этим идентификатором) нельзя останавливать и замораживать: он сам ведёт копирование
+    /^[A-Za-z0-9_.-]{1,64}$/.test(selfId) ? `SELFID=${shq(selfId)}; SELFSVC=$(docker inspect -f '{{index .Config.Labels "com.docker.swarm.service.name"}}' "$SELFID" 2>/dev/null)` : 'SELFID=""; SELFSVC=""',
     'hold_end() { local h; for h in "${HOLDS[@]}"; do case "$h" in pause:*) docker unpause ${h#pause:} >/dev/null 2>&1;; start:*) docker start ${h#start:} >/dev/null 2>&1;; scale:*) docker service scale -d "${h#scale:}" >/dev/null 2>&1;; esac; done; HOLDS=(); }',
     'trap \'hold_end; rm -f "$LOGD/$RUN.pw" "$0"; rm -rf "${TMPD:?}/${RUN:?}".*\' EXIT', // пароль и сам скрипт (в нём пароль) не остаются на сервере
     password ? `PASSF="$LOGD/$RUN.pw"; printf %s ${shq(Buffer.from(password).toString('base64'))} | base64 -d > "$PASSF"` : '',
@@ -140,9 +143,11 @@ export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, cons
     '  local spec=$1 ids svc r n; if [ "$HOLDMODE" = none ] || [ -z "$spec" ] || [ "$spec" = - ]; then return 0; fi',
     '  case "$spec" in',
     '    swarm:*) svc=${spec#swarm:}',
+    '      if [ -n "$SELFSVC" ] && [ "$svc" = "$SELFSVC" ]; then printf \'WARN|%s|EA_SELF\\n\' "$LABEL" >> "$ST"; return 0; fi',
     '      if [ "$HOLDMODE" = pause ]; then ids=$(docker ps -q --filter "name=^${svc}\\."); if [ -n "$ids" ]; then docker pause $ids >/dev/null 2>&1 && HOLDS+=("pause:$ids"); fi',
     '      else r=$(docker service inspect -f \'{{.Spec.Mode.Replicated.Replicas}}\' "$svc" 2>/dev/null); if [ -n "$r" ] && [ "$r" -gt 0 ] 2>/dev/null; then docker service scale -d "$svc=0" >/dev/null 2>&1 && HOLDS+=("scale:$svc=$r"); for n in $(seq 1 60); do [ -z "$(docker ps -q --filter "name=^${svc}\\.")" ] && break; sleep 1; done; fi; fi;;',
     '    ids:*) eval "ids=\\$(docker ps -q ${spec#ids:})"',
+    '      if [ -n "$SELFID" ]; then ids=$(printf \'%s\\n\' $ids | grep -v "^$SELFID" | tr \'\\n\' \' \'); fi',
     '      if [ -n "$ids" ]; then if [ "$HOLDMODE" = pause ]; then docker pause $ids >/dev/null 2>&1 && HOLDS+=("pause:$ids"); else docker stop -t 30 $ids >/dev/null 2>&1; HOLDS+=("start:$ids"); fi; fi;;',
     '  esac',
     '}',
@@ -161,6 +166,7 @@ export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, cons
     // args: stage member fn hold tolerate; uses OUT, LABEL, NPARTS, SKIPS of the calling job
     'do_part() {',
     '  local stage=$1 member=$2 fn=$3 hold=$4 tol=$5 rc perr="$LOGD/$RUN.perr"',
+    '  printf \'RUN|%s|%s\\n\' "$LABEL" "$member" >> "$ST"', // для интерфейса: какой сервис и какая часть копируются сейчас
     '  hold_start "$hold"',
     '  ( set -o pipefail; "$fn" | gzip -c > "$stage/$member" ) 2>"$perr"; rc=$?',
     '  hold_end',
@@ -225,6 +231,7 @@ function describeFail(code, arg) {
     default: {
       if (/EA_NOCONT/.test(arg)) return 'Контейнер сервиса не запущен';
       const d = /EA_NODIR:(\S+)/.exec(arg); if (d) return `Папки или файла ${d[1]} нет на сервере`;
+      if (/EA_SELF/.test(arg)) return 'Это сам EasyAdmin: на время копирования его том не замораживается и сервис не останавливается (копия «как есть»)';
       if (/EA_NOPARTS/.test(arg)) return 'Нечего копировать: ни одна часть сервиса не скопирована';
       if (/EA_EMPTY/.test(arg)) return 'Получился пустой файл';
       return arg.trim() || 'Команда завершилась с ошибкой';
@@ -232,15 +239,16 @@ function describeFail(code, arg) {
   }
 }
 export function parseStatus(text) {
-  const items = []; const warns = []; let done = false; let started = false;
+  const items = []; const warns = []; let done = false; let started = false; let current = null;
   for (const raw of String(text).split('\n')) {
     const l = raw.replace(/\r/g, '').trim();
     if (l === 'DONE') done = true; else if (l === 'START') started = true;
-    else if (/^OK\|/.test(l)) { const [, label, name, size] = l.split('|'); items.push({ ok: true, label, name, size: Number(size) || 0 }); }
-    else if (/^FAIL\|/.test(l)) { const [, label, code, ...rest] = l.split('|'); items.push({ ok: false, label, error: describeFail(code, rest.join('|')) }); }
+    else if (/^RUN\|/.test(l)) { const [, label, part] = l.split('|'); current = { label, part }; }
+    else if (/^OK\|/.test(l)) { const [, label, name, size] = l.split('|'); items.push({ ok: true, label, name, size: Number(size) || 0 }); if (current?.label === label) current = null; }
+    else if (/^FAIL\|/.test(l)) { const [, label, code, ...rest] = l.split('|'); items.push({ ok: false, label, error: describeFail(code, rest.join('|')) }); if (current?.label === label) current = null; }
     else if (/^WARN\|/.test(l)) { const [, label, ...rest] = l.split('|'); warns.push({ label, text: describeFail('CMD', rest.join('|')) }); } // часть сервиса пропущена, архив сделан
   }
-  return { items, done, started, ...(warns.length ? { warns } : {}) };
+  return { items, done, started, ...(current && !done ? { current } : {}), ...(warns.length ? { warns } : {}) };
 }
 
 /** Доставка скрипта на сервер (в консоли строка ограничена, поэтому — сжатым и порциями) и запуск отдельным процессом. */

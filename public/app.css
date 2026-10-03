@@ -424,3 +424,6 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 
 /* индикатор выполнения должен вращаться и при «уменьшить анимацию» в системе (общее правило выше отключает остальные анимации) */
 @media (prefers-reduced-motion: reduce) { .spinner, .spin .icon { animation: rot 1.4s linear infinite !important; } }
+
+/* журнал копирования: текст ошибки целиком, с переносами */
+.log-err { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }

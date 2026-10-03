@@ -76,9 +76,21 @@ async function serviceRestoreModal(name, pw, pn) {
 const pad2 = (n) => String(n).padStart(2, '0');
 export const STATUS = {
   off: ['Не копируется', 'muted'], error: ['Ошибка', 'err'], stale: ['Давно не было', 'warn'], pending: ['Ждёт первой копии', 'warn'],
-  running: ['Копируется…', 'warn'], empty: ['Нечего копировать', 'muted'], ok: ['В порядке', 'ok'],
+  queued: ['В очереди', 'muted'], running: ['Копируется…', 'warn'], empty: ['Нечего копировать', 'muted'], ok: ['В порядке', 'ok'],
 };
 export const switchBtn = (on, label, onclick, disabled = false) => h('button', { type: 'button', class: `toggle ${on ? 'on' : ''}`, role: 'switch', 'aria-checked': on ? 'true' : 'false', 'aria-label': label, title: label, disabled, onclick });
+
+/** Понятное название части сервиса по имени файла внутри архива (db-postgres.sql.gz, cvol~app~имя.tar.gz, bind-имя.tar.gz …). */
+export function partTitle(member) {
+  const m = String(member ?? '').replace(/\.(sql|archive|rdb|tar)\.gz$/, ''); const p = m.split('~');
+  if (p[0] === 'cdb') return `${t('база')} ${p[1]}${p[2] ? ` (${p[2]})` : ''}`;
+  if (m.startsWith('db-')) return `${t('база')} ${m.slice(3)}`;
+  if (p[0] === 'cvol') return `${t('том')} ${p.slice(2).join('~')}`;
+  if (m.startsWith('vol-')) return `${t('том')} ${m.slice(4)}`;
+  if (p[0] === 'cbind') return `${t('папка')} ${p.slice(2).join('~')}`;
+  if (m.startsWith('bind-')) return `${t('папка')} ${m.slice(5)}`;
+  return m;
+}
 
 /** Что поменять в настройках, чтобы сервис вошёл в копии или вышел из них. mode/keys — текущие, allKeys — все сервисы обзора. */
 export function inclusionPatch({ mode, keys, allKeys }, key, on) {
@@ -91,6 +103,47 @@ export const saveSettings = async (patch) => { try { await put('/api/backups/set
 /** Один запуск копирования (всех сервисов или одного); ход виден в странице раздела. */
 export async function runCopy(only) {
   try { await post('/api/backups/data/run', only ?? {}); toast(t('Копирование запущено'), 'success'); return true; } catch (e) { toast(e.message, 'error', 9000); return false; }
+}
+
+/* ---------------- журнал копирования ---------------- */
+const REASON = { manual: 'вручную', schedule: 'по расписанию', resume: 'дослежен после перезапуска EasyAdmin' };
+const ITEM_MARK = { ok: '✓', fail: '✗', run: '…', wait: '·' };
+const itemLine = (x) => h('div', { class: 'small', style: { marginLeft: '12px' } }, `${ITEM_MARK[x.status] ?? '·'} ${x.label}`, x.size ? h('span', { class: 'muted' }, ` · ${size(x.size)}`) : null,
+  x.error ? h('div', { class: 'danger-text log-err' }, x.error) : null, x.note ? h('div', { class: 'warn-text log-err' }, `${t('пропущено')}: ${x.note}`) : null);
+
+/** Один запуск: по панелям и сервисам, с полным текстом ошибок. */
+export function runDetails(run) {
+  return h('div', { class: 'stack-sm' }, ...run.panels.map((p) => h('div', { class: 'stack-sm' },
+    h('div', { class: 'inline' }, h('b', null, p.name), h('span', { class: `badge ${p.status === 'done' ? 'ok' : p.status === 'partial' || p.status === 'error' ? 'err' : ''}` }, ({ done: 'готово', partial: 'есть ошибки', error: 'ошибка' })[p.status] ?? p.status)),
+    p.error ? h('div', { class: 'danger-text small log-err' }, p.error) : null, p.note ? h('div', { class: 'muted small' }, p.note) : null,
+    ...p.items.map(itemLine), p.empty?.length ? h('div', { class: 'muted small', style: { marginLeft: '12px' } }, `${t('нечего копировать')}: ${p.empty.join(', ')}`) : null)));
+}
+
+export async function logModal() {
+  const body = h('div', { class: 'stack' }, h('div', { class: 'skeleton', style: { height: '80px' } }));
+  modal({ title: 'Журнал копирования', wide: true, body, actions: [{ label: 'Закрыть', kind: 'ghost' }] });
+  try {
+    const { runs } = await get('/api/backups/data/log'); clear(body);
+    if (!runs.length) return body.append(h('p', { class: 'muted' }, 'Запусков ещё не было.'));
+    body.append(h('p', { class: 'muted small' }, 'Последние запуски копирования данных: что и как скопировалось, полный текст ошибок.'), ...runs.map((r) => {
+      const det = h('div', { hidden: true, style: { padding: '8px 4px 2px' } }, runDetails(r));
+      const head = h('button', { type: 'button', class: 'list-item link btn-row', onclick: () => { det.hidden = !det.hidden; } },
+        h('div', null, h('b', null, fmtTime(r.ts)), h('span', { class: 'muted small' }, `  ${t(r.only ? 'один сервис' : REASON[r.reason] ?? r.reason)}`)),
+        h('div', { class: 'inline' }, h('span', { class: `badge ${r.ok ? 'ok' : 'err'}` }, r.ok ? t('без ошибок') : `${t('ошибок')}: ${r.failed}`), h('span', { class: 'muted small' }, `${t('копий')}: ${r.files}`), icon('chevron', 14)));
+      return h('div', null, head, det);
+    }));
+  } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
+}
+
+/** Последние запуски одного сервиса (из журнала): когда, чем закончились, текст ошибки. */
+export function serviceHistory({ project, name, panelName }) {
+  const box = h('div', { class: 'stack-sm' }); const label = `${project}/${name}`;
+  get('/api/backups/data/log').then(({ runs }) => {
+    const rows = runs.flatMap((r) => r.panels.filter((p) => !panelName || p.name === panelName).flatMap((p) => p.items.filter((x) => x.label === label).map((x) => ({ r, p, x })))).slice(0, 8);
+    box.append(...(rows.length ? rows.map(({ r, x }) => h('div', { class: 'list-item' }, h('div', null, h('b', { class: 'small' }, fmtTime(r.ts)), x.error ? h('div', { class: 'danger-text small log-err' }, x.error) : x.note ? h('div', { class: 'warn-text small' }, `${t('пропущено')}: ${x.note}`) : null),
+      h('div', { class: 'inline' }, x.size ? h('span', { class: 'muted small' }, size(x.size)) : null, h('span', { class: `badge ${x.status === 'ok' ? 'ok' : x.status === 'fail' ? 'err' : ''}` }, x.status === 'ok' ? t('ок') : x.status === 'fail' ? t('ошибка') : '…')))) : [h('p', { class: 'muted small' }, 'Запусков с этим сервисом ещё не было.')]));
+  }).catch(() => {});
+  return box;
 }
 
 /* ---------------- как восстановить ---------------- */
@@ -120,7 +173,7 @@ export function copiesList({ panelId, project, name }) {
   load();
   return box;
 }
-export const copiesModal = (svc) => modal({ title: `${svc.project}/${svc.name}`, wide: true, body: h('div', { class: 'stack' }, h('p', { class: 'muted small' }, 'Копии лежат в выбранном хранилище, зашифрованы паролем копий. Распаковка и восстановление — по подсказке.'), copiesList(svc)), actions: [{ label: 'Закрыть', kind: 'ghost' }] });
+export const copiesModal = (svc) => modal({ title: `${svc.project}/${svc.name}`, wide: true, body: h('div', { class: 'stack' }, h('p', { class: 'muted small' }, 'Копии лежат в выбранном хранилище, зашифрованы паролем копий. Распаковка и восстановление — по подсказке.'), copiesList(svc), h('h4', null, 'Последние запуски'), serviceHistory(svc)), actions: [{ label: 'Закрыть', kind: 'ghost' }] });
 
 /* ---------------- копии самого EasyAdmin (система и конфигурации панелей) ---------------- */
 export function systemCopiesModal(files, reload) {

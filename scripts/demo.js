@@ -77,6 +77,10 @@ if (process.env.DEMO_BACKUPS) { // копии EasyAdmin: две панели в 
   svc['1|shop|api'] = { ts: ago(4), ok: true, empty: true }; svc['1|shop|worker'] = { ts: ago(4), ok: true, empty: true }; delete svc['1|blog|wordpress'];
   db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_svc', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify(svc));
   db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_last', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify({ ts: ago(4), ok: false, files: keys.length - 1, failed: 1, dest: 'host', reason: 'schedule', panels: [] }));
+  const items = (st, extra = {}) => keys.map((k, i) => { const [, pr, sv] = k.split('|'); return { label: `${pr}/${sv}`, status: st, size: (4 + i * 7) * 1048576, error: null, note: null, file: null, ...extra }; });
+  const logItems = items('ok').map((x) => (x.label === 'shop/cache' ? { ...x, status: 'fail', size: null, error: 'Мало места на диске сервера: свободно 312 МБ' } : x));
+  const entry = (ts, reason, its) => ({ id: String(ts), ts, endedAt: ts + 380e3, reason, only: false, dest: 'host', ok: its.every((x) => x.status === 'ok'), files: its.filter((x) => x.status === 'ok').length, failed: its.filter((x) => x.status === 'fail').length, panels: [{ name: shown('Прод · EU'), status: its.some((x) => x.status === 'fail') ? 'partial' : 'done', error: null, note: null, items: its, empty: [] }] });
+  db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_log', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify([entry(ago(4), 'schedule', logItems), entry(ago(28), 'manual', items('ok'))]));
   try { await call('POST', '/api/backups/run', {}); } catch (e) { console.error('Демо: системная копия не создана —', e.message); }
 }
 console.log(`Демо запущено: ${base}  (логин admin / пароль demo12345)`);

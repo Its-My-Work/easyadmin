@@ -296,3 +296,77 @@ describe('согласованность томов, compose, Redis, загру�
     } finally { delete process.env.EA_REALCURL; }
   });
 });
+
+describe('ход копирования, защита EasyAdmin, перезапуск, ротация и журнал', { skip: !HAS_BASH }, () => {
+  const run = (script, env = {}) => { const f = path.join(tmp, `n-${crypto.randomBytes(3).toString('hex')}.sh`); fs.writeFileSync(f, script); return spawnSync('bash', [f], { env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`, ...env }, encoding: 'utf8' }); };
+  const logPath = () => path.join(state, 'docker.log'); const resetLog = () => { fs.rmSync(logPath(), { force: true }); fs.rmSync(path.join(state, 'scaled0'), { force: true }); };
+  const volPart = (hold) => ({ kind: 'volume', tag: 'vol-data', project: 'web', service: 'site', label: 'web/site · data', hostPath: path.join(tmp, 'vol'), hold });
+  const status = (id) => parseStatus(fs.readFileSync(path.join(tmp, `n-${id}`, '.runs', `${id}.status`), 'utf8'));
+  before(() => { fs.mkdirSync(path.join(tmp, 'vol'), { recursive: true }); fs.writeFileSync(path.join(tmp, 'vol', 'f.txt'), 'data '.repeat(40)); });
+
+  test('в статусе видно, какой сервис и какая часть копируются сейчас; после завершения «текущего» нет', () => {
+    const sc = buildScript({ runId: 'rrun', baseDir: path.join(tmp, 'n-rrun'), dest: 'host', keep: 1, minFreeKb: 1, items: [J('web', 'site', [volPart(null)], 's')] });
+    assert.equal(run(sc).status, 0); const raw = fs.readFileSync(path.join(tmp, 'n-rrun', '.runs', 'rrun.status'), 'utf8');
+    assert.match(raw, /START\nRUN\|web\/site\|vol-data\.tar\.gz\nOK\|web\/site\|/);
+    assert.deepEqual(parseStatus('START\nOK|a/x|f.tar.enc|5\nRUN|a/y|vol-data.tar.gz\n').current, { label: 'a/y', part: 'vol-data.tar.gz' });
+    assert.equal(parseStatus('START\nRUN|a/y|p\nOK|a/y|f|5\n').current, undefined); assert.equal(parseStatus('START\nRUN|a/y|p\nFAIL|a/y|CMD|x\n').current, undefined); assert.equal(parseStatus('START\nRUN|a/y|p\nDONE\n').current, undefined);
+  });
+
+  test('сам EasyAdmin не останавливается и не замораживается (иначе он обрывает собственное копирование): сервис, к которому относится его контейнер, пропускается', () => {
+    fs.writeFileSync(path.join(state, 'mounts-selfid1'), 'system_easyadmin\n'); // подставной docker inspect «контейнера EasyAdmin» отвечает названием его сервиса
+    for (const mode of ['stop', 'pause']) {
+      resetLog(); const id = `rself${mode}`;
+      const sc = buildScript({ runId: id, baseDir: path.join(tmp, `n-${id}`), dest: 'host', keep: 1, minFreeKb: 1, consistency: mode, selfId: 'selfid1', items: [J('system', 'easyadmin', [{ ...volPart('swarm:system_easyadmin'), project: 'system', service: 'easyadmin', label: 'system/easyadmin · data' }], 's'), J('web', 'site', [volPart('swarm:web_site')], 's')] });
+      assert.equal(run(sc).status, 0); const log = fs.readFileSync(logPath(), 'utf8');
+      assert.ok(!/service scale -d system_easyadmin|pause abc123def456.*\n.*system_easyadmin/.test(log) && !/system_easyadmin=0/.test(log), 'свой сервис не трогаем');
+      assert.match(log, mode === 'stop' ? /service scale -d web_site=0/ : /docker pause abc123def456/, 'чужие сервисы — как настроено');
+      const st = status(id); assert.equal(st.items.filter((x) => x.ok).length, 2, 'оба сервиса скопированы'); assert.match(st.warns.find((w) => w.label === 'system/easyadmin').text, /сам EasyAdmin/);
+    }
+    resetLog(); const sc2 = buildScript({ runId: 'rself2', baseDir: path.join(tmp, 'n-rself2'), dest: 'host', keep: 1, minFreeKb: 1, consistency: 'stop', selfId: 'not-a-container', items: [J('web', 'site', [volPart('swarm:web_site')], 's')] });
+    run(sc2); assert.match(fs.readFileSync(logPath(), 'utf8'), /web_site=0/, 'EasyAdmin вне docker этого сервера — защита не мешает');
+  });
+
+  test('результаты записываются по готовности, журнал хранит запуски с текстом ошибок, расписание не повторяет недоделанную попытку', async () => {
+    const id = await (async () => { const m = createMockPanel({ token: 'T', seed: { zz: [{ name: 'db', type: 'postgres' }, { name: 'ghost', type: 'postgres' }] } }); panels.push(m); return (await api('POST', '/api/panels', { name: 'Journal Panel', url: await m.listen(), token: 'T' })).data.id; })();
+    await api('PUT', '/api/backups/settings', { password: PW, data: { mode: 'selected', keys: [`${id}|zz|db`, `${id}|zz|ghost`], dest: 'host', dir: path.join(tmp, 'hostdir-j'), keep: 2, minFreeMb: 0, consistency: 'none' } });
+    assert.equal((await api('POST', '/api/backups/data/run')).status, 200);
+    const st = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
+    assert.equal(st.result.reason, 'manual');
+    const log = (await api('GET', '/api/backups/data/log')).data.runs; assert.equal(log[0].panels[0].name, 'Journal Panel'); assert.ok(log[0].panels[0].items.some((x) => x.label === 'zz/db' && x.status === 'ok' && x.size > 0));
+    const ov = (await api('GET', '/api/backups/overview')).data; const r = ov.panels.find((p) => p.panelId === id).rows.find((x) => x.name === 'db'); assert.equal(r.status, 'ok'); assert.ok(r.last.size > 0);
+    // расписание: попытка записана при запуске — тот же день не «догоняется» новым запуском, даже если итог не записался
+    await api('PUT', '/api/backups/settings', { enabled: true, every: 'daily', hour: 0 });
+    db.prepare("DELETE FROM settings WHERE k = 'backup_data_last'").run();
+    assert.equal(await app.backups.tickData(Date.now() + 1000), null, 'есть попытка за сегодня — не повторяем');
+    db.prepare("UPDATE settings SET v = ? WHERE k = 'backup_data_attempt'").run(String(Date.now() - 3 * 86400e3));
+    const again = await app.backups.tickData(Date.now()); assert.ok(again?.started, 'прошлая попытка давняя — запуск по расписанию');
+    await again.wait; await api('PUT', '/api/backups/settings', { enabled: false });
+  });
+
+  test('после перезапуска EasyAdmin идущий на сервере запуск дослеживается: результаты, журнал, уборка, запись о запуске снимается', async () => {
+    const m = createMockPanel({ token: 'T', seed: { rs: [{ name: 'a' }] } }); panels.push(m);
+    const id = (await api('POST', '/api/panels', { name: 'Resume Panel', url: await m.listen(), token: 'T' })).data.id;
+    const dir = path.join(tmp, 'hostdir-r'); fs.mkdirSync(path.join(dir, '.runs'), { recursive: true });
+    const runId = `r20261003-010101-${id}`;
+    fs.writeFileSync(path.join(dir, '.runs', `${runId}.status`), 'START\nOK|rs/a|rs__a__20261003-010101.tar.enc|777\nFAIL|rs/b|CMD|EA_NOCONT\nDONE\n');
+    await api('PUT', '/api/backups/settings', { password: PW, data: { mode: 'selected', keys: [`${id}|rs|a`], dest: 'host', dir, minFreeMb: 0 } });
+    db.prepare("INSERT INTO settings (k, v) VALUES ('backup_data_pending', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(JSON.stringify({ [runId]: { panelId: id, labels: ['rs/a', 'rs/b'], startedAt: Date.now() - 600_000, reason: 'manual', dest: 'host', dir, keep: 3, empty: [] } }));
+    assert.equal(await app.backups.resumeRuns(), 1);
+    const done = await waitFor(async () => { const x = (await api('GET', '/api/backups/data/status')).data; return x.running ? null : x; });
+    assert.equal(done.result.reason, 'resume'); assert.equal(done.result.failed, 1);
+    const svc = app.backups.svcResults(); assert.equal(svc[`${id}|rs|a`].ok, true); assert.equal(svc[`${id}|rs|a`].size, 777); assert.equal(svc[`${id}|rs|b`].ok, false); assert.match(svc[`${id}|rs|b`].error, /не запущен/);
+    assert.deepEqual(JSON.parse(db.prepare("SELECT v FROM settings WHERE k = 'backup_data_pending'").get().v), {}, 'запись о запуске снята');
+    await waitFor(async () => !fs.existsSync(path.join(dir, '.runs', `${runId}.status`))); // файлы запуска на сервере убраны
+    assert.equal((await api('GET', '/api/backups/data/log')).data.runs[0].reason, 'resume');
+    assert.equal(await app.backups.resumeRuns(), 0, 'нечего подхватывать');
+  });
+
+  test('список S3 читается постранично (хранилище отдаёт не больше 1000 за запрос), ротация удаляет лишнее у каждого сервиса', async () => {
+    const pages = []; const fetchImpl = async (url) => { pages.push(String(url)); const u = new URL(url); const tok = u.searchParams.get('continuation-token');
+      const xml = !tok ? '<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>T2</NextContinuationToken><Contents><Key>p/a__x__20261001-000001.tar.enc</Key><Size>1</Size></Contents></ListBucketResult>'
+        : '<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>p/a__x__20261001-000002.tar.enc</Key><Size>2</Size></Contents></ListBucketResult>';
+      return { ok: true, status: 200, text: async () => xml }; };
+    const list = await s3Client({ endpoint: 'https://s3.example.com', region: 'r', bucket: 'b', prefix: 'p/', accessKey: 'A', secretKey: 'S', pathStyle: true }, fetchImpl).list('p/');
+    assert.deepEqual(list.map((o) => o.size), [1, 2]); assert.equal(pages.length, 2); assert.match(pages[1], /continuation-token=T2/);
+  });
+});

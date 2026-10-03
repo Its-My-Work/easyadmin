@@ -101,6 +101,7 @@ await step('backups section', async () => {
   await p.goto(U + '#/backups'); await p.waitForSelector('.kpis .kpi'); await p.waitForSelector('.tbl tbody tr'); await scan('backups page');
   await p.click('button:has-text("Settings")'); await p.waitForSelector('.modal .seg-btn:text-is("To S3")'); await scan('backups settings'); await p.click('.modal .seg-btn:text-is("To S3")'); await scan('backups settings s3');
   await p.click('.modal summary:has-text("Advanced")'); await scan('backups settings advanced'); await esc();
+  await p.click('button:has-text("Backup log")'); await p.waitForSelector('.modal'); await p.waitForTimeout(400); await scan('backups log'); await esc();
   await p.locator('tr.row').first().click(); await p.waitForSelector('.modal'); await p.waitForTimeout(500); await scan('backups service copies'); await esc();
 });
 await step('settings', async () => {

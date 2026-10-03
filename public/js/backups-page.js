@@ -3,20 +3,22 @@ import { empty, panelChip, typeChip } from './components.js';
 import { clear, fmtTime, h, icon, relTime, toast } from './dom.js';
 import { t } from './i18n.js';
 import { can } from './store.js';
-import { STATUS, copiesModal, inclusionPatch, runCopy, saveSettings, settingsModal, size, switchBtn, systemCopiesModal } from './backups-modals.js';
+import { STATUS, copiesModal, inclusionPatch, logModal, partTitle, runCopy, saveSettings, settingsModal, size, switchBtn, systemCopiesModal } from './backups-modals.js';
 
 /* ======================= Раздел «Бэкапы»: одна страница ======================= */
 const filters = { q: '', show: 'all' };
 const SHOW = [['all', 'Все'], ['on', 'Копируются'], ['off', 'Не копируются'], ['bad', 'Проблемы']];
 const BAD = ['error', 'stale', 'pending'];
-const ORDER = { error: 0, stale: 1, pending: 2, running: 3, ok: 4, empty: 5, off: 6 };
+const ORDER = { error: 0, running: 1, queued: 2, stale: 3, pending: 4, ok: 5, empty: 6, off: 7 };
 const pad2 = (n) => String(n).padStart(2, '0');
 
 const kpi = (label, value, tone, ic) => h('div', { class: `kpi ${tone}` }, h('div', { class: 'kpi-ic' }, icon(ic, 18)), h('div', null, h('div', { class: 'kpi-label' }, label), h('div', { class: 'kpi-value' }, value)));
-const badge = (st) => { const [label, cls] = STATUS[st] ?? ['—', 'muted']; return h('span', { class: `badge ${cls}` }, h('i', { class: 'dot' }), label); };
+const badge = (st) => { const [label, cls] = STATUS[st] ?? ['—', 'muted']; return h('span', { class: `badge ${cls}` }, st === 'running' ? h('span', { class: 'spinner', style: { width: '10px', height: '10px' } }) : h('i', { class: 'dot' }), label); };
 
 /** Последняя копия сервиса одной строкой: когда и размер, либо текст ошибки. */
 function lastCell(r) {
+  if (r.live?.state === 'running') return h('span', { class: 'cell-line', title: r.live.part ?? '' }, t('копируется'), r.live.part ? `: ${partTitle(r.live.part)}` : '…');
+  if (r.live?.state === 'queued') return h('span', { class: 'muted' }, t('ждёт своей очереди'));
   if (!r.included && !r.last) return h('span', { class: 'muted' }, '—');
   if (r.last?.ok === false) return h('span', { class: 'cell-line danger-text', title: r.last.error }, relTime(r.last.ts), ' · ', r.last.error);
   if (r.last?.empty) return h('span', { class: 'muted' }, t('нет томов и баз'));
@@ -27,6 +29,7 @@ function lastCell(r) {
 export function backupsPage() {
   const body = h('div', { class: 'stack' }); let timer = null;
   const page = h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', null, 'Бэкапы'), h('div', { class: 'inline' }, can('admin') ? [
+    h('button', { class: 'btn', onclick: () => logModal() }, icon('activity', 15), 'Журнал копий'),
     h('button', { class: 'btn', onclick: () => settingsModal(() => load(true)) }, icon('settings', 15), 'Настройки'),
     h('button', { class: 'btn primary', onclick: () => startAll() }, icon('database', 15), 'Копировать сейчас')] : null)), body);
 
@@ -62,7 +65,7 @@ export function backupsPage() {
       const grouped = ov.panels.filter((p) => p.rows.length).length > 1; const out = []; let prev = null;
       for (const r of rows) {
         if (grouped && r.panel.panelId !== prev) { prev = r.panel.panelId; out.push(h('tr', { class: 'grp' }, h('td', { colspan: 5 }, h('div', { class: 'inline' }, panelChip({ name: r.panel.panelName, color: r.panel.color }), h('span', { class: 'muted small' }, `${rows.filter((x) => x.panel.panelId === prev).length}`))))); }
-        const svc = { panelId: r.panel.panelId, project: r.project, name: r.name, type: r.type };
+        const svc = { panelId: r.panel.panelId, project: r.project, name: r.name, type: r.type, panelName: r.panel.panelName };
         out.push(h('tr', { class: `row ${r.included ? '' : 'dim'}`, tabindex: 0, onclick: () => copiesModal(svc) },
           h('td', { class: 'w-check', onclick: (e) => e.stopPropagation() }, admin ? switchBtn(r.included || ov.mode === 'all', r.included ? t('Не копировать этот сервис') : t('Копировать этот сервис'), () => include(ov, r, !r.included), ov.mode === 'all') : null),
           h('td', { class: 'svc-cell' }, h('b', null, r.name), h('span', { class: 'muted small' }, `  ${r.project}`), grouped ? null : h('span', { class: 'ml' }, panelChip({ name: r.panel.panelName, color: r.panel.color })), h('span', { class: 'ml hide-sm' }, typeChip(r.type))),

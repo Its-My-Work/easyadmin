@@ -1520,6 +1520,15 @@ export const EN = [
   ['Архив зашифрован паролем копий: подставьте его вместо YOUR_BACKUP_PASSWORD.', 'The archive is encrypted with the backup password: use it instead of YOUR_BACKUP_PASSWORD.'],
   ['на сервере', 'on the server'], ['в S3', 'in S3'], ['хранится копий', 'copies kept'], ['копии зашифрованы паролем', 'copies are encrypted with the password'], ['Сейчас на сервере EasyAdmin', 'Right now on the EasyAdmin server'],
   ['Автоматические копии выключены', 'Automatic backups are off'],
+  /* --- журнал копирования, очередь и ход копирования --- */
+  ['В очереди', 'Queued'], ['база', 'database'], ['том', 'volume'], ['папка', 'folder'], ['копируется', 'copying'], ['ждёт своей очереди', 'waiting for its turn'],
+  ['Журнал копирования', 'Backup log'], ['Журнал копий', 'Backup log'], ['Запусков ещё не было.', 'There have been no runs yet.'],
+  ['Последние запуски копирования данных: что и как скопировалось, полный текст ошибок.', 'The latest data backup runs: what was copied and how, with the full text of errors.'],
+  ['вручную', 'manual'], ['по расписанию', 'on a schedule'], ['дослежен после перезапуска EasyAdmin', 'followed up after an EasyAdmin restart'], ['один сервис', 'single service'],
+  ['без ошибок', 'no errors'], ['ошибок', 'errors'], ['копий', 'copies'], ['нечего копировать', 'nothing to back up'], ['готово', 'done'], ['есть ошибки', 'has errors'],
+  ['Последние запуски', 'Latest runs'], ['Запусков с этим сервисом ещё не было.', 'There have been no runs with this service yet.'],
+  ['Перед копированием удалено старых архивов в S3: {0}', 'Old archives deleted from S3 before the backup: {0}'],
+  ['Это сам EasyAdmin: на время копирования его том не замораживается и сервис не останавливается (копия «как есть»)', 'This is EasyAdmin itself: its volume is not frozen and the service is not stopped during the backup (copy “as is”)'],
 ];
 
 /* ------------------------------------------------------------------ */
