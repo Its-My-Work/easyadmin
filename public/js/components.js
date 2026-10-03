@@ -11,7 +11,7 @@ export const statusBadge = (status) => {
 export const svcBadge = (enabled, health) => {
   if (enabled && health === 'failing') return h('span', { class: 'badge err', title: 'Сервис включён, но контейнер не запущен' }, h('i', { class: 'dot' }), 'Сбой');
   if (enabled && health === 'missing') return h('span', { class: 'badge warn', title: 'Сервис включён, но контейнер не найден' }, h('i', { class: 'dot' }), 'Нет контейнера');
-  return h('span', { class: `badge ${enabled ? 'ok' : 'muted'}` }, h('i', { class: 'dot' }), enabled ? 'Работает' : 'Остановлен');
+  return h('span', { class: `badge ${enabled ? 'ok' : 'err'}` }, h('i', { class: 'dot' }), enabled ? 'Работает' : 'Остановлен');
 };
 
 export const typeChip = (type) => h('span', { class: `chip type-${type}` }, icon(isDb(type) ? 'database' : type === 'compose' ? 'layers' : 'box', 12), TYPE_LABEL[type] || type);

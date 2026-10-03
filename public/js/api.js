@@ -7,7 +7,8 @@ export class ApiError extends Error {
 // Когда Easypanel запускает/останавливает контейнеры, он перечитывает конфиг Traefik — на 1–3 секунды ВСЕ маршруты (и сам
 // EasyAdmin) отвечают 404/502/503 страницей прокси, а не JSON. Наш сервер всегда отвечает JSON с полем error, поэтому ответ без него —
 // это прокси: запрос до нас не дошёл, его безопасно повторить (504 не повторяем для записи — запрос мог выполниться).
-const PROXY_WAIT = [700, 1500, 3000];
+const PROXY_WAIT_GET = [700, 1500, 3000, 5000, 8000];
+const PROXY_WAIT_WRITE = [700, 1500, 3000];
 const proxyGlitch = (method, status, data) => !data?.error && (status === 404 || status === 502 || status === 503 || (status === 504 && method === 'GET'));
 
 export async function api(method, path, body, attempt = 0) {
@@ -22,8 +23,8 @@ export async function api(method, path, body, attempt = 0) {
   } catch { throw new ApiError('Нет связи с сервером EasyAdmin', 0); }
   let data = null;
   try { data = await res.json(); } catch { /* пусто */ }
-  if (!res.ok && attempt < PROXY_WAIT.length && proxyGlitch(method, res.status, data)) {
-    await new Promise((r) => setTimeout(r, PROXY_WAIT[attempt]));
+  if (!res.ok && attempt < (method === 'GET' ? PROXY_WAIT_GET : PROXY_WAIT_WRITE).length && proxyGlitch(method, res.status, data)) {
+    await new Promise((r) => setTimeout(r, (method === 'GET' ? PROXY_WAIT_GET : PROXY_WAIT_WRITE)[attempt]));
     return api(method, path, body, attempt + 1);
   }
   if (res.status === 401 && !path.startsWith('/api/login') && !path.startsWith('/api/session')) window.dispatchEvent(new Event('ea:unauth'));

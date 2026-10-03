@@ -23,8 +23,11 @@ export async function refresh(force = false, { silent = false } = {}) {
     const sig = JSON.stringify(data);
     store.loadedAt = Date.now();
     if (sig !== last) { last = sig; store.panels = data; }
-  } catch (e) { store.error = e.message; }
-  finally { store.loading = false; notify(); store.quiet = false; }
+  } catch (e) {
+    store.error = e.message;
+    // прокси мог ответить 404/502/503 на время перенастройки — баннер сам исчезнет после тихого повтора
+    if ([0, 404, 502, 503, 504].includes(e.status)) setTimeout(() => refresh(false, { silent: true }), 4000);
+  } finally { store.loading = false; notify(); store.quiet = false; }
 }
 
 /** Действие над сервисом выполнено: новое состояние показываем сразу, а список панели перечитывается фоном. */
