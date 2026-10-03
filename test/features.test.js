@@ -499,3 +499,17 @@ describe('локализация на сервере', () => {
     assert.equal((await api('ro', 'GET', '/api/settings')).status, 403);
   });
 });
+
+describe('расписания: операции над одной панелью идут по очереди', () => {
+  test('два задания на одно время не пересекаются', async () => {
+    const { createScheduler } = await import('../src/scheduler.js');
+    const rows = new Map([[1, { id: 1, name: 'A', action: 'cleanupImages', target: JSON.stringify({ kind: 'system', panelIds: [7] }) }], [2, { id: 2, name: 'B', action: 'cleanupImages', target: JSON.stringify({ kind: 'system', panelIds: [7] }) }]]);
+    const db = { prepare: () => ({ run() {}, all: () => [], get: () => null }) };
+    let active = 0, maxActive = 0;
+    const client = { mutate: async () => { active++; maxActive = Math.max(maxActive, active); await wait(40); active--; } };
+    const manager = { getRow: () => ({ id: 7, name: 'P' }), clientFor: () => client, invalidate() {} };
+    const sch = createScheduler({ db, manager, alerts: { expect() {}, emit() {} }, audit() {} });
+    await Promise.all([sch.run(rows.get(1)), sch.run(rows.get(2))]);
+    assert.equal(maxActive, 1);
+  });
+});

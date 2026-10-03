@@ -118,7 +118,7 @@ export function createMockPanel({ deployMs = 0, token = 'tok', seed = {}, stats 
       cpuInfo: { usedPercentage: stats.cpu ?? drift(), count: 4, loadavg: [0.4, 0.5, 0.6] },
       network: { inputMb: 1200, outputMb: 800 },
     }),
-    'domains.listDomains': (i) => (i?.projectName ? need(find(i)).domains : [...projects].flatMap(([pn, list]) => list.flatMap((sv) => sv.domains.map((d) => ({ ...d, destinationType: 'service', serviceDestination: { projectName: pn, serviceName: sv.name, port: d.port, protocol: 'http' } }))))),
+    'domains.listDomains': (i) => (i === undefined ? (() => { throw Object.assign(new Error('Invalid input: expected object'), { code: 'BAD_REQUEST' }); })() : i.projectName ? need(find(i)).domains : [...projects].flatMap(([pn, list]) => list.flatMap((sv) => sv.domains.map((d) => ({ ...d, destinationType: 'service', serviceDestination: { projectName: pn, serviceName: sv.name, port: d.port, protocol: 'http' } }))))),
     'domains.createDomain': (i) => { need(find(i)).domains.push({ id: `d${Date.now()}`, host: i.host, https: i.https, port: i.port }); return null; },
     'domains.deleteDomain': (i) => { const s = need(find(i)); s.domains = s.domains.filter((d) => d.id !== i.id); return null; },
     'ports.listPorts': (i) => { if (requireType && !i.type) throw Object.assign(new Error('Invalid service type.'), { code: 'BAD_REQUEST' }); return need(find(i)).ports; },

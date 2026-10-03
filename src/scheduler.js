@@ -19,6 +19,16 @@ export function createScheduler({ db, manager, alerts, audit, tickMs = 30_000 })
   let timer;
   const row = (id) => db.prepare('SELECT * FROM schedules WHERE id = ?').get(id);
   const running = new Set();
+  // операции над одной панелью идут по очереди: два расписания на одно время (например, две очистки образов в 03:00) иначе
+  // запускают одну и ту же команду Docker одновременно, и вторая падает с «a prune operation is already running»
+  const queues = new Map();
+  const inQueue = (panelId, fn) => {
+    const prev = queues.get(panelId) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(fn);
+    queues.set(panelId, next);
+    next.catch(() => {}).finally(() => { if (queues.get(panelId) === next) queues.delete(panelId); });
+    return next;
+  };
 
   async function run(s) {
     running.add(s.id);
@@ -32,7 +42,7 @@ export function createScheduler({ db, manager, alerts, audit, tickMs = 30_000 })
     const exec = async (panelId, label, fn, action) => {
       const p = manager.getRow(panelId);
       if (!p) { errors.push(`${label}: панель удалена`); return; }
-      try { alerts.expect(panelId, label); await fn(manager.clientFor(p)); audit(ctx, { action: `schedule.${action}`, panel: p, target: label }); }
+      try { alerts.expect(panelId, label); await inQueue(panelId, () => fn(manager.clientFor(p))); audit(ctx, { action: `schedule.${action}`, panel: p, target: label }); }
       catch (e) { errors.push(`${label}: ${e.message}`); audit(ctx, { action: `schedule.${action}`, panel: p, target: label, ok: false, detail: e.message }); }
       finally { manager.invalidate(panelId); }
     };

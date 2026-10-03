@@ -80,7 +80,7 @@ export function createManager({ db, key, config }) {
     const [tree, stats, domains] = await Promise.allSettled([
       client.query('projects.listProjectsAndServices'),
       fetchStats(client, row),
-      client.query('domains.listDomains'), // best-effort: нужен только для колонки «Домен»
+      client.query('domains.listDomains', {}), // best-effort: нужен только для колонки «Домен»
     ]);
     // контейнеры — best-effort: сначала по всей панели, а если панель требует projectName — по каждому проекту
     let containers = { status: 'rejected' };
