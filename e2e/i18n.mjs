@@ -37,7 +37,7 @@ await step('diagnostics', async () => { await p.click('button[title^="Diagnostic
 await step('system menu', async () => { await p.click('button[title="System"]'); await p.waitForSelector('.modal'); await scan('system'); await esc(); });
 await step('new project modal + error', async () => { await p.click('button:has-text("Project") >> nth=0'); await p.fill('.modal input', 'bad name!'); await p.click('.modal-foot button:has-text("Create")'); await p.waitForSelector('.toast'); await scan('new-project-error'); await esc(); });
 await step('new service modal', async () => { await p.click('button:has-text("Service") >> nth=0'); await p.waitForSelector('.modal'); await scan('new-service'); await esc(); });
-await step('activity/console tabs', async () => { await p.click('.tab:has-text("Activity")'); await p.waitForTimeout(400); await scan('activity'); await p.click('.tab:has-text("API console")'); await p.click('button:has-text("Run")'); await p.waitForTimeout(500); await scan('console'); await p.click('.tab:has-text("Services")'); });
+await step('activity tab', async () => { await p.click('.tab:has-text("Activity")'); await p.waitForTimeout(400); await scan('activity'); await p.click('.tab:has-text("Services")'); });
 await step('drawer tabs', async () => {
   await p.locator('tr.row', { hasText: 'web' }).first().click(); await p.waitForSelector('.drawer.in'); await p.waitForTimeout(500); await scan('drawer overview');
   for (const t of await p.locator('.drawer .dtab .lbl').allTextContents()) {
@@ -74,17 +74,17 @@ await step('service logs, console + panel settings', async () => {
   await p.goto(U + '#/panel/1'); await p.waitForSelector('.project');
   await p.locator('tr.row', { hasText: 'worker' }).first().click(); await p.waitForSelector('.drawer.in');
   await p.click('.drawer .dtab:has-text("Logs")'); await p.waitForSelector('.logview .ll', { timeout: 8000 }); await scan('logs');
-  await p.click('.drawer .dtab:has-text("Console")'); await p.waitForSelector('.term-big'); await scan('service console idle');
+  await p.click('.drawer .dtab:has-text("Console")'); await p.waitForSelector('.xterm-wrap'); await scan('service console idle');
   await p.click('.drawer button:has-text("Connect terminal")'); await p.waitForSelector('.drawer :text("Connected")', { timeout: 12000 });
-  await p.fill('.term-input', 'echo hi'); await p.press('.term-input', 'Enter'); await p.waitForTimeout(400); await scan('service console connected');
+  await p.click('.xterm-wrap'); await p.keyboard.type('echo hi'); await p.keyboard.press('Enter'); await p.waitForTimeout(400); await scan('service console connected');
   await p.keyboard.press('Escape');
   await p.goto(U + '#/panel/1/settings'); await p.waitForSelector('.psf-nav'); await p.waitForSelector('.psf', { timeout: 10000 });
   const n = await p.locator('.psf-nav .chip-btn').count();
   for (let i = 0; i < n; i++) { await p.locator('.psf-nav .chip-btn').nth(i).click(); await p.waitForTimeout(900); await scan(`panel settings section ${i}`); }
 });
 await step('server console page', async () => {
-  await p.goto(U + '#/'); await p.waitForSelector('.panel-card'); await p.click('.nav-item:has-text("Console")'); await p.waitForSelector('.term-big'); await scan('server console idle');
-  await p.fill('.term-input', 'echo hi'); await p.press('.term-input', 'Enter'); await p.waitForSelector('.page :text("Connected")', { timeout: 12000 }); await p.waitForTimeout(300); await scan('server console connected');
+  await p.goto(U + '#/'); await p.waitForSelector('.panel-card'); await p.click('.nav-item:has-text("Console")'); await p.waitForSelector('.xterm-wrap'); await scan('server console idle');
+  await p.click('.page button:has-text("Connect terminal")'); await p.click('.xterm-wrap'); await p.keyboard.type('echo hi'); await p.keyboard.press('Enter'); await p.waitForSelector('.page :text("Connected")', { timeout: 12000 }); await p.waitForTimeout(300); await scan('server console connected');
   await p.click('.page button:has-text("Disconnect")');
 });
 await step('schedules', async () => { await p.goto(U + '#/schedules'); await p.waitForTimeout(300); await scan('schedules empty'); await p.click('button:has-text("New schedule")'); await p.waitForSelector('.modal'); await scan('schedule modal'); await p.selectOption('.modal select >> nth=0', 'system'); await scan('schedule system'); await p.selectOption('.modal select >> nth=2', 'interval').catch(() => {}); await scan('schedule interval'); await p.click('.modal-foot button:has-text("Create")'); await p.waitForTimeout(400); await scan('schedule error'); await esc(); });

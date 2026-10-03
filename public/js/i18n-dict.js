@@ -446,6 +446,7 @@ export const EN = [
   ['Папка data/backups. Защищает от ошибок, но не от потери сервера — лучше S3 или регулярно скачивайте копии.', 'Folder data/backups. It protects against mistakes but not against losing the server — prefer S3 or download copies regularly.'],
   ['Адрес (endpoint)', 'Address (endpoint)'],
   ['Папка в бакете', 'Folder in the bucket'],
+  ['S3 не настроен — заполните доступы', 'S3 is not configured — fill in the credentials'], ['Нажмите, чтобы изменить', 'Click to edit'],
   ['задан — оставьте пустым, чтобы не менять', 'set — leave empty to keep'],
   ['Адресация path-style (MinIO, большинство совместимых хранилищ)', 'Path-style addressing (MinIO, most compatible storages)'],
   ['не короче 8 символов', 'at least 8 characters'],
