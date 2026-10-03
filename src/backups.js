@@ -386,6 +386,26 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     finally { const p2 = pendingRuns(); delete p2[runId]; setPending(p2); }
   }
 
+  /**
+   * Итог запуска — в журнал действий: по строке на каждый сервис (так копии видны и во вкладке «История» сервиса) и общая сводка.
+   * Автор — тот, кто запустил копирование, а у расписания — «расписание».
+   */
+  function journalRun({ reason, panels, failed, okCount, dest, only }) {
+    const user = { username: dataState.by ?? (reason === 'schedule' ? 'расписание' : reason === 'resume' ? 'EasyAdmin' : null) };
+    const mb = (n) => (n ? `${Math.round((n / 1048576) * 10) / 10} МБ` : '');
+    try {
+      for (const [id, p] of Object.entries(dataState.panels)) {
+        const panel = { id: Number(id), name: p.name };
+        if (p.error && !(p.items ?? []).length) audit?.({ user }, { action: 'backup.panel_failed', panel, target: p.name, ok: false, detail: p.error });
+        for (const x of p.items ?? []) {
+          if (x.status !== 'ok' && x.status !== 'fail') continue;
+          audit?.({ user }, { action: 'backup.service', panel, target: x.label, ok: x.status === 'ok', detail: x.status === 'ok' ? [mb(x.size), dest === 's3' ? 'S3' : 'на сервере', x.note].filter(Boolean).join(' · ') : x.error });
+        }
+      }
+      if (!only) audit?.({ user }, { action: 'backup.data_done', target: 'данные баз и томов', ok: failed === 0, detail: [`Скопировано сервисов: ${okCount}`, failed ? `ошибок: ${failed}` : null, dest === 's3' ? 'S3' : 'на сервере'].filter(Boolean).join(' · ') });
+    } catch { /* журнал не должен ломать завершение копирования */ }
+  }
+
   /** Итог запуска: сводка, журнал, уведомление об ошибках. */
   function finishData({ t, reason, only, dest }) {
     const panels = Object.values(dataState.panels);
@@ -396,12 +416,13 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     if (!only) setRaw('backup_data_last', JSON.stringify(res)); // «последний запуск» — только полный; запуск одного сервиса его не затирает
     pushLog({ id: `${t}`, ts: t, endedAt: now(), reason, only: !!only, dest, ok: failed === 0, files: okCount, failed,
       panels: panels.map((p) => ({ name: p.name, status: p.status, error: p.error ?? null, note: p.note ?? null, items: (p.items ?? []).map((x) => ({ label: x.label, status: x.status, size: x.size ?? null, error: x.error ?? null, note: x.note ?? null, file: x.file ?? null })), empty: p.empty ?? [] })) });
+    journalRun({ reason, panels, failed, okCount, dest, only });
     dataState.running = false; dataState.result = res;
     if (failed) alerts?.emit({ type: 'backup_failed', icon: '💾', text: `Копирование данных: ошибок ${failed}${res.panels.filter((p) => p.error || p.failed.length).slice(0, 2).map((p) => ` — ${p.name}: ${p.error ?? p.failed[0]}`).join('')}` }).catch?.(() => {});
     return res;
   }
 
-  async function runData({ reason = 'manual', only = null } = {}) { // only: { panelId, project, service } — копия одного сервиса
+  async function runData({ reason = 'manual', only = null, by = null } = {}) { // only: { panelId, project, service } — копия одного сервиса
     if (dataBusy) throw new Error('Копирование данных уже идёт');
     let c = load();
     if (only) { const k = `${Number(only.panelId)}|${only.project}|${only.service}`; if (!/^\d+\|[a-z0-9_-]+\|[a-z0-9_-]+$/.test(k)) throw new Error('Некорректный сервис'); c = { ...c, data: { ...c.data, mode: 'selected', keys: [k] } }; }
@@ -412,7 +433,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     const rows = panelsInScope(c); if (!rows.length) throw new Error('Нет панелей для копирования данных');
     dataBusy = true; const t = now(); const stamp = stampOf(t);
     setRaw('backup_data_attempt', String(t)); // попытка записана сразу: если EasyAdmin упадёт или перезапустится, расписание не запустит копирование заново в тот же день
-    dataState = { running: true, startedAt: t, reason, only: !!only, dest: c.data.dest, panels: Object.fromEntries(rows.map((r) => [r.id, { name: r.name, status: 'wait', items: [] }])) };
+    dataState = { running: true, startedAt: t, reason, by, only: !!only, dest: c.data.dest, panels: Object.fromEntries(rows.map((r) => [r.id, { name: r.name, status: 'wait', items: [] }])) };
     const run = (async () => {
       let idx = 0;
       await Promise.all(Array.from({ length: Math.min(2, rows.length) }, async () => {
@@ -525,7 +546,9 @@ export function backupRoutes(d) {
     }), { admin: true }],
     ['POST', '/api/backups/data/run', w(async (ctx) => {
       const b = ctx.body ?? {}; const only = b.project ? { panelId: b.panelId, project: b.project, service: b.service } : null;
-      const r = await backups.runData({ reason: 'manual', only }); r.wait.catch(() => {}); audit(ctx, { action: 'backup.data_run', target: only ? `${only.project}/${only.service}` : 'данные баз и томов', detail: `панелей: ${r.panels}` }); return { started: true, panels: r.panels };
+      const r = await backups.runData({ reason: 'manual', only, by: ctx.user?.username }); r.wait.catch(() => {});
+      const prow = only ? manager.getRow(Number(only.panelId)) : null; // у запуска одного сервиса есть панель и объект: событие попадает в «Историю» сервиса
+      audit(ctx, { action: 'backup.data_run', panel: prow ?? undefined, target: only ? `${only.project}/${only.service}` : 'данные баз и томов', detail: only ? null : `панелей: ${r.panels}` }); return { started: true, panels: r.panels };
     }), { admin: true }],
     ['GET', '/api/backups/data/status', w(() => backups.dataStatus()), { admin: true }],
     ['GET', '/api/backups/data/log', w(() => ({ runs: backups.dataLog() })), { admin: true }],

@@ -244,10 +244,13 @@ export function openService(s) {
     return h('div', { class: 'stack' }, sectionHead('Домены', () => domainForm(null, svc), 'Добавить домен'),
       list.length ? h('div', { class: 'list' }, list.map((x) => {
         const v = domainOf(x, svcPort);
+        const canPrimary = ['app', 'compose'].includes(s.type) && list.length > 1;
+        const isPrimary = canPrimary && (d.primaryDomainId ? d.primaryDomainId === v.id : x === list[0]);
         return h('div', { class: 'list-item' },
-          h('div', null, h('a', { class: 'link-row', href: `${v.https === false ? 'http' : 'https'}://${v.host}${v.path && v.path !== '/' ? v.path : ''}`, target: '_blank', rel: 'noopener' }, h('b', null, v.host), icon('external', 12)),
+          h('div', null, h('a', { class: 'link-row', href: `${v.https === false ? 'http' : 'https'}://${v.host}${v.path && v.path !== '/' ? v.path : ''}`, target: '_blank', rel: 'noopener' }, h('b', null, v.host), icon('external', 12), isPrimary ? h('span', { class: 'badge ok ml' }, t('Основной')) : null),
             h('div', { class: 'muted small' }, [v.composeService, `${t('порт')} ${v.port === '' ? '—' : v.port}${v.protocol === 'https' ? ' (HTTPS)' : ''}`, v.https === false ? 'HTTP' : 'HTTPS', v.path && v.path !== '/' ? v.path : null].filter(Boolean).join(' · '))),
-          itemActions(() => domainForm(x, svc), confirmDel('Удалить домен?', v.host, 'domainDelete', { id: v.id }, 'Домен удалён')));
+          h('div', { class: 'inline' }, canPrimary && !isPrimary && !ro ? h('button', { class: 'btn sm', title: t('Сделать основным доменом сервиса'), onclick: () => op('domainPrimary', { id: v.id }, 'Основной домен изменён') }, icon('check', 13), t('Сделать основным')) : null,
+            itemActions(() => domainForm(x, svc), confirmDel('Удалить домен?', v.host, 'domainDelete', { id: v.id }, 'Домен удалён'))));
       })) : h('div', { class: 'muted' }, 'Доменов пока нет.'));
   }
 
@@ -318,7 +321,7 @@ export function openService(s) {
       if (ok && v.build) await op('build', { buildType: v.build.type, file: v.build.file }, 'Способ сборки сохранён');
     };
     const section = ([id, title, hint]) => {
-      const form = sourceFields(id, src, build, { panelId: s.panelId });
+      const form = sourceFields(id, src, build, { panelId: s.panelId, service: () => ({ project: s.project, name: s.name }) });
       const active = id === kind;
       return h('details', { class: `card flat src-sec ${active ? 'active' : ''}`, open: active },
         h('summary', null, h('div', null, h('h4', null, title), h('div', { class: 'muted small' }, hint)), active ? h('span', { class: 'badge ok' }, h('i', { class: 'dot' }), 'Активен') : h('span', { class: 'muted small' }, 'не используется')),

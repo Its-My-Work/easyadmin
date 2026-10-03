@@ -228,10 +228,21 @@ export function psettingsRoutes(d) {
     ['POST', '/api/panels/:id/pbuilders', async (ctx) => {
       const { row, c } = access(ctx); const b = ctx.body ?? {};
       need(BUILDER_NAME.test(String(b.name ?? '')), 'Имя билдера: латиница, цифры, - _ .');
-      if (b.op === 'create') {
+      if (b.op === 'create' || b.op === 'update') {
         const cpus = Number(b.cpus ?? 2); const memory = Number(b.memory ?? 2048); const memorySwap = Number(b.memorySwap ?? 4096);
         need(cpus > 0 && cpus <= 128 && memory >= 256 && memory <= 1_048_576 && memorySwap >= memory && memorySwap <= 1_048_576, 'Проверьте лимиты: CPU 1–128, память от 256 МБ, swap не меньше памяти');
-        await write(ctx, row, 'builder.create', b.name, () => c.mutate('dockerBuilders.createDockerBuilder', { name: b.name, cpus, memory, memorySwap }));
+        if (b.op === 'create') await write(ctx, row, 'builder.create', b.name, () => c.mutate('dockerBuilders.createDockerBuilder', { name: b.name, cpus, memory, memorySwap }));
+        else {
+          // у Easypanel нет «изменить билдер»: лимиты задаются при создании, поэтому билдер пересоздаётся с тем же именем (кэш сборки в нём теряется)
+          need(b.name !== 'default', 'Билдер default изменить нельзя');
+          const was = listOf(await call(() => c.query('dockerBuilders.listDockerBuilders'))).find((x) => (x.Name ?? x.name) === b.name);
+          need(was, 'Билдер не найден');
+          await write(ctx, row, 'builder.update', b.name, async () => {
+            await c.mutate('dockerBuilders.removeDockerBuilder', { name: b.name });
+            await c.mutate('dockerBuilders.createDockerBuilder', { name: b.name, cpus, memory, memorySwap });
+            if (was.Current ?? was.current) await c.mutate('dockerBuilders.useDockerBuilder', { name: b.name }); // выбранный для сборок остаётся выбранным
+          });
+        }
       } else {
         const proc = { use: 'useDockerBuilder', stop: 'stopDockerBuilder', remove: 'removeDockerBuilder' }[b.op];
         need(proc, 'Неизвестное действие');

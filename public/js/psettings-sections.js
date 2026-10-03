@@ -91,13 +91,13 @@ export function address(p, entry) {
 }
 
 /* ---------- Обновления и Docker ---------- */
-function builderModal(p, reload) {
-  const name = h('input', { class: 'input mono', placeholder: 'builder-1', autocomplete: 'off' });
+function builderModal(p, reload, edit) {
+  const name = h('input', { class: 'input mono', placeholder: 'builder-1', autocomplete: 'off', value: edit?.name ?? '', disabled: !!edit });
   const cpus = h('input', { class: 'input', type: 'number', value: 2, min: 1, max: 128 });
   const mem = h('input', { class: 'input', type: 'number', value: 2048, min: 256 });
   const swap = h('input', { class: 'input', type: 'number', value: 4096, min: 256 });
-  modal({ title: 'Новый билдер Docker', body: h('div', { class: 'stack' }, field('Имя', name, 'Латиница, цифры, - _ .'), h('div', { class: 'grid-2' }, field('CPU', cpus), field('Память, МБ', mem)), field('Swap, МБ', swap, 'Не меньше памяти.'), h('p', { class: 'muted small' }, 'Создаётся и сразу выбирается для следующих сборок.')),
-    actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Создать', kind: 'primary', onClick: async () => { await post(`/api/panels/${p.id}/pbuilders`, { op: 'create', name: name.value.trim(), cpus: Number(cpus.value), memory: Number(mem.value), memorySwap: Number(swap.value) }); toast(t('Билдер создан'), 'success'); reload(); } }] });
+  modal({ title: edit ? `${t('Билдер Docker')} · ${edit.name}` : 'Новый билдер Docker', body: h('div', { class: 'stack' }, edit ? h('div', { class: 'callout warn compact' }, icon('alert', 14), h('span', { class: 'small' }, 'Лимиты билдера задаются при создании, поэтому билдер будет пересоздан с теми же именем и статусом «используется»; его кэш сборки очистится. Текущие значения панель не отдаёт — укажите нужные.')) : null, field('Имя', name, 'Латиница, цифры, - _ .'), h('div', { class: 'grid-2' }, field('CPU', cpus), field('Память, МБ', mem)), field('Swap, МБ', swap, 'Не меньше памяти.'), h('p', { class: 'muted small' }, 'Создаётся и сразу выбирается для следующих сборок.')),
+    actions: [{ label: 'Отмена', kind: 'ghost' }, { label: edit ? 'Пересоздать' : 'Создать', kind: 'primary', onClick: async () => { await post(`/api/panels/${p.id}/pbuilders`, { op: edit ? 'update' : 'create', name: name.value.trim(), cpus: Number(cpus.value), memory: Number(mem.value), memorySwap: Number(swap.value) }); toast(t(edit ? 'Билдер пересоздан' : 'Билдер создан'), 'success'); reload(); } }] });
 }
 /** Ход обновления Docker: журнал юнита на хосте и версия Docker. Во время перезапуска Docker панель недоступна — это нормально, ждём. */
 function dockerProgress(p, from, to, reload) {
@@ -142,7 +142,8 @@ export function system(p, entry, go) {
     const [st, bl] = await Promise.all([get(`/api/panels/${p.id}/pstatus`), get(`/api/panels/${p.id}/pbuilders`).catch(() => ({ builders: [] }))]);
     // кнопка «Обновить Docker» активируется после проверки системы сервера (apt/dnf/yum, systemd, docker-ce)
     const dockerNote = h('div');
-    const dockerBtn = h('button', { class: `btn sm ${st.dockerUpdate?.available ? 'danger' : ''}`, disabled: true, title: st.dockerUpdate?.available ? '' : 'Docker актуален', onclick: () => updateDocker(p, st, draw) }, icon('rotate', 13), 'Обновить Docker');
+    // кнопки обновления показываются, только если есть более свежая версия
+    const dockerBtn = st.dockerUpdate?.available ? h('button', { class: 'btn sm danger', disabled: true, onclick: () => updateDocker(p, st, draw) }, icon('rotate', 13), 'Обновить Docker') : null;
     if (st.dockerUpdate?.available) {
       clear(dockerNote).append(h('div', { class: 'muted small' }, 'Проверяем систему сервера…'));
       get(`/api/panels/${p.id}/pdocker/check`).then((c) => {
@@ -160,7 +161,7 @@ export function system(p, entry, go) {
         dockerNote,
         h('div', { class: 'inline psf-foot' }, h('button', { class: 'btn sm', onclick: draw }, icon('refresh', 13), 'Проверить снова'),
           dockerBtn,
-          h('button', { class: `btn sm ${st.updateAvailable ? 'primary' : ''}`, onclick: () => runSystem(p, 'updatePanel', { title: 'Обновить Easypanel', message: 'Панель скачает свежий образ и перезапустится, на несколько минут станет недоступна.', danger: true, typed: true, done: () => setTimeout(draw, 4000) }) }, icon('rocket', 13), 'Обновить Easypanel'))),
+          !st.updateAvailable ? null : h('button', { class: 'btn sm primary', onclick: () => runSystem(p, 'updatePanel', { title: 'Обновить Easypanel', message: 'Панель скачает свежий образ и перезапустится, на несколько минут станет недоступна.', danger: true, typed: true, done: () => setTimeout(draw, 4000) }) }, icon('rocket', 13), 'Обновить Easypanel'))),
       card('Очистка и перезапуск', null, h('div', { class: 'list' },
         act('Очистить образы Docker', 'Удалит неиспользуемые образы. Работающие сервисы не затрагиваются.', 'cleanupImages'),
         act('Очистить кэш сборки', 'Удалит кэш сборщика Docker — следующие сборки будут дольше.', 'cleanupBuilder'),
@@ -173,6 +174,7 @@ export function system(p, entry, go) {
           h('div', { class: 'inline' },
             b.current ? null : h('button', { class: 'btn sm', onclick: async () => { try { await post(`/api/panels/${p.id}/pbuilders`, { op: 'use', name: b.name }); toast(t('Билдер выбран'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } }, 'Использовать'),
             h('button', { class: 'btn sm', onclick: async () => { try { await post(`/api/panels/${p.id}/pbuilders`, { op: 'stop', name: b.name }); toast(t('Билдер остановлен'), 'success'); draw(); } catch (e) { toast(e.message, 'error'); } } }, 'Остановить'),
+            b.name === 'default' ? null : h('button', { class: 'btn sm icon ghost', title: 'Изменить лимиты', 'aria-label': 'Изменить лимиты', onclick: () => builderModal(p, draw, b) }, icon('edit', 14)),
             b.name === 'default' ? null : h('button', { class: 'btn sm icon ghost', title: 'Удалить', 'aria-label': 'Удалить', onclick: async () => { if (await confirmDialog({ title: 'Удалить билдер?', message: `${b.name}`, danger: true, confirmText: 'Удалить' })) { try { await post(`/api/panels/${p.id}/pbuilders`, { op: 'remove', name: b.name }); draw(); } catch (e) { toast(e.message, 'error'); } } } }, icon('trash', 14))))) : [h('div', { class: 'muted pad' }, 'Билдеров нет')]),
         h('div', { class: 'inline psf-foot' }, h('button', { class: 'btn sm', onclick: () => builderModal(p, draw) }, icon('plus', 13), 'Новый билдер'))),
     ];

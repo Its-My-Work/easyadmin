@@ -8,6 +8,17 @@ import { can } from './store.js';
 const RANGES = [['1h', '1 ч'], ['6h', '6 ч'], ['24h', '24 ч'], ['7d', '7 дн'], ['30d', '30 дн']];
 const COLORS = { svc: 'var(--accent)', other: 'var(--warn)' };
 const rangeFor = new Map();
+// столбцы таблицы сервисов, по которым можно сортировать; null в данных («сервис остановлен») всегда в конце
+const COLS = [['name', 'Сервис', (s) => `${s.project}/${s.service}`.toLowerCase()], ['cpu', 'CPU сейчас', (s) => s.cpu], ['cpuAvg', 'CPU средн.', (s) => s.cpuAvg], ['mem', 'RAM сейчас', (s) => s.mem], ['memMax', 'RAM пик', (s) => s.memMax], ['net', 'Сеть ↓ / ↑', (s) => (s.rx == null ? null : (s.rx ?? 0) + (s.tx ?? 0))]];
+const sortBy = { key: 'cpuAvg', dir: -1 };
+const sortRows = (rows) => {
+  const get = COLS.find(([k]) => k === sortBy.key)[2];
+  return [...rows].sort((a, b) => {
+    const x = get(a), y = get(b);
+    if (x == null || y == null) return (x == null) - (y == null);
+    return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sortBy.dir;
+  });
+};
 const isSystem = (s) => s.project === 'easypanel';
 const lazyBox = async (box, fn) => {
   clear(box).append(h('div', { class: 'skeleton', style: { height: '140px' } }));
@@ -56,9 +67,10 @@ export function loadTab(p) {
       areaChart({ points: d.points, stacked: true, max: d.memTotal ?? undefined, fmt: fmtBytes, series: [{ key: 'svcMem', label: 'Сервисы', color: COLORS.svc }, { key: 'otherMem', label: 'Система и прочее', color: COLORS.other }] }));
     const tableBox = h('div');
     const drawTable = () => {
-      const rows = d.services.filter((s) => showSystem || !isSystem(s));
+      const rows = sortRows(d.services.filter((s) => showSystem || !isSystem(s)));
       clear(tableBox).append(rows.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-        h('thead', null, h('tr', null, ['Сервис', 'CPU сейчас', 'CPU средн.', 'RAM сейчас', 'RAM пик', 'Сеть ↓ / ↑'].map((c) => h('th', null, c)))),
+        h('thead', null, h('tr', null, COLS.map(([k, label]) => h('th', { class: 'sortable', 'aria-sort': sortBy.key === k ? (sortBy.dir > 0 ? 'ascending' : 'descending') : 'none' },
+          h('button', { type: 'button', class: 'th-sort', onclick: () => { sortBy.dir = sortBy.key === k ? -sortBy.dir : (k === 'name' ? 1 : -1); sortBy.key = k; drawTable(); } }, label, h('span', { class: 'sort-mark' }, sortBy.key === k ? (sortBy.dir > 0 ? ' ▲' : ' ▼') : '')))))),
         h('tbody', null, rows.map((s) => h('tr', { class: s.running ? '' : 'muted' },
           h('td', null, s.service === 'unknown' ? [h('b', null, 'Прочие контейнеры'), ' ', h('span', { class: 'muted small', title: 'Контейнеры, которые Easypanel не смог сопоставить с сервисом: чаще всего сборка при деплое или временная задача.' }, 'сборки, временные')] : [h('b', null, s.service), ' ', h('span', { class: 'muted small' }, s.project)], s.running ? null : h('span', { class: 'badge' }, 'не запущен')),
           h('td', null, s.cpu == null ? '—' : fmtPct(s.cpu)), h('td', null, fmtPct(s.cpuAvg)), h('td', null, s.mem == null ? '—' : fmtBytes(s.mem)), h('td', null, fmtBytes(s.memMax)),

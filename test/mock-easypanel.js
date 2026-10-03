@@ -46,8 +46,9 @@ export function fakeShell(socket, url, socketFraming, opts = {}) {
         let o; try { o = JSON.parse(payload.toString('utf8')); } catch { opts.onCrash?.(payload.toString('utf8')); socket.destroy(); return; }
         if (o.resize) { opts.onResize?.(o.resize); continue; }
       }
-      const text = pick(socketFraming, payload.toString('utf8'));
+      let text = pick(socketFraming, payload.toString('utf8'));
       if (text == null) continue; // чужой формат — панель молча игнорирует
+      text = text.replace(/\r\n?/g, '\n'); // Enter в настоящем терминале приходит как \r, tty превращает его в перевод строки
       out(text.replace(/\n/g, '\r\n')); // эхо набранного
       line += text;
       let i; while ((i = line.indexOf('\n')) >= 0) { const cmd = line.slice(0, i); line = line.slice(i + 1); run(cmd); }
@@ -67,6 +68,7 @@ export function createMockPanel({ deployMs = 0, token = 'tok', seed = {}, stats 
     if (deployMs) setTimeout(() => { a.status = 'success'; a.finishedAt = new Date().toISOString(); a.logs.push('Done'); }, deployMs).unref();
     return a;
   };
+  const keys = new Map();
   const find = (i) => projects.get(i.projectName)?.find((s) => s.name === i.serviceName);
   const need = (s) => { if (!s) throw Object.assign(new Error('Service not found'), { code: 'NOT_FOUND' }); return s; };
   const ok = (v) => v ?? null;
@@ -116,7 +118,7 @@ export function createMockPanel({ deployMs = 0, token = 'tok', seed = {}, stats 
       cpuInfo: { usedPercentage: stats.cpu ?? drift(), count: 4, loadavg: [0.4, 0.5, 0.6] },
       network: { inputMb: 1200, outputMb: 800 },
     }),
-    'domains.listDomains': (i) => need(find(i)).domains,
+    'domains.listDomains': (i) => (i?.projectName ? need(find(i)).domains : [...projects].flatMap(([pn, list]) => list.flatMap((sv) => sv.domains.map((d) => ({ ...d, destinationType: 'service', serviceDestination: { projectName: pn, serviceName: sv.name, port: d.port, protocol: 'http' } }))))),
     'domains.createDomain': (i) => { need(find(i)).domains.push({ id: `d${Date.now()}`, host: i.host, https: i.https, port: i.port }); return null; },
     'domains.deleteDomain': (i) => { const s = need(find(i)); s.domains = s.domains.filter((d) => d.id !== i.id); return null; },
     'ports.listPorts': (i) => { if (requireType && !i.type) throw Object.assign(new Error('Invalid service type.'), { code: 'BAD_REQUEST' }); return need(find(i)).ports; },
@@ -128,10 +130,12 @@ export function createMockPanel({ deployMs = 0, token = 'tok', seed = {}, stats 
     'ports.updatePort': (i) => { const s = need(find(i)); const p = s.ports.find((x) => x.id === i.id); if (!p) throw Object.assign(new Error('Port not found'), { code: 'NOT_FOUND' }); Object.assign(p, { published: i.published, target: i.target, protocol: i.protocol }); return null; },
     'domains.updateDomain': (i) => { const s = need(find(i)); const d = s.domains.find((x) => x.id === i.id); if (!d) throw Object.assign(new Error('Domain not found'), { code: 'NOT_FOUND' }); Object.assign(d, { host: i.host, https: i.https, port: i.port, path: i.path }); return null; },
     'mounts.deleteMount': (i) => { const s = need(find(i)); s.mounts = s.mounts.filter((m) => m.id !== i.id); return null; },
-    'common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
+    'services.common.setNotes': (i) => { need(find(i)).notes = i.notes; return null; },
+    'domains.getPrimaryDomain': (i) => { const s = need(find(i)); return s.domains.find((d) => d.id === s.primaryDomainId) ?? s.domains[0] ?? null; },
+    'domains.setPrimaryDomain': (i) => { const s = [...projects.values()].flat().find((x) => x.domains.some((d) => d.id === i.id)); if (!s) throw Object.assign(new Error('Domain not found'), { code: 'NOT_FOUND' }); s.primaryDomainId = i.id; return null; },
+    'git.getPublicKey': (i) => { need(find(i)); return keys.get(`${i.projectName}/${i.serviceName}`) ?? sshKey ?? null; },
+    'git.generateKey': (i) => { need(find(i)); keys.set(`${i.projectName}/${i.serviceName}`, 'ssh-ed25519 AAAAGENERATED easypanel'); return null; },
     'certificates.listCertificates': () => certs,
-    ...(weirdKey ? { 'settings.getInstanceGitIdentity': () => ({ pub: weirdKey }) } : {}),
-    ...(sshKey ? { 'settings.getSshPublicKey': () => ({ publicKey: sshKey }) } : {}),
     'certificates.removeCertificate': (i) => {
       const d = typeof i.domain === 'string' ? i.domain : i.domain?.main ?? i.main ?? i.name;
       const k = certs.findIndex((c) => (typeof c.domain === 'string' ? c.domain : c.domain?.main) === d);

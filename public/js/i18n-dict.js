@@ -1529,6 +1529,32 @@ export const EN = [
   ['Последние запуски', 'Latest runs'], ['Запусков с этим сервисом ещё не было.', 'There have been no runs with this service yet.'],
   ['Перед копированием удалено старых архивов в S3: {0}', 'Old archives deleted from S3 before the backup: {0}'],
   ['Это сам EasyAdmin: на время копирования его том не замораживается и сервис не останавливается (копия «как есть»)', 'This is EasyAdmin itself: its volume is not frozen and the service is not stopped during the backup (copy “as is”)'],
+  // 2026-10-03: заметки, SSH-ключ сервиса, основной домен, консоль, шаблоны, билдеры, копии в журнале
+  ['Основной домен изменён', 'Primary domain changed'], ['SSH-ключ сервиса', 'Service SSH key'], ['SSH-ключ сервиса создан', 'Service SSH key generated'],
+  ['Копия данных сервиса', 'Service data copy'], ['Копирование данных завершено', 'Data copy finished'], ['Копирование данных панели не удалось', 'Panel data copy failed'],
+  ['Копия настроек EasyAdmin создана', 'EasyAdmin settings copy created'], ['Настройки копирования изменены', 'Backup settings changed'], ['Копия удалена', 'Copy deleted'],
+  ['EasyAdmin восстановлен из копии', 'EasyAdmin restored from a copy'], ['Сервис восстановлен из копии', 'Service restored from a copy'], ['Конфигурация панели прочитана из копии', 'Panel configuration read from a copy'],
+  ['Шаблон изменён', 'Template changed'], ['Билдер Docker пересоздан', 'Docker builder recreated'],
+  ['расписание включено', 'schedule on'], ['хранилище S3', 'S3 storage'], ['хранение на сервере', 'stored on the server'], ['хранить копий: {0}', 'copies kept: {0}'],
+  ['расписание', 'schedule'], ['Скопировано сервисов: {0}', 'Services copied: {0}'], ['ошибок: {0}', 'errors: {0}'], ['S3', 'S3'],
+  ['Включено: копируются все сервисы, в том числе созданные позже. Выключено: копируются только отмеченные галочкой в списке.', 'On: every service is backed up, including ones created later. Off: only services ticked in the list are backed up.'],
+  ['Копировать все, включая новые', 'Back up all, including new ones'],
+  ['Копируются все сервисы, в том числе те, что появятся позже: отдельные галочки не нужны. Выключите переключатель, чтобы выбирать сервисы вручную.', 'All services are backed up, including ones that appear later, so per-service ticks are not needed. Turn the switch off to pick services manually.'],
+  ['Копируются только сервисы, отмеченные галочкой. Включите «Копировать все, включая новые» — тогда в копии попадёт каждый сервис, и новые тоже, без ручной настройки.', 'Only ticked services are backed up. Turn on “Back up all, including new ones” to cover every service, new ones too, with no manual setup.'],
+  ['Основной', 'Primary'], ['Сделать основным', 'Make primary'], ['Сделать основным доменом сервиса', 'Make this the primary domain of the service'],
+  ['Лимиты билдера задаются при создании, поэтому билдер будет пересоздан с теми же именем и статусом «используется»; его кэш сборки очистится. Текущие значения панель не отдаёт — укажите нужные.', 'Builder limits are set at creation, so the builder will be recreated with the same name and “in use” state; its build cache is cleared. The panel does not expose current values — enter the ones you need.'],
+  ['Пересоздать', 'Recreate'], ['Билдер пересоздан', 'Builder recreated'], ['Изменить лимиты', 'Change limits'], ['Билдер Docker', 'Docker builder'],
+  ['подключение', 'connecting'],
+  ['В журнал попадают открытие и закрытие сеанса и число нажатий Enter, сами команды не сохраняются.', 'The log records opening and closing a session and the number of Enter presses; the commands themselves are not stored.'],
+  ['Ключ создаётся для сервиса. Сохраните сервис, затем откройте вкладку «Источник» и нажмите «Показать SSH-ключ».', 'The key belongs to a service. Save the service, then open the “Source” tab and click “Show SSH key”.'],
+  ['У сервиса ещё нет SSH-ключа.', 'The service has no SSH key yet.'], ['Создать ключ', 'Generate key'], ['Публичный SSH-ключ сервиса — добавьте его в GitHub → репозиторий → Settings → Deploy keys:', 'The service public SSH key — add it in GitHub → repository → Settings → Deploy keys:'],
+  ['Создать новый ключ?', 'Generate a new key?'], ['Прежний ключ перестанет работать: новый нужно заново добавить в репозиторий.', 'The old key will stop working: the new one must be added to the repository again.'], ['Создать новый', 'Generate new'],
+  ['Показать SSH-ключ (deploy key)', 'Show SSH key (deploy key)'],
+  ['Изменить шаблон', 'Edit template'], ['Переменные окружения', 'Environment variables'], ['KEY=value, по строке на переменную. Значения хранятся в зашифрованном виде.', 'KEY=value, one variable per line. Values are stored encrypted.'],
+  ['Действителен до', 'Valid until'], ['Осталось', 'Remaining'],
+  ['Не удалось загрузить терминал', 'Could not load the terminal'], ['Нажмите на терминал и печатайте как в обычной консоли: работают Tab, стрелки, Ctrl+C, nano, vim, вставка нескольких строк.', 'Click the terminal and type as in a normal console: Tab, arrows, Ctrl+C, nano, vim and multi-line paste all work.'],
+  ['Билдер default изменить нельзя', 'The default builder cannot be changed'], ['Билдер не найден', 'Builder not found'], ['Укажите источник', 'Specify a source'], ['Ресурсы — неотрицательные числа', 'Resources must be non-negative numbers'],
+ 
 ];
 
 /* ------------------------------------------------------------------ */

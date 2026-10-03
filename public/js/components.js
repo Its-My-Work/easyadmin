@@ -194,7 +194,7 @@ export const matches = (s, f) => {
   if (f.status === 'off' && s.enabled) return false;
   if (f.panel && f.panel !== 'all' && String(s.panelId) !== String(f.panel)) return false;
   const q = f.q.trim().toLowerCase();
-  return !q || [s.name, s.project, s.domain, s.panel.name].some((x) => x && String(x).toLowerCase().includes(q));
+  return !q || [s.name, s.project, s.domain, ...(s.domains ?? []), s.panel.name].some((x) => x && String(x).toLowerCase().includes(q));
 };
 
 export function serviceRow(s, { showPanel, openService }) {
@@ -206,7 +206,7 @@ export function serviceRow(s, { showPanel, openService }) {
       showPanel ? h('span', { class: 'muted small svc-proj' }, s.project) : null,
       showPanel && s.panel ? h('span', { class: 'svc-panel-m' }, panelChip(s.panel)) : null)), // на узком экране колонка «Панель» скрыта — панель показывается под именем
     showPanel ? h('td', { class: 'hide-sm c-panel' }, panelChip(s.panel)) : null,
-    h('td', { class: 'hide-sm c-domain' }, s.domain ? h('a', { class: 'muted small svc-domain', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', title: s.domain, onclick: (e) => e.stopPropagation() }, s.domain) : h('span', { class: 'muted' }, '—')),
+    h('td', { class: 'hide-sm c-domain' }, s.domain ? h('a', { class: 'muted small svc-domain', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', title: (s.domains ?? [s.domain]).join('\n'), onclick: (e) => e.stopPropagation() }, s.domain, s.domains?.length > 1 ? ` +${s.domains.length - 1}` : '') : h('span', { class: 'muted' }, '—')),
     h('td', { class: 'hide-sm c-type' }, typeChip(s.type)),
     h('td', { class: 'c-status' }, svcBadge(s.enabled, s.health)),
     h('td', { class: 'w-actions' }, quickActions(s)));

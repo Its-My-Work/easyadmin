@@ -427,3 +427,13 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 
 /* журнал копирования: текст ошибки целиком, с переносами */
 .log-err { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }
+
+/* Полноценный терминал (xterm.js) */
+.xterm-wrap { background: #0b0e14; border: 1px solid var(--border, #2a2f3a); border-radius: 10px; padding: 8px 6px 4px 10px; height: 62vh; min-height: 280px; overflow: hidden; }
+.xterm-host, .xterm-host .xterm { height: 100%; }
+.xterm-host .xterm-viewport { background-color: transparent !important; }
+
+/* Сортировка по столбцам */
+.th-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; white-space: nowrap; }
+.th-sort:hover { color: var(--text, inherit); text-decoration: underline; }
+.sort-mark { opacity: .7; font-size: .8em; }

@@ -24,14 +24,27 @@ export function logsView({ s, ref, base, state }) {
       ...[...tags].sort().map((t) => h('button', { class: `chip-btn ${tagFilter === t ? 'on' : ''}`, onclick: () => { tagFilter = t; renderTags(); redraw(); } }, t)));
   };
   const stick = () => { if (follow) view.scrollTop = view.scrollHeight; };
-  const push = (it) => {
-    if (it.tag && !tags.has(it.tag)) { tags.add(it.tag); renderTags(); }
-    all.push(it);
-    if (all.length > MAX) { all.shift(); view.firstChild?.remove(); }
-    if (shown(it)) view.append(row(it));
+  // строки копятся и выводятся одним пакетом за кадр: хвост лога приходит тысячами строк, а поштучный вывод
+  // с прокруткой после каждой строки заставляет браузер пересчитывать вёрстку тысячи раз (страница «зависала» на секунды)
+  let queue = [], flushing = false;
+  const flush = () => {
+    flushing = false;
+    const batch = queue; queue = [];
+    if (!batch.length) return;
+    const frag = document.createDocumentFragment(); let tagsChanged = false;
+    for (const it of batch) {
+      if (it.tag && !tags.has(it.tag)) { tags.add(it.tag); tagsChanged = true; }
+      if (shown(it)) frag.append(row(it));
+    }
+    all.push(...batch);
+    if (all.length > MAX) all.splice(0, all.length - MAX);
+    view.append(frag);
+    for (let extra = view.childElementCount - MAX; extra > 0; extra--) view.firstChild.remove();
+    if (tagsChanged) renderTags();
     count.textContent = `${all.length} строк`; stick();
   };
-  const redraw = () => { clear(view).append(...all.filter(shown).map(row)); stick(); };
+  const push = (it) => { queue.push(it); if (!flushing) { flushing = true; requestAnimationFrame(flush); } };
+  const redraw = () => { flush(); clear(view).append(...all.filter(shown).map(row)); stick(); };
   view.addEventListener('scroll', () => { follow = view.scrollTop + view.clientHeight >= view.scrollHeight - 24; followBtn.classList.toggle('on', follow); });
 
   // поток сам переподключается (обрыв, перезапуск сервиса, деплой) с нарастающей паузой; после повторного подключения панель
@@ -68,11 +81,11 @@ export function logsView({ s, ref, base, state }) {
   };
 
   // «Обновить»: строки стираются и читаются заново (свежий хвост)
-  const refreshBtn = h('button', { class: 'btn sm', title: 'Перечитать логи сервиса', onclick: () => { all = []; redraw(); count.textContent = ''; retry = 0; replaySeen = null; connectLogs(); } }, icon('refresh', 13), 'Обновить');
+  const refreshBtn = h('button', { class: 'btn sm', title: 'Перечитать логи сервиса', onclick: () => { queue = []; all = []; redraw(); count.textContent = ''; retry = 0; replaySeen = null; connectLogs(); } }, icon('refresh', 13), 'Обновить');
   const followBtn = h('button', { class: 'btn sm on', title: 'Прокручивать к новым строкам', onclick: () => { follow = !follow; followBtn.classList.toggle('on', follow); stick(); } }, icon('down', 13), 'Следить');
   const q = h('input', { class: 'input', placeholder: 'Фильтр логов…', oninput: () => { filter = q.value.toLowerCase(); redraw(); } });
   const dl = h('button', { class: 'btn sm ghost', title: 'Скачать', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([all.map((it) => `${it.tag ? `${it.tag} | ` : ''}${it.text}`).join('\n')], { type: 'text/plain' })), download: `${s.name}.log` }); document.body.append(a); a.click(); a.remove(); } }, icon('download', 13));
-  const clr = h('button', { class: 'btn sm ghost', onclick: () => { all = []; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
+  const clr = h('button', { class: 'btn sm ghost', onclick: () => { queue = []; all = []; clear(view); count.textContent = ''; } }, icon('trash', 13), 'Очистить');
 
   state.onLeave = () => { leaving = true; clearTimeout(retryTimer); es?.close(); };
   connectLogs();

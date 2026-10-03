@@ -61,21 +61,17 @@ describe('новая версия панели без monitor.getSystemStats', (
     const ck = (await fetch(b2 + '/api/setup', { method: 'POST', headers: h, body: JSON.stringify({ username: 'a', password: 'password1' }) })).headers.get('set-cookie').split(';')[0];
     const id = (await (await fetch(b2 + '/api/panels', { method: 'POST', headers: { ...h, Cookie: ck }, body: JSON.stringify({ name: 'P', url: u, token: 'X' }) })).json()).id;
     const get = async (p) => (await fetch(b2 + p, { headers: { Cookie: ck } })).json();
-    return { m, a2, get, id, done: async () => { a2.stop(); a2.server.closeAllConnections(); a2.server.close(); await m.close(); } };
+    return { m, a2, get, id, base: b2, ck, done: async () => { a2.stop(); a2.server.closeAllConnections(); a2.server.close(); await m.close(); } };
   };
-  test('SSH-ключ панели: находится по названию из интерфейса панели, запоминается; без ключа — список кандидатов', async () => {
-    const t = await boot({ newStats: true, weirdKey: 'ssh-ed25519 AAAAC3Nz test@panel' });
-    const r = await t.get(`/api/panels/${t.id}/ssh-key`);
-    assert.equal(r.key, 'ssh-ed25519 AAAAC3Nz test@panel'); assert.equal(r.proc, 'settings.getInstanceGitIdentity');
-    const again = await t.get(`/api/panels/${t.id}/ssh-key`);
-    assert.equal(again.proc, 'settings.getInstanceGitIdentity', 'запомненная процедура');
+  test('SSH-ключ сервиса: читается git.getPublicKey, создаётся git.generateKey', async () => {
+    const t = await boot({});
+    const q = `/api/panels/${t.id}/ssh-key?project=p&name=s`;
+    assert.equal((await t.get(q)).key, null);
+    const h = { 'Content-Type': 'application/json', 'X-Requested-With': 'easyadmin' };
+    const r = await (await fetch(`${t.base}/api/panels/${t.id}/ssh-key`, { method: 'POST', headers: { ...h, Cookie: t.ck }, body: JSON.stringify({ project: 'p', name: 's' }) })).json();
+    assert.match(r.key, /^ssh-ed25519 /);
+    assert.equal((await t.get(q)).key, r.key);
     await t.done();
-    const n = await boot({ newStats: true });
-    const none = await n.get(`/api/panels/${n.id}/ssh-key`);
-    assert.equal(none.key, null); assert.ok(Array.isArray(none.candidates));
-    const manual = await n.get(`/api/panels/${n.id}/ssh-key?proc=settings.getNothing`);
-    assert.equal(manual.key, null);
-    await n.done();
   });
   test('нужная процедура находится в интерфейсе панели, статистика разбирается из произвольной формы и запоминается', async () => {
     const t = await boot({ newStats: true });

@@ -9,7 +9,7 @@ import { installFlow } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
 import { loadSettingsCard, loadTab } from './load-tab.js';
 import { timeCard } from './time-card.js';
-import { actionLabel } from './action-names.js';
+import { actionLabel, detailLabel } from './action-names.js';
 import { channelsCard, cleanAllModal } from './views2.js';
 
 const go = (hash) => { location.hash = hash; };
@@ -79,7 +79,7 @@ export function panelPage(id, sub) {
   const tab = sub || 'services';
   const st = p.stats;
   const down = !['online', 'degraded'].includes(p.status);
-  const tabs = [['services', 'Сервисы'], ['load', 'Нагрузка'], ['activity', 'Активность'], ...(can('admin') ? [['settings', 'Настройки'], ['console', 'Консоль API']] : [])];
+  const tabs = [['services', 'Сервисы'], ['load', 'Нагрузка'], ['activity', 'Активность'], ...(can('admin') ? [['settings', 'Настройки']] : [])];
   const content = h('div');
   const page = h('div', { class: 'page', style: { '--pc': p.color } },
     h('div', { class: 'page-head' },
@@ -102,8 +102,7 @@ export function panelPage(id, sub) {
   if (tab === 'services') content.append(servicesTab(p));
   else if (tab === 'load') content.append(loadTab(p));
   else if (tab === 'activity') content.append(activityTab(p));
-  else if (tab === 'settings') content.append(settingsTab(p));
-  else content.append(consoleTab(p));
+  else content.append(settingsTab(p));
   return page;
 }
 
@@ -152,22 +151,6 @@ function activityTab(p) {
     })) : empty('История пуста', 'Здесь появятся деплои и другие операции панели. Нажмите на запись, чтобы увидеть лог.'));
   }).catch((e) => clear(box).append(h('div', { class: 'callout err' }, icon('alert'), e.message)));
   return box;
-}
-
-function consoleTab(p) {
-  const proc = h('input', { class: 'input mono', placeholder: 'projects.listProjects', value: 'projects.listProjectsAndServices' });
-  const kind = h('select', { class: 'input' }, h('option', { value: 'query' }, 'query (GET)'), h('option', { value: 'mutation' }, 'mutation (POST)'));
-  const input = h('textarea', { class: 'input mono', rows: 5, placeholder: '{"projectName":"my-project"}' });
-  const out = h('pre', { class: 'code', style: { minHeight: '120px' } }, '// результат');
-  const run = async () => {
-    let parsed; if (input.value.trim()) { try { parsed = JSON.parse(input.value); } catch { return toast('Некорректный JSON', 'error'); } }
-    if (kind.value === 'mutation' && !await confirmDialog({ title: 'Выполнить mutation?', message: `${proc.value} на панели «${p.name}»`, confirmText: 'Выполнить' })) return;
-    out.textContent = '…';
-    try { out.textContent = JSON.stringify((await post(`/api/panels/${p.id}/trpc`, { kind: kind.value, procedure: proc.value.trim(), input: parsed })).result, null, 2); }
-    catch (e) { out.textContent = `Ошибка: ${e.message}`; }
-  };
-  return h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Прямой вызов любой tRPC-процедуры панели — на случай функций, которых ещё нет в интерфейсе. Мутации попадают в журнал.'),
-    h('div', { class: 'grid-2' }, field('Процедура', proc), field('Тип', kind)), field('Input (JSON)', input), h('div', null, h('button', { class: 'btn primary', onclick: run }, icon('terminal', 14), 'Выполнить')), out);
 }
 
 /** Показывает, что именно ответила панель на ключевые запросы (без секретов) — для настройки совместимости. */
@@ -330,7 +313,7 @@ export function auditPage() {
       const objectOf = (r) => (r.target && r.target !== r.panelName ? r.target : '');
       clear(box).append(rows.length ? h('table', { class: 'tbl audit-tbl' }, h('thead', null, h('tr', null, ['Время', 'Пользователь', 'Действие', 'Панель', 'Сервис / объект', ''].map((x) => h('th', null, x)))),
         h('tbody', null, rows.map((r) => h('tr', null, h('td', { class: 'muted nowrap a-time' }, fmtTime(r.ts)), h('td', { class: 'a-user' }, r.username ?? '—'),
-          h('td', { class: 'a-act' }, h('b', { class: 'a-name' }, actionLabel(r.action)), r.detail ? h('div', { class: `small audit-detail ${r.ok ? 'muted' : 'danger-text open'}`, title: r.ok ? 'Нажмите, чтобы показать целиком' : null, onclick: r.ok ? (e) => e.currentTarget.classList.toggle('open') : null }, r.detail) : null),
+          h('td', { class: 'a-act' }, h('b', { class: 'a-name' }, actionLabel(r.action)), r.detail ? h('div', { class: `small audit-detail ${r.ok ? 'muted' : 'danger-text open'}`, title: r.ok ? 'Нажмите, чтобы показать целиком' : null, onclick: r.ok ? (e) => e.currentTarget.classList.toggle('open') : null }, detailLabel(r.action, r.detail)) : null),
           h('td', { class: 'a-panel' }, panelCell(r)), h('td', { class: 'mono small a-obj' }, objectOf(r) ? h('span', null, h('span', { class: 'muted a-objlbl' }, `${t('Объект')}: `), objectOf(r)) : ''),
           h('td', { class: 'a-st' }, r.ok ? h('span', { class: 'badge ok' }, 'ок') : h('span', { class: 'badge err', title: r.detail }, 'ошибка')))))) : empty('Ничего не найдено', 'Измените фильтры.'));
     }).catch((e) => { if (my === seq) clear(box).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); });

@@ -225,10 +225,6 @@ describe('управление сервисами', () => {
     assert.equal(data.okCount, 2); assert.equal(data.failCount, 1);
     assert.equal(panelB.projects.get('api')[0].enabled, true);
   });
-  test('raw tRPC консоль', async () => {
-    const { data } = await api('POST', `/api/panels/${idA}/trpc`, { kind: 'query', procedure: 'projects.listProjects' });
-    assert.ok(Array.isArray(data.result));
-  });
 });
 
 describe('аудит и роли', () => {

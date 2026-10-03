@@ -500,16 +500,6 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
       try { return await manager.clientFor(row).query('actions.getAction', { id: ctx.params.actionId }); } catch (e) { throw asHttp(e); }
     }],
 
-    ['POST', '/api/panels/:id/trpc', async (ctx) => {
-      const row = panelOr404(ctx.params.id); const b = ctx.body;
-      const kind = b.kind === 'mutation' ? 'mutation' : 'query';
-      const c = manager.clientFor(row);
-      try {
-        if (kind === 'query') return { result: await c.query(str(b.procedure, 'Укажите процедуру'), b.input) };
-        return { result: await mutateAudited(ctx, row, 'raw.mutation', b.procedure, () => c.mutate(str(b.procedure, 'Укажите процедуру'), b.input ?? {})) };
-      } catch (e) { throw asHttp(e); }
-    }, { admin: true }],
-
     /* ----- массовые операции ----- */
     ['POST', '/api/bulk', async (ctx) => {
       const { action, targets } = ctx.body;
@@ -564,7 +554,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
       return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
 
-    ...extraRoutes({ db, key, config, fetchImpl, ssh, loadmon, backups, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef }),
+    ...extraRoutes({ db, key, config, fetchImpl, ssh, loadmon, backups, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef, cleanSource }),
   ]);
 
   const decryptOf = (row) => manager.clientFor(row).token;

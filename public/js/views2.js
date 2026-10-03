@@ -3,6 +3,7 @@ import { catalogView } from './catalog.js';
 import { empty, panelChip, showResults, statusBadge, clearSelection, typeChip } from './components.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, relTime, toast } from './dom.js';
 import { locale, t } from './i18n.js';
+import { sourceFields, sourceKind, SOURCES } from './source-form.js';
 import { TYPE_LABEL, allServices, can, isDb, panelById, refresh, store } from './store.js';
 
 const pageHead = (title, ...actions) => h('div', { class: 'page-head' }, h('h1', null, title), h('div', { class: 'inline' }, actions));
@@ -47,9 +48,29 @@ export function templatesPage() {
     clear(box).append(list.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Шаблон', 'Тип', 'Образ / репозиторий', 'Env', 'Источник', ''].map((x) => h('th', null, x)))),
       h('tbody', null, list.map((t) => h('tr', null, h('td', null, h('b', null, t.name)), h('td', null, TYPE_LABEL[t.type] ?? t.type), h('td', { class: 'mono small' }, t.image ?? '—'), h('td', null, t.envLines), h('td', { class: 'muted small' }, t.origin ?? ''),
         h('td', { class: 'w-actions' }, can('admin') ? h('div', { class: 'inline' }, h('button', { class: 'btn sm primary', onclick: () => deployTemplate(t) }, icon('rocket', 13), 'Развернуть'),
+          h('button', { class: 'btn icon ghost sm', title: 'Изменить шаблон', 'aria-label': 'Изменить шаблон', onclick: () => editTemplate(t) }, icon('edit', 14)),
           h('a', { class: 'btn icon ghost sm', href: `/api/templates/${t.id}/schema`, download: '', title: 'Скачать как схему Easypanel (Create from JSON)', 'aria-label': 'Скачать схему' }, icon('download', 14)),
           h('button', { class: 'btn icon ghost sm danger-text', onclick: async () => { if (await confirmDialog({ title: 'Удалить шаблон?', message: t.name, danger: true, confirmText: 'Удалить' })) { await del(`/api/templates/${t.id}`); load(); } } }, icon('trash', 14))) : null)))))) : empty('Шаблонов пока нет', 'Нажмите «Создать шаблон» и отметьте действующие сервисы — или откройте карточку сервиса → «Сохранить как шаблон». Затем шаблон можно развернуть на любой панели.'));
   });
+  const editTemplate = async (row) => {
+    let tpl; try { tpl = await get(`/api/templates/${row.id}`); } catch (e) { return toast(e.message, 'error'); }
+    const name = h('input', { class: 'input', value: tpl.name, maxlength: 80 });
+    const env = h('textarea', { class: 'input mono env', rows: 8, spellcheck: 'false', autocomplete: 'off' }, tpl.env);
+    // источник — только у приложений; выбор типа и его поля те же, что на вкладке «Источник» сервиса
+    let kind = tpl.type === 'app' ? sourceKind(tpl.source ?? {}) : null; let form = kind ? sourceFields(kind, tpl.source ?? {}, tpl.build ?? {}) : null;
+    const srcBox = h('div', { class: 'stack' });
+    const drawSrc = () => { const sel = h('select', { class: 'input', onchange: (e) => { kind = e.target.value; form = sourceFields(kind, tpl.source ?? {}, tpl.build ?? {}); drawSrc(); } }, SOURCES.map(([id, label]) => h('option', { value: id, selected: id === kind }, t(label)))); clear(srcBox).append(field('Источник', sel), ...form.els); };
+    if (form) drawSrc();
+    const r = tpl.resources ?? {};
+    const res = [['memoryLimit', 'Лимит памяти, МБ'], ['memoryReservation', 'Резерв памяти, МБ'], ['cpuLimit', 'Лимит CPU, ядер'], ['cpuReservation', 'Резерв CPU, ядер']].map(([k, label]) => ({ k, i: h('input', { class: 'input', type: 'number', min: 0, step: 'any', value: r[k] ?? '', placeholder: '0 = без лимита' }), label }));
+    modal({ title: `${t('Шаблон')} · ${row.name}`, wide: true, body: h('div', { class: 'stack' }, field('Название', name), srcBox, field('Переменные окружения', env, 'KEY=value, по строке на переменную. Значения хранятся в зашифрованном виде.'),
+      h('details', { class: 'more', open: !!tpl.resources }, h('summary', null, 'Ресурсы'), h('div', { class: 'grid-2' }, res.map((x) => field(x.label, x.i))))),
+    actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Сохранить', kind: 'primary', onClick: async () => {
+      const body = { name: name.value, env: env.value, resources: Object.fromEntries(res.map((x) => [x.k, x.i.value])) };
+      if (form) { const bad = form.check(); if (bad) throw new Error(bad); body.source = form.get(); }
+      await put(`/api/templates/${row.id}`, body); toast('Шаблон сохранён', 'success'); load();
+    } }] });
+  };
   const deployTemplate = (t) => {
     const f = targetFields({ name: t.name.toLowerCase().replace(/[^a-z0-9_.-]+/g, '-') });
     modal({ title: `Развернуть «${t.name}»`, body: f.el, actions: [{ label: 'Отмена', kind: 'ghost' }, { label: 'Развернуть', kind: 'primary', onClick: async () => {
@@ -325,7 +346,7 @@ async function certsView(body) {
   try {
     const data = await get('/api/certs');
     clear(body).append(...data.map((p) => h('section', { class: 'card' }, h('div', { class: 'card-head' }, panelChip({ name: p.panelName, color: p.color })),
-      p.error ? h('div', { class: 'callout warn' }, icon('alert'), p.error) : p.certs.length ? h('table', { class: 'tbl' }, h('tbody', null, p.certs.sort((a, b) => (a.expiresAt ?? 9e15) - (b.expiresAt ?? 9e15)).map((c) => {
+      p.error ? h('div', { class: 'callout warn' }, icon('alert'), p.error) : p.certs.length ? h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'Домен'), h('th', null, 'Действителен до'), h('th', null, 'Осталось'), can('admin') ? h('th', null, '') : null)), h('tbody', null, p.certs.sort((a, b) => (a.expiresAt ?? 9e15) - (b.expiresAt ?? 9e15)).map((c) => {
         const days = c.expiresAt ? Math.floor((c.expiresAt - Date.now()) / 86_400_000) : null;
         return h('tr', null, h('td', null, h('b', null, c.domain), c.sans?.length ? h('div', { class: 'muted small' }, c.sans.join(', ')) : null), h('td', { class: 'muted', title: c.source === 'tls' ? 'Срок получен по TLS-соединению с доменом' : null }, c.expiresAt ? new Date(c.expiresAt).toLocaleDateString(locale()) : '—'),
           h('td', { class: 'w-actions' }, days == null ? h('span', { class: 'badge muted' }, 'срок неизвестен') : h('span', { class: `badge ${days < 7 ? 'err' : days < 30 ? 'warn' : 'ok'}` }, days < 0 ? 'истёк' : `${days} дн.`)),

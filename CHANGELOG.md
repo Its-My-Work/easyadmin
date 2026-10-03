@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Fixed: saving service notes** failed with 502/404 — the procedure is `services.common.setNotes`.
+- **Full terminal** for the service and server consoles (xterm.js, bundled in `public/vendor`): per-key input, Tab, arrows, Ctrl+…, multi-line paste, nano/vim/htop, window size is passed to the panel (`POST /api/console/:id/resize`).
+- **SSH deploy key** is per service in Easypanel (`git.getPublicKey` / `git.generateKey`): the Source tab shows it and can generate one.
+- Services: **primary domain** (“Make primary” on the Domains tab) and the Domain column now shows real domains (`domains.listDomains` without arguments, one request per panel).
+- Panel settings: Docker/Easypanel update buttons only appear when a newer version exists; Docker builders can be edited (recreated with new limits).
+- Load: sortable columns. Inventory → Certificates: column headers. Templates can be edited (name, source, env, resources).
+- Journal and service History: backups are logged per service (size/error) plus a run summary; backup settings are readable; "Back up all, including new ones" explained.
+- Removed the **API console** (`POST /api/panels/:id/trpc`). Opening the app no longer waits for slow panels (stale-while-revalidate for the overview); the log view renders in batches instead of line by line.
 - **Backups fix: runaway scheduled backups.** In “stop” mode the backup stopped EasyAdmin's own service while copying its volume, the progress tracking was lost and the schedule started a new run over and over (hundreds of archives, S3 full). Now EasyAdmin never stops or freezes itself during a backup, a started attempt is recorded so the schedule never repeats it the same day, results are saved per service as soon as each is ready, and a run that was in progress when EasyAdmin restarted is followed to the end (results, cleanup, rotation).
 - Rotation in S3 reads the listing page by page and runs both before and after a backup, so old archives are really removed.
 - The status column shows the queue: "Queued", "Copying…" with the volume or database being copied, then the result. New **Backup log** (every run with the full error text of each service) and a "Latest runs" list in each service's copies window.

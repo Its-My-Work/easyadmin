@@ -1,5 +1,5 @@
 import { get } from './api.js';
-import { actionLabel } from './action-names.js';
+import { actionLabel, detailLabel } from './action-names.js';
 import { empty } from './components.js';
 import { clear, fmtTime, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
@@ -66,8 +66,8 @@ export function historyView({ s, ref, base, state }) {
         h('div', { class: 'inline' }, x.status ? h('span', { class: `badge ${tone(x.status)}` }, isActive(x) ? h('i', { class: 'dot' }) : null, statusLabel(x)) : null, x.hasLog ? h('button', { class: 'btn sm ghost', type: 'button', onclick: (e) => { e.stopPropagation(); openLog(base, x, s.name); } }, icon('terminal', 13), 'Лог') : null));
     }
     return h('div', { class: 'list-item hist-row' },
-      h('div', { class: 'hist-main' }, icon('edit', 16), h('div', null, h('b', null, actionLabel(x.action)), h('div', { class: 'muted small' }, [fmtTime(x.ts), x.user].filter(Boolean).join(' · ')),
-        x.detail ? h('div', { class: `small hist-detail ${x.ok ? 'muted' : 'danger-text'}` }, x.detail) : null)),
+      h('div', { class: 'hist-main' }, icon(String(x.action).startsWith('backup.') ? 'database' : 'edit', 16), h('div', null, h('b', null, actionLabel(x.action)), h('div', { class: 'muted small' }, [fmtTime(x.ts), x.user].filter(Boolean).join(' · ')),
+        x.detail ? h('div', { class: `small hist-detail ${x.ok ? 'muted' : 'danger-text'}` }, detailLabel(x.action, x.detail)) : null)),
       h('span', { class: `badge ${x.ok ? 'ok' : 'err'}` }, x.ok ? 'ок' : 'ошибка'));
   };
 

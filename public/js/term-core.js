@@ -23,7 +23,7 @@ export function createTerminal({ panelId, onOut, onState }) {
       const r = await post(`/api/panels/${panelId()}/console`, body);
       cid = r.id; onState({ state: 'on', ...r });
       es = new EventSource(`/api/console/${cid}/stream`);
-      es.addEventListener('out', (e) => onOut(cleanText(JSON.parse(e.data).text)));
+      es.addEventListener('out', (e) => { const raw = JSON.parse(e.data).text; onOut(cleanText(raw), raw); });
       es.addEventListener('status', (e) => { const st = JSON.parse(e.data); if (st.state === 'closed' || st.state === 'error') { es?.close(); es = null; cid = null; onState({ state: 'off', message: st.message || 'Соединение закрыто', failed: true }); } });
       es.onerror = () => { if (es && es.readyState === 2) { es = null; cid = null; onState({ state: 'off', message: 'Соединение потеряно', failed: true }); } };
       return r;

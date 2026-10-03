@@ -110,7 +110,6 @@ describe('роли и доступ по панелям', () => {
     assert.equal((await api('op', 'POST', `/api/panels/${idA}/service/op`, { ...ref, op: 'env', params: { env: 'X=1' } })).status, 200);
     assert.equal((await api('op', 'POST', `/api/panels/${idA}/projects`, { name: 'zzz' })).status, 403);
     assert.equal((await api('op', 'POST', `/api/panels/${idA}/system`, { op: 'prune' })).status, 403);
-    assert.equal((await api('op', 'POST', `/api/panels/${idA}/trpc`, { kind: 'query', procedure: 'projects.listProjects' })).status, 403);
   });
   test('ограничение по панелям: чужие невидимы и недоступны', async () => {
     const ov = (await api('op', 'GET', '/api/overview')).data;
@@ -145,11 +144,32 @@ describe('роли и доступ по панелям', () => {
     assert.equal(it.repo, 'Its-My-Work/Hh@feature/x');
     assert.doesNotMatch(JSON.stringify(items), /TOPSECRET/);
     await api('admin', 'POST', `/api/panels/${idA}/service/op`, { type: 'app', project: 'web', name: 'site', op: 'sourceImage', params: { image: 'nginx:1.25' } });
-    const r = await api('admin', 'GET', `/api/panels/${idA}/ssh-key`);
-    assert.equal(r.status, 200); assert.equal(r.data.key, null); assert.ok(Array.isArray(r.data.candidates));
-    assert.equal((await api('admin', 'GET', `/api/panels/${idA}/ssh-key?proc=bad%20name`)).status, 400);
-    assert.equal((await api('admin', 'GET', `/api/panels/${idA}/ssh-key?proc=settings.nothing`)).data.key, null);
-    assert.equal((await api('ro', 'GET', `/api/panels/${idA}/ssh-key`)).status, 403);
+    const r = await api('admin', 'GET', `/api/panels/${idA}/ssh-key?project=web&name=site`);
+    assert.equal(r.status, 200); assert.equal(r.data.key, null);
+    assert.equal((await api('admin', 'GET', `/api/panels/${idA}/ssh-key?project=BAD%20NAME&name=site`)).status, 400);
+    assert.equal((await api('ro', 'GET', `/api/panels/${idA}/ssh-key?project=web&name=site`)).status, 403);
+  });
+  test('основной домен, колонка «Домен» и правка шаблона', async () => {
+    const ref = { type: 'app', project: 'web', name: 'site' };
+    await api('admin', 'POST', `/api/panels/${idA}/service/op`, { ...ref, op: 'domainAdd', params: { host: 'a.example.com', port: 80 } });
+    await api('admin', 'POST', `/api/panels/${idA}/service/op`, { ...ref, op: 'domainAdd', params: { host: 'b.example.com', port: 80 } });
+    const svc = (await api('admin', 'GET', `/api/panels/${idA}/service?type=app&project=web&name=site`)).data;
+    const second = svc.domains.find((d) => d.host === 'b.example.com');
+    assert.equal((await api('admin', 'POST', `/api/panels/${idA}/service/op`, { ...ref, op: 'domainPrimary', params: { id: second.id } })).status, 200);
+    assert.equal((await api('admin', 'GET', `/api/panels/${idA}/service?type=app&project=web&name=site`)).data.primaryDomainId, second.id);
+    const ov = (await api('admin', 'GET', '/api/overview?force=1')).data.find((p) => p.id === idA);
+    const row = ov.tree.projects.find((p) => p.name === 'web').services.find((x) => x.name === 'site');
+    assert.ok(row.domains.includes('a.example.com') && row.domains.includes('b.example.com'), 'домены подтянуты списком');
+    // шаблон: сохранить, прочитать, изменить, проверить
+    await api('admin', 'POST', '/api/templates', { panelId: idA, ...ref, templateName: 'T-edit' });
+    const list = (await api('admin', 'GET', '/api/templates')).data; const tpl = list.find((x) => x.name === 'T-edit');
+    const full = (await api('admin', 'GET', `/api/templates/${tpl.id}`)).data;
+    assert.match(full.env, /X=1/);
+    assert.equal((await api('admin', 'PUT', `/api/templates/${tpl.id}`, { name: 'T-edited', env: 'ONLY=1', source: { type: 'image', image: 'nginx:9' }, resources: { memoryLimit: '512', cpuLimit: '' } })).status, 200);
+    const after = (await api('admin', 'GET', `/api/templates/${tpl.id}`)).data;
+    assert.equal(after.name, 'T-edited'); assert.equal(after.env, 'ONLY=1'); assert.equal(after.source.image, 'nginx:9'); assert.deepEqual(after.resources, { memoryLimit: 512 });
+    assert.equal((await api('ro', 'GET', `/api/templates/${tpl.id}`)).status, 403);
+    assert.equal((await api('admin', 'PUT', `/api/templates/${tpl.id}`, { resources: { cpuLimit: -1 } })).status, 400);
   });
   test('журнал: фильтры по пользователю, результату, периоду, категории и панели; facets', async () => {
     await api('admin', 'POST', `/api/panels/${idA}/service/action`, { type: 'app', project: 'web', name: 'nope-missing', action: 'stop' }); // ошибка попадает в журнал

@@ -1,33 +1,22 @@
 import { get } from './api.js';
 import { clear, h, icon, toast } from './dom.js';
+import { t } from './i18n.js';
 import { createTerminal } from './term-core.js';
+import { bufferText, ensureTerminal, inputQueue, mountTerminal, sendSize } from './xterm-pane.js';
 
 /**
- * Вкладка «Консоль»: терминал в контейнере сервиса (SSE + POST ↔ WebSocket панели). Один сеанс за раз; у compose-сервиса
- * контейнер выбирается в списке. Вывод и история команд живут в state.console — при переключении вкладок не пропадают
- * (сам сеанс при уходе с вкладки закрывается).
+ * Вкладка «Консоль»: терминал в контейнере сервиса (SSE + POST ↔ WebSocket панели), полноценный (xterm.js): nano, vim, Tab, стрелки,
+ * вставка нескольких строк. Один сеанс за раз; у compose-сервиса контейнер выбирается в списке. Экран терминала живёт в
+ * state.console — при переключении вкладок вывод не пропадает (сам сеанс при уходе с вкладки закрывается).
  */
-const MAX = 200_000;
 const QUICK = ['ls -la', 'pwd', 'env | sort', 'ps aux', 'df -h', 'free -m', 'cat /etc/os-release', 'uname -a'];
 
 export function consoleView({ s, ref, state }) {
-  const C = state.console ??= { text: '', hist: [], hi: -1, container: '' };
-  let pendingEcho = null, follow = true, on = false;
-  const termEl = h('pre', { class: 'term term-big', tabindex: 0 });
+  const C = state.console ??= { keep: {}, container: '' };
+  const keep = C.keep; let on = false; let cid = null; let mounted = null;
   const status = h('span', { class: 'small muted' }, 'Не подключено');
   const info = h('div', { class: 'stack-sm' });
-  const promptEl = h('span', { class: 'term-prompt' }, '$');
-
-  const paint = () => { termEl.textContent = C.text; if (follow) termEl.scrollTop = termEl.scrollHeight; };
-  termEl.addEventListener('scroll', () => { follow = termEl.scrollTop + termEl.clientHeight >= termEl.scrollHeight - 24; });
-  const addOut = (raw) => {
-    let chunk = raw;
-    if (pendingEcho != null) { // терминал обычно повторяет набранное — строку с командой мы уже показали сами
-      const t = chunk.replace(/^\n/, '');
-      if (t.startsWith(pendingEcho)) { chunk = t.slice(pendingEcho.length).replace(/^\n/, ''); pendingEcho = null; } else if (chunk.trim()) pendingEcho = null;
-    }
-    C.text = (C.text + chunk).slice(-MAX); paint();
-  };
+  const pane = h('div');
 
   const setState = (isOn, msg, cls = 'muted') => {
     on = isOn;
@@ -38,24 +27,25 @@ export function consoleView({ s, ref, state }) {
   };
   const errorCallout = (st) => h('div', { class: 'callout err compact' }, icon('alert', 14), h('div', null, h('b', null, st.message), st.attempts?.length ? h('ul', { class: 'result-list' }, st.attempts.map((a) => h('li', { class: 'err mono small' }, a))) : null,
     h('p', { class: 'muted small' }, 'Терминал Easypanel работает по WebSocket; версия панели может не поддерживать консоль или её адрес изменился.')));
-  const term = createTerminal({ panelId: () => s.panelId, onOut: addOut, onState: (st) => {
+  const term = createTerminal({ panelId: () => s.panelId, onOut: (_clean, raw) => keep.xt?.write(raw), onState: (st) => {
     clear(info);
     if (st.state === 'connecting') { connectBtn.disabled = true; setState(false, 'Подключение…'); return; }
     connectBtn.disabled = false;
     if (st.state === 'on') {
-      promptEl.textContent = st.tag ? `${st.tag} $` : '$';
+      cid = st.id;
       setState(true, st.container ? `● Подключено · ${st.container}` : '● Подключено', st.detected ? 'ok-text' : 'warn-text');
+      if (keep.xt) { sendSize(cid, keep.xt.cols, keep.xt.rows); keep.xt.focus(); }
       if (!st.detected) info.append(h('div', { class: 'callout warn compact' }, icon('alert', 14), h('div', null, 'Соединение есть, но панель не ответила на пробную команду. Введите команду и посмотрите, отвечает ли терминал; если нет — переподключитесь.', st.transcript?.length ? h('details', { class: 'more-plain' }, h('summary', null, 'Первые сообщения панели'), h('pre', { class: 'code' }, st.transcript.join('\n'))) : null)));
-    } else if (st.state === 'off') setState(false, st.message || 'Отключено', st.failed ? 'danger-text' : 'muted');
+    } else if (st.state === 'off') { cid = null; setState(false, st.message || 'Отключено', st.failed ? 'danger-text' : 'muted'); }
     else { setState(false, 'Не удалось подключиться', 'danger-text'); info.append(errorCallout(st)); }
   } });
-  const connect = () => term.connect({ ...ref, container: contSel.value || undefined });
-  const send = async (data) => { const r = await term.send(data); if (typeof r === 'string') toast(r, 'error'); return r === true; };
-  const run = async (cmd) => {
-    if (!term.connected) await connect();
-    if (!term.connected) return;
-    C.text = `${C.text}${C.text && !C.text.endsWith('\n') ? '\n' : ''}${promptEl.textContent} ${cmd}\n`; pendingEcho = cmd; follow = true; paint();
-    await send(`${cmd}\n`);
+  const send = inputQueue(term, (m) => toast(m, 'error'));
+  const connect = async () => {
+    connectBtn.disabled = true;
+    try { await ensureTerminal(keep); } catch (e) { connectBtn.disabled = false; return toast(e.message, 'error'); }
+    if (!mounted) mountNow();
+    keep.xt.writeln(`\x1b[2m— ${t('подключение')} —\x1b[0m`);
+    await term.connect({ ...ref, container: contSel.value || undefined });
   };
 
   // у compose-сервиса несколько контейнеров: в каком из них терминал (у одного контейнера список скрыт)
@@ -64,32 +54,28 @@ export function consoleView({ s, ref, state }) {
     try {
       const r = await get(`/api/panels/${s.panelId}/console/containers?${new URLSearchParams(ref)}`);
       contSel.replaceChildren(...r.containers.map((c) => h('option', { value: c.id }, c.tag ?? c.name)));
-      const keep = r.containers.some((c) => c.id === C.container) ? C.container : r.selected; // по умолчанию — контейнер, названный как сервис
-      if (keep) contSel.value = keep;
+      const keepSel = r.containers.some((c) => c.id === C.container) ? C.container : r.selected; // по умолчанию — контейнер, названный как сервис
+      if (keepSel) contSel.value = keepSel;
       contSel.hidden = r.containers.length < 2;
     } catch { /* панель без списка контейнеров — терминал возьмёт первый */ }
   };
 
   const connectBtn = h('button', { class: 'btn', onclick: async () => { if (on) { await term.stop(); setState(false, 'Терминал отключён'); } else connect(); } });
-  const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => send('\x03') }, 'Ctrl+C');
-  const input = h('input', { class: 'input mono term-input', placeholder: 'команда и Enter — подключит терминал · ↑↓ история', autocomplete: 'off', spellcheck: 'false', 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
-  const quick = h('select', { class: 'input term-quick', disabled: true, onchange: (e) => { if (e.target.value) { input.value = e.target.value; input.focus(); } e.target.value = ''; } }, h('option', { value: '' }, 'Быстрые команды…'), QUICK.map((c) => h('option', { value: c }, c)));
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { const v = input.value; if (!v.trim()) return; C.hist.push(v); C.hi = C.hist.length; input.value = ''; run(v); }
-    else if (e.key === 'ArrowUp') { if (C.hist.length) { C.hi = Math.max(0, C.hi - 1); input.value = C.hist[C.hi]; e.preventDefault(); } }
-    else if (e.key === 'ArrowDown') { if (C.hist.length) { C.hi = Math.min(C.hist.length, C.hi + 1); input.value = C.hist[C.hi] ?? ''; e.preventDefault(); } }
-    else if (e.ctrlKey && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) { send('\x03'); e.preventDefault(); }
-    else if (e.ctrlKey && e.key.toLowerCase() === 'd') { send('\x04'); e.preventDefault(); }
-  });
-  const clr = h('button', { class: 'btn sm ghost', onclick: () => { C.text = ''; paint(); } }, icon('trash', 13), 'Очистить');
-  const dl = h('button', { class: 'btn sm ghost', title: 'Скачать вывод', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([C.text], { type: 'text/plain' })), download: `${s.name}-console.txt` }); document.body.append(a); a.click(); a.remove(); } }, icon('download', 13));
+  const ctrlC = h('button', { class: 'btn sm', disabled: true, title: 'Прервать текущую команду (Ctrl+C)', onclick: () => { send('\x03'); keep.xt?.focus(); } }, 'Ctrl+C');
+  const quick = h('select', { class: 'input term-quick', disabled: true, onchange: (e) => { if (e.target.value) { send(`${e.target.value}\r`); keep.xt?.focus(); } e.target.value = ''; } }, h('option', { value: '' }, 'Быстрые команды…'), QUICK.map((c) => h('option', { value: c }, c)));
+  const clr = h('button', { class: 'btn sm ghost', onclick: () => keep.xt?.clear() }, icon('trash', 13), 'Очистить');
+  const dl = h('button', { class: 'btn sm ghost', title: 'Скачать вывод', onclick: () => { if (!keep.xt) return; const a = h('a', { href: URL.createObjectURL(new Blob([bufferText(keep.xt)], { type: 'text/plain' })), download: `${s.name}-console.txt` }); document.body.append(a); a.click(); a.remove(); } }, icon('download', 13));
 
-  state.onLeave = () => { term.stop(); };
+  function mountNow() {
+    keep.sink = send; keep.onSize = (c, r) => { if (cid) sendSize(cid, c, r); };
+    mounted = mountTerminal(keep); clear(pane).append(mounted.el);
+  }
+  state.onLeave = () => { term.stop(); keep.sink = null; keep.onSize = null; mounted?.stop(); };
   setState(false, 'Не подключено');
-  loadContainers(); paint();
+  loadContainers();
+  ensureTerminal(keep).then(() => { if (pane.isConnected !== false) mountNow(); }).catch((e) => pane.append(h('div', { class: 'callout err compact' }, icon('alert', 14), e.message)));
   return h('div', { class: 'stack' },
     h('div', { class: 'inline' }, connectBtn, contSel, ctrlC, quick, clr, dl, h('span', { class: 'spacer' }), status),
-    info, termEl,
-    h('div', { class: 'term-bar' }, promptEl, input),
-    h('p', { class: 'muted small' }, 'В журнал попадают открытие и закрытие сеанса и число команд, сами команды не сохраняются.'));
+    info, pane,
+    h('p', { class: 'muted small' }, 'В журнал попадают открытие и закрытие сеанса и число нажатий Enter, сами команды не сохраняются.'));
 }

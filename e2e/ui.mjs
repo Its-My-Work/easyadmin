@@ -199,16 +199,16 @@ await step('вкладки «Логи» и «Консоль»: логи идут
   await p.click('.drawer .dtab:has-text("Логи")');
   await p.waitForSelector('.logview .ll:has-text("line one")', { timeout: 8000 }); // логи потекли
   if ((await p.locator('.term-input').count()) !== 0) throw new Error('терминал не должен быть на вкладке «Логи»');
-  await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.term-big');
+  await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.xterm-wrap .xterm-rows', { timeout: 8000 });
   await p.click('.drawer button:has-text("Подключить терминал")'); await p.waitForSelector('.drawer :text("Подключено")', { timeout: 12000 }); // подключение по кнопке
-  await p.fill('.term-input', 'echo hi-e2e-console'); await p.press('.term-input', 'Enter');
-  await until(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo hi-e2e-console') && t.split('\n').some((l) => l.trim() === 'hi-e2e-console'); }, null, { timeout: 6000 });
-  await p.selectOption('.term-quick', 'pwd'); if ((await p.inputValue('.term-input')) !== 'pwd') throw new Error('быстрая команда не подставилась');
-  await p.fill('.term-input', 'ls 123'); await p.press('.term-input', 'Enter'); await until(() => document.querySelector('.term-big')?.textContent.includes('ls 123: not found'), null, { timeout: 6000 });
+  await p.click('.xterm-wrap'); await p.keyboard.type('echo hi-e2e-console'); await p.keyboard.press('Enter');
+  await until(() => { const t = document.querySelector('.xterm-rows')?.innerText ?? ''; return t.split('\n').some((l) => l.trim() === 'hi-e2e-console'); }, null, { timeout: 6000 });
+  await p.selectOption('.term-quick', 'pwd'); await until(() => document.querySelector('.xterm-rows')?.innerText.includes('pwd: not found'), null, { timeout: 6000 }); // быстрая команда выполнилась
+  await p.keyboard.type('ls 123'); await p.keyboard.press('Enter'); await until(() => document.querySelector('.xterm-rows')?.innerText.includes('ls 123: not found'), null, { timeout: 6000 });
   if (!(await p.locator('.drawer .dtab.active').innerText()).includes('Консоль')) throw new Error('ввод цифр переключил вкладку');
   await p.click('.drawer .dtab:has-text("Логи")'); await p.waitForSelector('.logview .ll:has-text("tick")'); // логи на месте
-  await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.term-big');
-  if (!(await p.locator('.term-big').innerText()).includes('hi-e2e-console')) throw new Error('вывод консоли пропал при переключении вкладок');
+  await p.click('.drawer .dtab:has-text("Консоль")'); await p.waitForSelector('.xterm-wrap .xterm-rows');
+  if (!(await p.locator('.xterm-rows').innerText()).includes('hi-e2e-console')) throw new Error('вывод консоли пропал при переключении вкладок');
   await p.keyboard.press('Escape');
 });
 await step('настройки панели Easypanel: разделы и сохранение', async () => {
@@ -224,13 +224,13 @@ await step('настройки панели Easypanel: разделы и сох�
 });
 await step('консоль сервера: пункт меню, подключение, команда, вывод, отключение', async () => {
   await p.goto(U + '#/'); await p.waitForSelector('.panel-card');
-  await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.term-big');
-  await p.fill('.term-input', 'echo host-e2e'); await p.press('.term-input', 'Enter');
-  await p.waitForSelector('.page :text("Подключено")', { timeout: 12000 });
-  await until(() => { const t = document.querySelector('.term-big')?.textContent ?? ''; return t.includes('$ echo host-e2e') && t.split('\n').some((l) => l.trim() === 'host-e2e'); }, null, { timeout: 6000 });
+  await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.xterm-wrap .xterm-rows', { timeout: 8000 });
+  await p.click('.page button:has-text("Подключить терминал")'); await p.waitForSelector('.page :text("Подключено")', { timeout: 12000 });
+  await p.click('.xterm-wrap'); await p.keyboard.type('echo host-e2e'); await p.keyboard.press('Enter');
+  await until(() => (document.querySelector('.xterm-rows')?.innerText ?? '').split('\n').some((l) => l.trim() === 'host-e2e'), null, { timeout: 6000 });
   await p.waitForTimeout(300);
-  await p.click('.nav-item:has-text("Обзор")'); await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.term-big');
-  if (!(await p.locator('.term-big').innerText()).includes('host-e2e')) throw new Error('вывод консоли пропал после перехода по страницам');
+  await p.click('.nav-item:has-text("Обзор")'); await p.click('.nav-item:has-text("Консоль")'); await p.waitForSelector('.xterm-wrap .xterm-rows');
+  if (!(await p.locator('.xterm-rows').innerText()).includes('host-e2e')) throw new Error('вывод консоли пропал после перехода по страницам');
   await p.click('.page button:has-text("Отключить терминал")'); await p.waitForSelector('.page :text("Терминал отключён")');
 });
 await step('live logs tab', async () => {

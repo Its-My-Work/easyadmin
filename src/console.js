@@ -151,7 +151,7 @@ export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs 
       const s = need(id, userId);
       const text = String(data ?? '');
       if (!text || text.length > MAX_INPUT) throw new ConsoleError(`Ввод должен быть непустым и не длиннее ${MAX_INPUT} символов`);
-      s.lastUsed = Date.now(); s.commands += (text.match(/\n/g) ?? []).length;
+      s.lastUsed = Date.now(); s.commands += (text.match(/[\r\n]+/g) ?? []).length; // Enter в терминале приходит как \r
       s.ws.send(FRAMINGS[s.framing](text));
     },
     subscribe(id, userId, cb) {
@@ -159,6 +159,13 @@ export function createConsoleHub({ maxPerUser = 3, idleMs = 10 * 60_000, lifeMs 
       if (s.buffer) cb('out', { text: s.buffer });
       s.subs.add(cb);
       return () => s.subs.delete(cb);
+    },
+    /** Размер окна терминала: панель понимает его только в родном формате {"resize":[колонки, строки]}. */
+    resize(id, userId, cols, rows) {
+      const s = need(id, userId);
+      const c = Math.min(500, Math.max(10, Math.round(Number(cols)) || 0)); const r = Math.min(200, Math.max(2, Math.round(Number(rows)) || 0));
+      if (s.framing === 'json-input-key' && !s.closed) { try { s.ws.send(JSON.stringify({ resize: [c, r] })); } catch { /* закрыт */ } }
+      return { cols: c, rows: r };
     },
     setFraming(id, userId, framing) { const s = need(id, userId); if (!FRAMINGS[framing]) throw new ConsoleError('Неизвестный формат ввода'); s.framing = framing; s.detected = true; return s.framing; },
     close(id, userId) { const s = need(id, userId); const info = { commands: s.commands, path: s.path }; end(s, 'Сеанс закрыт'); return info; },

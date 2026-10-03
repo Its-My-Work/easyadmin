@@ -1,5 +1,5 @@
 import { decrypt, encrypt } from './crypto.js';
-import { PanelClient, PanelError, applyHealth, discoverProcedures, fuzzyStats, looksLikeStats, normalizeStats, normalizeTree } from './easypanel.js';
+import { PanelClient, PanelError, applyHealth, discoverProcedures, fuzzyStats, looksLikeStats, normalizeStats, normalizeTree, attachDomains } from './easypanel.js';
 
 /** Управляет клиентами панелей, кэшем снимков и статусами. */
 export function createManager({ db, key, config }) {
@@ -77,9 +77,10 @@ export function createManager({ db, key, config }) {
   async function fetchSnapshot(row) {
     const t0 = Date.now();
     const client = clientFor(row);
-    const [tree, stats] = await Promise.allSettled([
+    const [tree, stats, domains] = await Promise.allSettled([
       client.query('projects.listProjectsAndServices'),
       fetchStats(client, row),
+      client.query('domains.listDomains'), // best-effort: нужен только для колонки «Домен»
     ]);
     // контейнеры — best-effort: сначала по всей панели, а если панель требует projectName — по каждому проекту
     let containers = { status: 'rejected' };
@@ -98,7 +99,7 @@ export function createManager({ db, key, config }) {
         status: unrecognized ? 'degraded' : 'online', // недоступная статистика — не повод для «Частично»
         error: unrecognized ? 'Панель ответила, но список проектов не распознан. Откройте «Диагностика» на странице панели и пришлите результат разработчику.' : null,
         statsError: stats.status === 'rejected' ? stats.reason.message : null,
-        tree: applyHealth(norm, containers.status === 'fulfilled' ? containers.value : null),
+        tree: applyHealth(domains.status === 'fulfilled' ? attachDomains(norm, domains.value) : norm, containers.status === 'fulfilled' ? containers.value : null),
         stats: stats.status === 'fulfilled' ? normalizeStats(stats.value) : null,
       };
     }
@@ -115,7 +116,7 @@ export function createManager({ db, key, config }) {
     return snap;
   }
 
-  async function snapshot(id, { force = false } = {}) {
+  async function snapshot(id, { force = false, stale = false } = {}) {
     const row = getRow(id);
     if (!row) return null;
     const hit = cache.get(id);
@@ -123,6 +124,8 @@ export function createManager({ db, key, config }) {
     if (!inflight.has(id)) {
       inflight.set(id, fetchSnapshot(row).finally(() => inflight.delete(id)));
     }
+    // stale: страница получает прежний снимок сразу, а свежий подгружается фоном (иначе медленная панель вешает открытие страницы)
+    if (stale && !force && hit) { inflight.get(id).catch(() => {}); return hit; }
     return inflight.get(id);
   }
 
@@ -130,7 +133,7 @@ export function createManager({ db, key, config }) {
 
   async function overview({ force = false } = {}) {
     const rows = db.prepare('SELECT * FROM panels ORDER BY position, id').all();
-    const items = await Promise.all(rows.map(async (row) => ({ panel: publicPanel(row), snapshot: await snapshot(row.id, { force }) })));
+    const items = await Promise.all(rows.map(async (row) => ({ panel: publicPanel(row), snapshot: await snapshot(row.id, { force, stale: !force }) })));
     return items.map(({ panel, snapshot: s }) => ({ ...panel, ...pickSnap(s) }));
   }
 

@@ -24,7 +24,7 @@ const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
 
 /** Дополнительные маршруты: уведомления, шаблоны, клонирование, расписания, вебхуки, инвентарь, история, бэкап. */
 export function extraRoutes(d) {
-  const { db, key, config, manager, alerts, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel } = d;
+  const { db, key, config, manager, alerts, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, cleanSource } = d;
   const now = () => Date.now();
   const treeOf = async (row) => (await manager.snapshot(row.id))?.tree?.projects ?? [];
   const accessible = (ctx) => db.prepare('SELECT * FROM panels ORDER BY position, id').all().filter((p) => canPanel(ctx.user, p.id));
@@ -79,34 +79,25 @@ export function extraRoutes(d) {
     }, { admin: true }],
   ];
 
-  /* ---------------- публичный SSH-ключ панели (deploy key для git@… репозиториев) ---------------- */
-  const SSH_CANDIDATES = ['settings.getPublicKey', 'settings.getSshPublicKey', 'settings.getPublicSshKey', 'settings.getGitPublicKey', 'settings.getSshKey', 'settings.getDeployKey', 'settings.getGitSshKey', 'git.getPublicKey', 'git.getSshKey', 'ssh.getPublicKey'];
+  /* ---------------- SSH deploy-ключ сервиса (git@… репозитории): у Easypanel ключ свой у каждого сервиса ---------------- */
   const findKey = (v, d = 0) => {
     if (typeof v === 'string') return /ssh-(?:ed25519|rsa|dss)|ecdsa-sha2-/.test(v) ? v.trim() : null;
     if (v && typeof v === 'object' && d < 3) for (const x of Object.values(v)) { const r = findKey(x, d + 1); if (r) return r; }
     return null;
   };
-  const sshSaved = (id) => db.prepare('SELECT v FROM settings WHERE k = ?').get(`ssh_proc_${id}`)?.v;
+  const sshRef = (src) => ({ projectName: nameOf(src.project, 'project'), serviceName: nameOf(src.name, 'service') });
   const sshRoutes = [
-    // Публичный ключ панели: пробуем сохранённую/выбранную процедуру, известные названия, затем безопасно (только get/list/inspect) все похожие из интерфейса панели
     ['GET', '/api/panels/:id/ssh-key', async (ctx) => {
-      const row = panelOr404(ctx.params.id);
-      const c = manager.clientFor(row);
-      const wanted = ctx.url.searchParams.get('proc');
-      if (wanted) need(/^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/.test(wanted), 'Некорректное название процедуры');
-      const tryProc = async (proc) => { try { return findKey(await c.query(proc)); } catch { return null; } };
-      const remember = (proc) => { db.prepare("INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(`ssh_proc_${row.id}`, proc); };
-      if (wanted) { const key = await tryProc(wanted); if (key) { remember(wanted); return { key, proc: wanted }; } return { key: null, tried: [wanted], candidates: [] }; }
-      for (const proc of [sshSaved(row.id), ...SSH_CANDIDATES].filter(Boolean)) { const key = await tryProc(proc); if (key) { remember(proc); return { key, proc }; } }
-      const found = await discoverProcedures(row.url, { insecure: !!row.insecure_tls, timeoutMs: config.requestTimeoutMs }).catch(() => []);
-      const READ = /\.(get|list|inspect|read)[A-Z]/;
-      const related = found.filter((n) => !SSH_CANDIDATES.includes(n) && /ssh|public.?key|deploy.?key|git|github|secret|token|key/i.test(n));
-      const probe = related.filter((n) => READ.test(n)).slice(0, 30);
-      for (let i = 0; i < probe.length; i += 6) {
-        const res = await Promise.all(probe.slice(i, i + 6).map(async (proc) => ({ proc, key: await tryProc(proc) })));
-        const hit = res.find((r) => r.key); if (hit) { remember(hit.proc); return { key: hit.key, proc: hit.proc }; }
-      }
-      return { key: null, tried: [...SSH_CANDIDATES, ...probe], candidates: related.slice(0, 40), discovered: found.length };
+      const row = panelOr404(ctx.params.id); const q = ctx.url.searchParams;
+      const ref = sshRef({ project: q.get('project'), name: q.get('name') });
+      try { return { key: findKey(await manager.clientFor(row).query('git.getPublicKey', ref)) }; } catch (e) { throw new HttpError(502, e.message); }
+    }, { admin: true }],
+    ['POST', '/api/panels/:id/ssh-key', async (ctx) => {
+      const row = panelOr404(ctx.params.id); const ref = sshRef(ctx.body); const c = manager.clientFor(row);
+      try {
+        await mutateAudited(ctx, row, 'service.sshKey', `${ref.projectName}/${ref.serviceName}`, () => c.mutate('git.generateKey', ref));
+        return { key: findKey(await c.query('git.getPublicKey', ref)) };
+      } catch (e) { throw new HttpError(502, e.message); }
     }, { admin: true }],
   ];
 
@@ -266,6 +257,7 @@ export function extraRoutes(d) {
       });
     }, { admin: true }],
     ['POST', '/api/console/:cid/input', (ctx) => { consoleOn(); try { hub.input(ctx.params.cid, ctx.user.id, ctx.body.data); return { ok: true }; } catch (e) { return consoleErr(e); } }, { admin: true }],
+    ['POST', '/api/console/:cid/resize', (ctx) => { consoleOn(); try { return hub.resize(ctx.params.cid, ctx.user.id, ctx.body.cols, ctx.body.rows); } catch (e) { return consoleErr(e); } }, { admin: true }],
     ['POST', '/api/console/:cid/framing', (ctx) => { consoleOn(); try { return { framing: hub.setFraming(ctx.params.cid, ctx.user.id, ctx.body.framing) }; } catch (e) { return consoleErr(e); } }, { admin: true }],
     ['DELETE', '/api/console/:cid', (ctx) => {
       consoleOn();
@@ -410,6 +402,35 @@ export function extraRoutes(d) {
         audit(ctx, { action: 'template.save', panel: row, target: `${r.project}/${r.name}` });
         return { ok: true };
       } catch (e) { throw asHttp(e); }
+    }, { admin: true }],
+    // Содержимое шаблона для правки (env и токены внутри — только администратору)
+    ['GET', '/api/templates/:id', (ctx) => {
+      const t = db.prepare('SELECT * FROM templates WHERE id = ?').get(Number(ctx.params.id)); need(t, 'Шаблон не найден');
+      const { cfg } = openTpl(t);
+      return { id: t.id, name: t.name, type: t.type, origin: t.origin, env: cfg.env ?? '', source: cfg.source ?? null, build: cfg.build ?? null, resources: cfg.resources ?? null };
+    }, { admin: true }],
+    ['PUT', '/api/templates/:id', (ctx) => {
+      const t = db.prepare('SELECT * FROM templates WHERE id = ?').get(Number(ctx.params.id)); need(t, 'Шаблон не найден');
+      const b = ctx.body ?? {}; const { cfg } = openTpl(t);
+      const name = b.name === undefined ? t.name : str(b.name, 'Укажите название шаблона', 80);
+      const next = { ...cfg };
+      if (b.env !== undefined) next.env = String(b.env).slice(0, 200_000);
+      if (b.source !== undefined && cfg.type === 'app') {
+        const src = cleanSource(b.source); need(src, 'Укажите источник');
+        const { build, ...rest } = src;
+        next.source = rest; next.build = ['git', 'github'].includes(rest.type) ? build ?? null : null;
+      }
+      if (b.resources !== undefined) {
+        const r = {};
+        for (const k of ['memoryLimit', 'memoryReservation', 'cpuLimit', 'cpuReservation']) {
+          const v = b.resources?.[k]; if (v === '' || v == null) continue;
+          need(Number.isFinite(Number(v)) && Number(v) >= 0, 'Ресурсы — неотрицательные числа'); r[k] = Number(v);
+        }
+        next.resources = Object.keys(r).length ? r : null;
+      }
+      db.prepare('UPDATE templates SET name = ?, config_enc = ? WHERE id = ?').run(name, encrypt(key, JSON.stringify(next)), t.id);
+      audit(ctx, { action: 'template.update', target: name });
+      return { ok: true };
     }, { admin: true }],
     ['DELETE', '/api/templates/:id', (ctx) => { db.prepare('DELETE FROM templates WHERE id = ?').run(Number(ctx.params.id)); return { ok: true }; }, { admin: true }],
     ['POST', '/api/templates/:id/deploy', async (ctx) => {

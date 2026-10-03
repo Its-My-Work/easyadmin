@@ -132,6 +132,7 @@ export function normalizeTree(raw) {
       type: String(s.type ?? s.kind ?? s.serviceType ?? 'app'),
       enabled: s.enabled !== false && s.disabled !== true,
       domain: s.domain ?? s.primaryDomain ?? null,
+      ...(s.primaryDomainId ? { primaryDomainId: String(s.primaryDomainId) } : {}),
     });
   };
   const fill = (projArr, svcArr) => {
@@ -151,6 +152,27 @@ export function normalizeTree(raw) {
   const list = [...projects.values()].sort((a, b) => a.name.localeCompare(b.name));
   list.forEach((p) => p.services.sort((a, b) => a.name.localeCompare(b.name)));
   return { projects: list };
+}
+
+/**
+ * Проставляет сервисам домены из domains.listDomains (без параметров панель отдаёт все домены сразу):
+ * `domain` — основной (или первый), `domains` — все хосты. В списке проектов панель домены не присылает.
+ */
+export function attachDomains(tree, list) {
+  const items = Array.isArray(list) ? list : Array.isArray(list?.domains) ? list.domains : [];
+  const by = new Map();
+  for (const d of items) {
+    const dest = d?.serviceDestination ?? d?.destination ?? d?.service ?? {};
+    const project = dest.projectName ?? d?.projectName; const name = dest.serviceName ?? d?.serviceName;
+    if (!d?.host || !project || !name) continue;
+    const k = `${project}/${name}`; if (!by.has(k)) by.set(k, []); by.get(k).push(d);
+  }
+  for (const p of tree.projects) for (const sv of p.services) {
+    const own = by.get(`${p.name}/${sv.name}`); if (!own?.length) continue;
+    const main = own.find((d) => sv.primaryDomainId && String(d.id ?? d._id) === sv.primaryDomainId) ?? own[0];
+    sv.domain = main.host; sv.domains = own.map((d) => d.host);
+  }
+  return tree;
 }
 
 /** Снимает обёртки вида {json: …} / {data: …} / {result: …}. */
@@ -355,12 +377,14 @@ export async function inspectService(client, { type, project, name }) {
   assertType(type);
   const ref = { projectName: project, serviceName: name };
   const settle = (p) => p.then((value) => ({ value }), (e) => ({ error: e.message }));
-  const [service, domains, ports, mounts] = await Promise.all([
+  const [service, domains, ports, mounts, primary] = await Promise.all([
     settle(client.query(svcProc(type, 'inspectService'), ref)),
     settle(client.query('domains.listDomains', ref)),
     // у Compose порты и тома описаны в compose-файле, отдельных процедур панель для них не принимает («Invalid service type»)
     type === 'compose' ? Promise.resolve({ value: [] }) : settle(client.query('ports.listPorts', { ...ref, type })),
     type === 'compose' ? Promise.resolve({ value: [] }) : settle(client.query('mounts.listMounts', { ...ref, type })),
+    // основной домен бывает только у приложений и compose; для баз панель отвечает «Wrong service type»
+    ['app', 'compose'].includes(type) ? settle(client.query('domains.getPrimaryDomain', ref)) : Promise.resolve({ value: null }),
   ]);
   if (service.error) throw new PanelError(service.error);
   return {
@@ -368,6 +392,7 @@ export async function inspectService(client, { type, project, name }) {
     domains: domains.value ?? [],
     ports: ports.value ?? [],
     mounts: mounts.value ?? [],
+    primaryDomainId: primary.value?.id ?? primary.value?._id ?? null,
     warnings: [domains, ports, mounts].filter((x) => x.error).map((x) => x.error),
   };
 }
@@ -455,6 +480,7 @@ export const SERVICE_OPS = {
     } else body.port = port;
     return c.mutate('domains.updateDomain', body);
   },
+  domainPrimary: (c, _r, _s, p) => c.mutate('domains.setPrimaryDomain', { id: String(p.id ?? '') }),
   domainDelete: (c, r, _s, p) => c.mutate('domains.deleteDomain', { ...r, id: p.id, domainId: p.id }),
   portAdd: (c, r, s, p) => c.mutate('ports.createPort', {
     ...r, type: s.type, published: num(p.published), target: num(p.target), publishedPort: num(p.published), targetPort: num(p.target),
@@ -472,7 +498,7 @@ export const SERVICE_OPS = {
     return firstOk(c, 'mounts.updateMount', mountVariants(r, s, p, o, id));
   },
   mountDelete: (c, r, s, p) => c.mutate('mounts.deleteMount', { ...r, type: s.type, id: p.id, mountId: p.id }),
-  notes: (c, r, _s, p) => c.mutate('common.setNotes', { ...r, notes: String(p.notes ?? '') }),
+  notes: (c, r, _s, p) => c.mutate('services.common.setNotes', { ...r, notes: String(p.notes ?? '') }),
 };
 
 export function runServiceOp(client, op, { type, project, name }, params = {}) {
