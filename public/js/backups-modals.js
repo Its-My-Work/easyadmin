@@ -193,6 +193,9 @@ export async function settingsModal(reload, { focusPassword = false } = {}) {
   let d; try { d = await get('/api/backups'); } catch (e) { return toast(e.message, 'error'); }
   const s = d.settings; const f = { enabled: s.enabled, every: s.every, hour: s.hour, where: s.where, keep: s.data.keep, dir: s.data.dir, consistency: s.data.consistency, minFreeMb: s.data.minFreeMb, s3: { ...s.s3 }, password: '' };
   const body = h('div', { class: 'stack' }); let modalHandle;
+  const s3Ready = () => !!(f.s3.endpoint && f.s3.bucket && f.s3.accessKey && (s.s3.hasSecret || f.s3.secretKey));
+  let s3Open = !s3Ready(); let advOpen = false;
+  const s3Summary = () => { let host = f.s3.endpoint; try { host = new URL(f.s3.endpoint).host; } catch {} return s3Ready() ? `S3 · ${f.s3.bucket}${f.s3.prefix ? '/' + f.s3.prefix.replace(/\/$/, '') : ''} · ${host}` : t('S3 не настроен — заполните доступы'); };
   const paint = () => clear(body).append(
     h('section', { class: 'stack-sm' }, h('div', { class: 'inline' }, h('h4', null, 'Когда'), h('span', { class: 'spacer' }), h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.enabled, onchange: (e) => { f.enabled = e.target.checked; } }), 'Копировать по расписанию')),
       h('div', { class: 'grid-2' }, field('Как часто', seg(f.every, [['daily', 'Каждый день'], ['weekly', 'Раз в неделю']], (v) => { f.every = v; paint(); })),
@@ -200,16 +203,17 @@ export async function settingsModal(reload, { focusPassword = false } = {}) {
     h('section', { class: 'stack-sm' }, h('h4', null, 'Куда'),
       seg(f.where, [['server', 'На сервере'], ['s3', 'В S3']], (v) => { f.where = v; paint(); }),
       h('div', { class: 'small muted' }, f.where === 'server' ? 'Копии баз и томов лежат на сервере своей панели, копии настроек EasyAdmin — в его папке data. Это не спасает от потери самого сервера.' : 'Все копии загружаются в S3-хранилище (серверы панелей грузят сами по временным ссылкам, ключи на них не передаются).'),
-      f.where === 's3' ? h('div', { class: 'stack' },
+      f.where === 's3' ? h('details', { class: 'more', open: s3Open, ontoggle: (e) => { if (s3Open === e.target.open) return; s3Open = e.target.open; if (!s3Open) paint(); } }, h('summary', null, s3Summary(), h('span', { class: 'spacer' }), h('span', { class: 'small muted' }, s3Open ? '' : 'Нажмите, чтобы изменить')), h('div', { class: 'stack', style: { paddingTop: '8px' } },
         h('div', { class: 'grid-2' }, field('Адрес (endpoint)', h('input', { class: 'input mono', value: f.s3.endpoint, placeholder: 'https://s3.example.com', oninput: (e) => { f.s3.endpoint = e.target.value; } })), field('Регион', h('input', { class: 'input mono', value: f.s3.region, oninput: (e) => { f.s3.region = e.target.value; } }))),
         h('div', { class: 'grid-2' }, field('Бакет', h('input', { class: 'input mono', value: f.s3.bucket, oninput: (e) => { f.s3.bucket = e.target.value; } })), field('Папка в бакете', h('input', { class: 'input mono', value: f.s3.prefix, oninput: (e) => { f.s3.prefix = e.target.value; } }))),
         h('div', { class: 'grid-2' }, field('Access key', h('input', { class: 'input mono', value: f.s3.accessKey, autocomplete: 'off', oninput: (e) => { f.s3.accessKey = e.target.value; } })), field('Secret key', h('input', { class: 'input mono', type: 'password', autocomplete: 'new-password', placeholder: s.s3.hasSecret ? t('задан — оставьте пустым, чтобы не менять') : '', oninput: (e) => { f.s3.secretKey = e.target.value; } }))),
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.s3.pathStyle, onchange: (e) => { f.s3.pathStyle = e.target.checked; } }), 'Адресация path-style (MinIO, большинство совместимых хранилищ)')) : null,
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.s3.pathStyle, onchange: (e) => { f.s3.pathStyle = e.target.checked; } }), 'Адресация path-style (MinIO, большинство совместимых хранилищ)'),
+      )) : null,
       field('Сколько копий хранить', h('input', { class: 'input', type: 'number', min: 1, max: 30, value: f.keep, oninput: (e) => { f.keep = Number(e.target.value); } }), 'Столько последних копий остаётся у каждого сервиса и у самого EasyAdmin.')),
     h('section', { class: 'stack-sm' }, h('h4', null, 'Пароль копий'),
       field('Пароль', h('input', { class: 'input', id: 'bk-pass', type: 'password', autocomplete: 'new-password', placeholder: s.hasPassword ? t('задан — оставьте пустым, чтобы не менять') : t('не короче 8 символов'), oninput: (e) => { f.password = e.target.value; } }),
         'Шифрует ВСЕ копии EasyAdmin: настройки, конфигурации панелей, базы и тома. Без него копии не открыть, восстановить пароль нельзя — запишите его отдельно.')),
-    h('details', { class: 'more' }, h('summary', null, 'Дополнительно'), h('div', { class: 'stack', style: { paddingTop: '8px' } },
+    h('details', { class: 'more', open: advOpen, ontoggle: (e) => { advOpen = e.target.open; } }, h('summary', null, 'Дополнительно'), h('div', { class: 'stack', style: { paddingTop: '8px' } },
       f.where === 'server' ? field('Папка на сервере панели', h('input', { class: 'input mono', value: f.dir, oninput: (e) => { f.dir = e.target.value; } }), 'Сюда серверы панелей кладут копии своих баз и томов.') : null,
       h('div', null, h('div', { class: 'small muted' }, 'Тома во время копирования'), seg(f.consistency, [['none', 'Как есть'], ['pause', 'Приостановить'], ['stop', 'Остановить']], (v) => { f.consistency = v; paint(); }),
         h('div', { class: 'small muted' }, f.consistency === 'none' ? 'Копия «на живую»: быстро, но файлы могут измениться во время копирования.' : f.consistency === 'pause' ? 'Сервис замораживается (docker pause) на время копирования тома и затем продолжает работу.' : 'Сервис останавливается на время копирования тома и затем запускается снова — надёжнее, но с простоем.')),
