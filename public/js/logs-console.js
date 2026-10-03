@@ -19,9 +19,11 @@ export function logsView({ s, ref, base, state }) {
   const shown = (it) => (!tagFilter || it.tag === tagFilter) && (!filter || it.text.toLowerCase().includes(filter));
   const row = (it) => h('div', { class: `ll ${cls(it.text)}` }, it.tag ? h('span', { class: `ltag h${tagHue(it.tag)}` }, it.tag) : null, it.text);
   const renderTags = () => {
-    tagBar.hidden = tags.size < 2;
+    // хвост лога может начаться посреди строки («…mander-1 | …») — обрубок имени, совпадающий с концом другого тега, не показываем
+    const real = [...tags].filter((a) => ![...tags].some((b) => b !== a && b.endsWith(a)));
+    tagBar.hidden = real.length < 2;
     tagBar.replaceChildren(h('button', { class: `chip-btn ${tagFilter ? '' : 'on'}`, onclick: () => { tagFilter = null; renderTags(); redraw(); } }, 'Все'),
-      ...[...tags].sort().map((t) => h('button', { class: `chip-btn ${tagFilter === t ? 'on' : ''}`, onclick: () => { tagFilter = t; renderTags(); redraw(); } }, t)));
+      ...real.sort().map((t) => h('button', { class: `chip-btn ${tagFilter === t ? 'on' : ''}`, onclick: () => { tagFilter = t; renderTags(); redraw(); } }, t)));
   };
   const stick = () => { if (follow) view.scrollTop = view.scrollHeight; };
   // строки копятся и выводятся одним пакетом за кадр: хвост лога приходит тысячами строк, а поштучный вывод

@@ -244,7 +244,7 @@ export function openService(s) {
     return h('div', { class: 'stack' }, sectionHead('Домены', () => domainForm(null, svc), 'Добавить домен'),
       list.length ? h('div', { class: 'list' }, list.map((x) => {
         const v = domainOf(x, svcPort);
-        const canPrimary = ['app', 'compose'].includes(s.type) && list.length > 1;
+        const canPrimary = ['app', 'compose'].includes(s.type);
         const isPrimary = canPrimary && (d.primaryDomainId ? d.primaryDomainId === v.id : x === list[0]);
         return h('div', { class: 'list-item' },
           h('div', null, h('a', { class: 'link-row', href: `${v.https === false ? 'http' : 'https'}://${v.host}${v.path && v.path !== '/' ? v.path : ''}`, target: '_blank', rel: 'noopener' }, h('b', null, v.host), icon('external', 12), isPrimary ? h('span', { class: 'badge ok ml' }, t('Основной')) : null),
