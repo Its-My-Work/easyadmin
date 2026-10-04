@@ -437,3 +437,38 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .th-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; white-space: nowrap; }
 .th-sort:hover { color: var(--text, inherit); text-decoration: underline; }
 .sort-mark { opacity: .7; font-size: .8em; }
+
+/* ===== мобильная версия ===== */
+/* окно по центру сетки: без minmax(0,1fr) колонка растёт по самому широкому содержимому и окно выезжает за экран */
+.backdrop { grid-template-columns: minmax(0, 1fr); } .backdrop > .modal, .backdrop > .palette { justify-self: center; }
+.modal-body { min-width: 0; overflow-wrap: anywhere; } .modal-body .hint, .modal-body .muted { overflow-wrap: anywhere; }
+.lang-btn .icon { flex: none; }
+@media (max-width: 700px) {
+  /* шапка: поиск — иконка, язык — глобус, ряд не переносится и не выезжает */
+  .topbar { gap: 6px; padding: 8px 10px; }
+  .topbar > * { min-width: 0; } .topbar .btn.icon, .topbar .search-trigger, .topbar .lang-btn, .topbar .user-chip, .topbar .menu-btn { flex: none; }
+  .search-trigger { width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 9px; }
+  .search-trigger span, .search-trigger kbd { display: none; }
+  .lang-btn .lang-txt { display: none; } .topbar .lang-btn { padding: 0; width: 34px; height: 34px; justify-content: center; }
+  .top-sep { display: none; } .server-clock { padding: 4px 8px; gap: 4px; flex: 0 1 auto; }
+  .view { padding: 12px; } .page-head { gap: 8px; } .page-head h1 { font-size: 20px; }
+  .page-head .inline { width: 100%; } .page-head .inline > .btn { flex: 1 1 auto; justify-content: center; }
+  /* окна — листом снизу на всю ширину */
+  .backdrop { padding: 0; align-items: end; } .backdrop.top { align-items: start; padding: 8px; }
+  .modal, .modal.wide { width: 100%; max-height: 94dvh; border-radius: 16px 16px 0 0; }
+  .modal-head { padding: 14px 14px 4px; } .modal-body { padding: 8px 14px 14px; } .modal-foot { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); flex-wrap: wrap; border-radius: 0; } .modal-foot .btn { flex: 1 1 auto; justify-content: center; }
+  .seg, .seg-btn { max-width: 100%; } .seg-btn { white-space: normal; line-height: 1.25; padding: 8px 10px; text-align: center; }
+  .more { padding: 0 10px; } .list-item { flex-wrap: wrap; } .list-item > .spacer { display: none; } .list-item .mono { overflow-wrap: anywhere; }
+  .audit-bar .input-icon { flex: 1 1 100%; min-width: 0; } .audit-bar .spacer { display: none; } .callout { padding: 10px; }
+  .kpis.slim { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* раздел «Бэкапы»: строка таблицы — карточка */
+  .tbl.compact thead { display: none; } .tbl.compact, .tbl.compact tbody { display: block; }
+  .tbl.compact tr.row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'sw name st' '. last last' '. act act'; gap: 4px 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .tbl.compact tr.row:last-child { border-bottom: 0; } .tbl.compact tr.row td { display: block; padding: 0; border: 0; min-width: 0; background: none !important; }
+  .tbl.compact tr.grp { display: block; border-bottom: 1px solid var(--border); } .tbl.compact tr.grp td { display: block; }
+  .tbl.compact .bk-sw { grid-area: sw; } .tbl.compact .bk-name { grid-area: name; white-space: normal; overflow-wrap: anywhere; } .tbl.compact .bk-status { grid-area: st; } .tbl.compact .bk-last { grid-area: last; font-size: 12.5px; } .tbl.compact .bk-act { grid-area: act; width: auto; }
+  .tbl.compact .bk-last .cell-line { white-space: normal; overflow-wrap: anywhere; }
+  .stack, .stack-sm, .page { grid-template-columns: minmax(0, 1fr); }
+  .card.flush { overflow-x: auto; } .diff-row, .diff-row .inline { min-width: 0; } .tagp { white-space: normal; overflow-wrap: anywhere; }
+  .audit-bar .input-icon { width: 100%; }
+}

@@ -67,10 +67,10 @@ export function backupsPage() {
         if (grouped && r.panel.panelId !== prev) { prev = r.panel.panelId; out.push(h('tr', { class: 'grp' }, h('td', { colspan: 5 }, h('div', { class: 'inline' }, panelChip({ name: r.panel.panelName, color: r.panel.color }), h('span', { class: 'muted small' }, `${rows.filter((x) => x.panel.panelId === prev).length}`))))); }
         const svc = { panelId: r.panel.panelId, project: r.project, name: r.name, type: r.type, panelName: r.panel.panelName };
         out.push(h('tr', { class: `row ${r.included ? '' : 'dim'}`, tabindex: 0, onclick: () => copiesModal(svc) },
-          h('td', { class: 'w-check', onclick: (e) => e.stopPropagation() }, admin ? switchBtn(r.included || ov.mode === 'all', r.included ? t('Не копировать этот сервис') : t('Копировать этот сервис'), () => include(ov, r, !r.included), ov.mode === 'all') : null),
-          h('td', { class: 'svc-cell' }, h('b', null, r.name), h('span', { class: 'muted small' }, `  ${r.project}`), grouped ? null : h('span', { class: 'ml' }, panelChip({ name: r.panel.panelName, color: r.panel.color })), h('span', { class: 'ml hide-sm' }, typeChip(r.type))),
-          h('td', null, lastCell(r)), h('td', null, badge(r.status)),
-          h('td', { class: 'w-actions', onclick: (e) => e.stopPropagation() }, admin ? h('div', { class: 'inline nowrap' },
+          h('td', { class: 'w-check bk-sw', onclick: (e) => e.stopPropagation() }, admin ? switchBtn(r.included || ov.mode === 'all', r.included ? t('Не копировать этот сервис') : t('Копировать этот сервис'), () => include(ov, r, !r.included), ov.mode === 'all') : null),
+          h('td', { class: 'svc-cell bk-name' }, h('b', null, r.name), h('span', { class: 'muted small' }, `  ${r.project}`), grouped ? null : h('span', { class: 'ml' }, panelChip({ name: r.panel.panelName, color: r.panel.color })), h('span', { class: 'ml hide-sm' }, typeChip(r.type))),
+          h('td', { class: 'bk-last' }, lastCell(r)), h('td', { class: 'bk-status' }, badge(r.status)),
+          h('td', { class: 'w-actions bk-act', onclick: (e) => e.stopPropagation() }, admin ? h('div', { class: 'inline nowrap' },
             h('button', { class: 'btn icon sm', title: t('Копировать этот сервис сейчас'), 'aria-label': t('Копировать этот сервис сейчас'), disabled: !r.included || ov.running, onclick: async () => { if (await runCopy(svc)) load(true); } }, icon('play', 13)),
             h('button', { class: 'btn icon sm', title: t('Копии и восстановление'), 'aria-label': t('Копии и восстановление'), onclick: () => copiesModal(svc) }, icon('clock', 14))) : null)));
       }
