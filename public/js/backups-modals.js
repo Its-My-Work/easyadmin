@@ -2,6 +2,7 @@ import { del, get, post, put } from './api.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
 import { store } from './store.js';
+import { isArchive, restoreWizard } from './restore-wizard.js';
 
 /** Окна и кирпичики раздела «Бэкапы» и вкладки «Бэкапы» сервиса. Резервные копии EasyAdmin: что копировать (система, панели — все или выбранные), расписание, хранилище, пароль, список копий, проверка и восстановление. */
 export const size = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`);
@@ -167,7 +168,8 @@ export function copiesList({ panelId, project, name }) {
       if (!files.length) return box.append(h('p', { class: 'muted small' }, 'Копий этого сервиса пока нет.'));
       box.append(...files.map((x) => (x.error ? h('div', { class: 'callout err compact' }, icon('alert', 14), x.error)
         : h('div', { class: 'list-item' }, h('div', null, h('b', { class: 'mono small' }, x.name), h('div', { class: 'small muted' }, `${fmtTime(x.ts)} · ${size(x.size)}`)), h('span', { class: 'spacer' }),
-          h('button', { class: 'btn sm', onclick: () => hintModal(x.panelId, x.name) }, icon('rotate', 13), 'Как восстановить')))));
+          isArchive(x.name) ? h('button', { class: 'btn sm primary', onclick: () => restoreWizard({ panelId: x.panelId, panelName: x.panel, name: x.name }) }, icon('rotate', 13), 'Восстановить') : null,
+          h('button', { class: 'btn sm', onclick: () => hintModal(x.panelId, x.name) }, icon('terminal', 13), 'Как восстановить')))));
     } catch (e) { clear(box).append(h('div', { class: 'callout err compact' }, icon('alert', 14), e.message)); }
   };
   load();

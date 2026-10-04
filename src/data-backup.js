@@ -121,6 +121,24 @@ export async function measureVolumes(c, row, items, host = runOnHost) {
   return sizes;
 }
 
+/** Заморозка владельца тома на время копирования или восстановления: pause — docker pause, stop — остановка (swarm: scale до 0); возврат гарантирован trap. С SELF_FAIL=1 попытка заморозить сам EasyAdmin — ошибка (код 9). */
+export const HOLD_LINES = [
+    'hold_end() { local h; for h in "${HOLDS[@]}"; do case "$h" in pause:*) docker unpause ${h#pause:} >/dev/null 2>&1;; start:*) docker start ${h#start:} >/dev/null 2>&1;; scale:*) docker service scale -d "${h#scale:}" >/dev/null 2>&1;; esac; done; HOLDS=(); }',
+    // заморозка владельца тома на время копирования: pause — docker pause, stop — остановка (swarm: scale до 0); возврат гарантирован trap
+    'hold_start() {',
+    '  local spec=$1 ids svc r n; if [ "$HOLDMODE" = none ] || [ -z "$spec" ] || [ "$spec" = - ]; then return 0; fi',
+    '  case "$spec" in',
+    '    swarm:*) svc=${spec#swarm:}',
+    '      if [ -n "$SELFSVC" ] && [ "$svc" = "$SELFSVC" ]; then printf \'WARN|%s|EA_SELF\\n\' "$LABEL" >> "$ST"; [ "${SELF_FAIL:-0}" = 1 ] && return 9; return 0; fi',
+    '      if [ "$HOLDMODE" = pause ]; then ids=$(docker ps -q --filter "name=^${svc}\\."); if [ -n "$ids" ]; then docker pause $ids >/dev/null 2>&1 && HOLDS+=("pause:$ids"); fi',
+    '      else r=$(docker service inspect -f \'{{.Spec.Mode.Replicated.Replicas}}\' "$svc" 2>/dev/null); if [ -n "$r" ] && [ "$r" -gt 0 ] 2>/dev/null; then docker service scale -d "$svc=0" >/dev/null 2>&1 && HOLDS+=("scale:$svc=$r"); for n in $(seq 1 60); do [ -z "$(docker ps -q --filter "name=^${svc}\\.")" ] && break; sleep 1; done; fi; fi;;',
+    '    ids:*) eval "ids=\\$(docker ps -q ${spec#ids:})"',
+    '      if [ -n "$SELFID" ]; then ids=$(printf \'%s\\n\' $ids | grep -v "^$SELFID" | tr \'\\n\' \' \'); fi',
+    '      if [ -n "$ids" ]; then if [ "$HOLDMODE" = pause ]; then docker pause $ids >/dev/null 2>&1 && HOLDS+=("pause:$ids"); else docker stop -t 30 $ids >/dev/null 2>&1; HOLDS+=("start:$ids"); fi; fi;;',
+    '  esac',
+    '}',
+];
+
 /** Скрипт для сервера панели (bash). Один элемент — одна запись в файле статуса: OK|метка|файл|байт или FAIL|метка|код|аргумент. */
 export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, consistency = 'none', mpMin = 5 * GIB - 1, partMb = 1024, password = '', selfId = '' }) {
   const lines = [
@@ -131,26 +149,13 @@ export function buildScript({ runId, baseDir, dest, keep, minFreeKb, items, cons
     'find "$LOGD" -type f -mtime +7 -delete 2>/dev/null', // следы старых запусков
     // сам EasyAdmin (контейнер с этим идентификатором) нельзя останавливать и замораживать: он сам ведёт копирование
     /^[A-Za-z0-9_.-]{1,64}$/.test(selfId) ? `SELFID=${shq(selfId)}; SELFSVC=$(docker inspect -f '{{index .Config.Labels "com.docker.swarm.service.name"}}' "$SELFID" 2>/dev/null)` : 'SELFID=""; SELFSVC=""',
-    'hold_end() { local h; for h in "${HOLDS[@]}"; do case "$h" in pause:*) docker unpause ${h#pause:} >/dev/null 2>&1;; start:*) docker start ${h#start:} >/dev/null 2>&1;; scale:*) docker service scale -d "${h#scale:}" >/dev/null 2>&1;; esac; done; HOLDS=(); }',
+    ...HOLD_LINES,
     'trap \'hold_end; rm -f "$LOGD/$RUN.pw" "$0"; rm -rf "${TMPD:?}/${RUN:?}".*\' EXIT', // пароль и сам скрипт (в нём пароль) не остаются на сервере
     password ? `PASSF="$LOGD/$RUN.pw"; printf %s ${shq(Buffer.from(password).toString('base64'))} | base64 -d > "$PASSF"` : '',
     'echo START > "$ST"',
     'fail() { printf \'FAIL|%s|%s|%s\\n\' "$1" "$2" "$3" >> "$ST"; }',
     'avail=$(df -Pk "$BASE" | awk \'NR==2{print $4}\')',
     'if [ "${avail:-0}" -lt "$MINFREE" ]; then fail "*" NOSPACE "$((avail/1024))"; echo DONE >> "$ST"; exit 1; fi',
-    // заморозка владельца тома на время копирования: pause — docker pause, stop — остановка (swarm: scale до 0); возврат гарантирован trap
-    'hold_start() {',
-    '  local spec=$1 ids svc r n; if [ "$HOLDMODE" = none ] || [ -z "$spec" ] || [ "$spec" = - ]; then return 0; fi',
-    '  case "$spec" in',
-    '    swarm:*) svc=${spec#swarm:}',
-    '      if [ -n "$SELFSVC" ] && [ "$svc" = "$SELFSVC" ]; then printf \'WARN|%s|EA_SELF\\n\' "$LABEL" >> "$ST"; return 0; fi',
-    '      if [ "$HOLDMODE" = pause ]; then ids=$(docker ps -q --filter "name=^${svc}\\."); if [ -n "$ids" ]; then docker pause $ids >/dev/null 2>&1 && HOLDS+=("pause:$ids"); fi',
-    '      else r=$(docker service inspect -f \'{{.Spec.Mode.Replicated.Replicas}}\' "$svc" 2>/dev/null); if [ -n "$r" ] && [ "$r" -gt 0 ] 2>/dev/null; then docker service scale -d "$svc=0" >/dev/null 2>&1 && HOLDS+=("scale:$svc=$r"); for n in $(seq 1 60); do [ -z "$(docker ps -q --filter "name=^${svc}\\.")" ] && break; sleep 1; done; fi; fi;;',
-    '    ids:*) eval "ids=\\$(docker ps -q ${spec#ids:})"',
-    '      if [ -n "$SELFID" ]; then ids=$(printf \'%s\\n\' $ids | grep -v "^$SELFID" | tr \'\\n\' \' \'); fi',
-    '      if [ -n "$ids" ]; then if [ "$HOLDMODE" = pause ]; then docker pause $ids >/dev/null 2>&1 && HOLDS+=("pause:$ids"); else docker stop -t 30 $ids >/dev/null 2>&1; HOLDS+=("start:$ids"); fi; fi;;',
-    '  esac',
-    '}',
     'upload_mp() { # args: file size spec; spec lines: 1 complete URL, 2 abort URL, then part URLs; parts of PS bytes',
     '  local tmp=$1 size=$2 spec=$3 total nparts n url skip len hdr="$TMPD/$RUN.h" etags="" etag',
     '  total=$(( (size + PS - 1) / PS )); nparts=$(( $(wc -l < "$spec") - 2 )); [ "$total" -le "$nparts" ] || return 11',
@@ -252,7 +257,7 @@ export function parseStatus(text) {
 }
 
 /** Доставка скрипта на сервер (в консоли строка ограничена, поэтому — сжатым и порциями) и запуск отдельным процессом. */
-export async function deployJob(c, row, { baseDir, runId, script }, host = runOnHost) {
+export async function deployJob(c, row, { baseDir, runId, script, unit = 'ea-data-backup' }, host = runOnHost) {
   const b64 = zlib.gzipSync(Buffer.from(script)).toString('base64');
   const dir = `${baseDir}/.runs`; const f = `${dir}/${runId}`;
   const chunks = b64.match(/.{1,1400}/g) ?? [];
@@ -261,11 +266,11 @@ export async function deployJob(c, row, { baseDir, runId, script }, host = runOn
     if (!r.ok) throw new Error(`Не удалось записать скрипт на сервер: ${r.output.slice(-200)}`);
   }
   const start = `umask 077; base64 -d ${shq(`${f}.b64`)} | gunzip > ${shq(`${f}.sh`)} && rm -f ${shq(`${f}.b64`)} && `
-    + `if systemctl is-active --quiet ea-data-backup 2>/dev/null; then echo EA_RUNNING; false; `
-    + `elif command -v systemd-run >/dev/null 2>&1 && systemd-run --unit=ea-data-backup --collect --description='EasyAdmin: data backup' bash ${shq(`${f}.sh`)} >/dev/null 2>&1; then echo EA_STARTED; `
+    + `if systemctl is-active --quiet ea-data-backup 2>/dev/null || systemctl is-active --quiet ea-data-restore 2>/dev/null; then echo EA_RUNNING; false; `
+    + `elif command -v systemd-run >/dev/null 2>&1 && systemd-run --unit=${unit} --collect --description='EasyAdmin: ${unit}' bash ${shq(`${f}.sh`)} >/dev/null 2>&1; then echo EA_STARTED; `
     + `else (nohup bash ${shq(`${f}.sh`)} >/dev/null 2>&1 &) ; echo EA_STARTED; fi`;
   const r = await host(c, row, start, { timeoutMs: 25_000 });
-  if (/EA_RUNNING/.test(r.output)) throw new Error('На этом сервере уже идёт копирование данных');
+  if (/EA_RUNNING/.test(r.output)) throw new Error('На этом сервере уже идёт копирование или восстановление данных');
   if (!r.ok || !/EA_STARTED/.test(r.output)) throw new Error(`Не удалось запустить копирование на сервере: ${r.output.slice(-200)}`);
 }
 

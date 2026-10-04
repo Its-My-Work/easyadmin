@@ -8,6 +8,7 @@ import { HttpError, RawResponse } from './http.js';
 import { runOnHost } from './host-exec.js';
 import { inspectService, normalizeTree } from './easypanel.js';
 import { applyConfig, configFromService } from './templates.js';
+import { createRestorer } from './restore-runner.js';
 import { CONSISTENCY, DEFAULT_DIR, DISCOVER_CMD, buildScript, cleanupJob, deployJob, groupKey, jobVolumeBytes, listHostFiles, measureVolumes, needsDiscovery, parseDiscovery, readStatus, resolveTargets, restoreHint, slugOf, stampOf, validDir } from './data-backup.js';
 
 /**
@@ -491,6 +492,8 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     return { ...restoreHint(name, where), encrypted: name.endsWith('.enc') };
   }
 
+  const restorer = createRestorer({ load, getRaw, setRaw, manager, hostFn, s3Of, now, audit, pollMs: Math.min(dataPollMs, 3000), busy: () => dataBusy });
+
   const dayKey = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
   async function tick(ts = now()) {
     const c = load(); if (!c.enabled || !c.password || busy || (!c.system && c.panels === 'none')) return null;
@@ -516,7 +519,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     const svc = svcResults(); if (svc[a]) { svc[b] = svc[a]; delete svc[a]; setRaw('backup_data_svc', JSON.stringify(svc)); }
   }
 
-  const start = () => { setTimeout(() => resumeRuns().catch(() => {}), 15_000).unref?.(); timer = setInterval(() => { tick().catch(() => {}); tickData().catch(() => {}); }, 60_000); timer.unref(); };
+  const start = () => { setTimeout(() => { resumeRuns().catch(() => {}); restorer.resume(); }, 15_000).unref?.(); timer = setInterval(() => { tick().catch(() => {}); tickData().catch(() => {}); }, 60_000); timer.unref(); };
   const stop = () => clearInterval(timer);
 
   /** Конфигурация одной панели из копии (для скачивания и восстановления сервисов). */
@@ -526,7 +529,7 @@ export function createBackups({ db, key, config, alerts, manager, audit, fetchIm
     if (!p) throw new Error('Этой панели нет в копии');
     return p;
   }
-  return { view, update, run, panelFromBackup, runData, dataStatus, listData, dataHint, tickData, repoint, svcResults, lastData, dataLog, resumeRuns, rotateS3, list, download, remove, verify, restore, tick, start, stop, load };
+  return { view, update, run, panelFromBackup, restorer, runData, dataStatus, listData, dataHint, tickData, repoint, svcResults, lastData, dataLog, resumeRuns, rotateS3, list, download, remove, verify, restore, tick, start, stop, load };
 }
 
 export function backupRoutes(d) {
@@ -553,6 +556,19 @@ export function backupRoutes(d) {
     ['GET', '/api/backups/data/status', w(() => backups.dataStatus()), { admin: true }],
     ['GET', '/api/backups/data/log', w(() => ({ runs: backups.dataLog() })), { admin: true }],
     ['GET', '/api/backups/data/files', w(async (ctx) => { const q = ctx.url.searchParams; return { files: await backups.listData({ panelId: q.get('panel'), project: q.get('project'), service: q.get('service') }) }; }), { admin: true }],
+    // восстановление данных баз и томов: просмотр архива → сопоставление с целью → запуск → ход (задание опрашивается)
+    ['POST', '/api/backups/data/inspect', w((ctx) => backups.restorer.inspect({ panelId: ctx.body?.panelId, name: String(ctx.body?.name ?? ''), password: ctx.body?.password })), { admin: true }],
+    ['GET', '/api/backups/data/job', w((ctx) => backups.restorer.get(ctx.url.searchParams.get('id')) ?? (() => { throw new HttpError(404, 'Задание не найдено'); })()), { admin: true }],
+    ['GET', '/api/backups/data/restores', w(() => ({ jobs: backups.restorer.history() })), { admin: true }],
+    ['POST', '/api/backups/data/restore-plan', w((ctx) => backups.restorer.plan({ panelId: ctx.body?.panelId, name: String(ctx.body?.name ?? ''), members: ctx.body?.members ?? [], target: ctx.body?.target })), { admin: true }],
+    ['POST', '/api/backups/data/restore', w(async (ctx) => {
+      const b = ctx.body ?? {}; need(b.confirm === true, 'Подтвердите восстановление');
+      const label = `${b.target?.create ? `${b.target.create.project}/${b.target.create.service ?? b.target.create.name}` : `${b.target?.project ?? ''}/${b.target?.service ?? ''}`}`;
+      try {
+        const r = await backups.restorer.start({ panelId: b.panelId, name: String(b.name ?? ''), password: b.password, target: b.target, members: b.members, mode: b.mode, snapshot: b.snapshot, by: ctx.user?.username });
+        audit(ctx, { action: 'backup.restore_data', panel: manager.getRow(Number(b.target?.panelId ?? b.panelId)) ?? undefined, target: r.target, detail: `${b.name} · ${b.mode === 'merge' ? 'поверх имеющегося' : 'с заменой'}${b.snapshot === false ? ' · без страховочной копии' : ''}` }); return r;
+      } catch (e) { audit(ctx, { action: 'backup.restore_data', target: label, ok: false, detail: e.message }); throw e; }
+    }), { admin: true }],
     ['POST', '/api/backups/data/hint', w((ctx) => backups.dataHint(ctx.body?.panelId, String(ctx.body?.name ?? ''))), { admin: true }],
     ['GET', '/api/backups/download', w(async (ctx) => {
       const n = name(ctx); const buf = await backups.download(n); audit(ctx, { action: 'backup.download', target: n });
