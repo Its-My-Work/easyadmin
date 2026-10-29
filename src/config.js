@@ -35,6 +35,9 @@ export function loadConfig(env = process.env) {
     // паузы перед проверками нового сертификата после перевыпуска, мс
     reissueDelaysMs: [2500, 4000, 4000],
     diskAlertPct: int(env.EASYADMIN_DISK_ALERT_PCT, 90),
+    // предел размера слепка переезда (ГБ) и срок жизни одноразовой ссылки (часов)
+    migrationMaxBytes: int(env.EASYADMIN_MIGRATION_MAX_GB, 100) * 1024 ** 3,
+    migrationTtlMs: int(env.EASYADMIN_MIGRATION_TTL_HOURS, 24) * 3600_000,
     metricsToken: env.EASYADMIN_METRICS_TOKEN || '',
     requestTimeoutMs: int(env.EASYADMIN_TIMEOUT_MS, 15_000),
   };

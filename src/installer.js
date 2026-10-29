@@ -16,7 +16,7 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const PRECHECK = [
+export const PRECHECK = [
   '. /etc/os-release 2>/dev/null',
   'echo "uid=$(id -u)"; echo "os=${ID:-unknown}"; echo "osver=${VERSION_ID:-0}"; echo "arch=$(uname -m)"',
   'echo "mem=$(awk \'/MemTotal/ {print int($2/1024)}\' /proc/meminfo)"; echo "disk=$(df -Pk / | awk \'NR==2 {print int($4/1048576)}\')"',
@@ -59,7 +59,7 @@ export function evaluate(info) {
   add('internet', 'Доступ в интернет', info.internet === 'yes' ? 'ok' : 'error', info.internet === 'yes' ? 'есть' : 'сервер не достучался до get.easypanel.io');
   return c;
 }
-const parseKv = (text) => Object.fromEntries(text.split('\n').map((l) => /^([a-z0-9]+)=(.*)$/.exec(l.trim())).filter(Boolean).map((m) => [m[1], m[2]]));
+export const parseKv = (text) => Object.fromEntries(text.split('\n').map((l) => /^([a-z0-9]+)=(.*)$/.exec(l.trim())).filter(Boolean).map((m) => [m[1], m[2]]));
 const genPassword = () => { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; return Array.from(crypto.randomBytes(20), (b) => a[b % a.length]).join(''); };
 
 export function installRoutes(d) {

@@ -61,6 +61,16 @@ export function openDb(dataDir) {
       log TEXT,
       finished_at INTEGER
     );
+    CREATE TABLE IF NOT EXISTS migrations (
+      id TEXT PRIMARY KEY,
+      ts INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      token_hash TEXT,
+      upload_hash TEXT,
+      token_enc TEXT,
+      data TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS migrations_token ON migrations(token_hash);
     CREATE TABLE IF NOT EXISTS panel_config_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,

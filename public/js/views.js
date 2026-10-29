@@ -245,7 +245,7 @@ export function servicesPage() {
   const draw = () => {
     const rows = allServices().filter((s) => matches(s, allFilter));
     clear(wrap).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl svc-tbl' },
-      h('thead', null, h('tr', null, h('th', { class: 'w-check' }, selectAll(rows)), h('th', { class: 'c-name' }, 'Сервис'), h('th', { class: 'hide-sm c-panel' }, 'Панель'), h('th', { class: 'hide-sm c-domain' }, 'Домен'), h('th', { class: 'hide-sm c-type' }, 'Тип'), h('th', { class: 'c-status' }, 'Статус'), h('th', { class: 'w-actions' }))),
+      h('thead', null, h('tr', null, h('th', { class: 'w-check' }, selectAll(rows)), h('th', { class: 'c-name' }, 'Сервис'), h('th', { class: 'hide-sm c-project' }, 'Проект'), h('th', { class: 'hide-sm c-panel' }, 'Панель'), h('th', { class: 'hide-sm c-domain' }, 'Домен'), h('th', { class: 'hide-sm c-type' }, 'Тип'), h('th', { class: 'c-status' }, 'Статус'), h('th', { class: 'w-actions' }))),
       h('tbody', null, rows.map((s) => serviceRow(s, { showPanel: true, openService }))))) : empty('Ничего не найдено', store.panels.length ? 'Измените фильтры.' : 'Подключите панель, чтобы увидеть сервисы.'));
     count.textContent = `${rows.length} из ${allServices().length}`;
   };

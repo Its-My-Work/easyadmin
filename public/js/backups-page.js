@@ -4,6 +4,7 @@ import { clear, fmtTime, h, icon, relTime, toast } from './dom.js';
 import { t } from './i18n.js';
 import { can } from './store.js';
 import { restoresModal } from './restore-wizard.js';
+import { migrationModal } from './migration-modal.js';
 import { STATUS, copiesModal, inclusionPatch, logModal, partTitle, runCopy, saveSettings, settingsModal, size, switchBtn, systemCopiesModal } from './backups-modals.js';
 
 /* ======================= Раздел «Бэкапы»: одна страница ======================= */
@@ -32,6 +33,7 @@ export function backupsPage() {
   const page = h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', null, 'Бэкапы'), h('div', { class: 'inline' }, can('admin') ? [
     h('button', { class: 'btn', onclick: () => logModal() }, icon('activity', 15), 'Журнал копий'),
     h('button', { class: 'btn', onclick: () => restoresModal() }, icon('rotate', 15), 'Восстановления'),
+    h('button', { class: 'btn', onclick: () => migrationModal() }, icon('server', 15), 'Переезд на новый сервер'),
     h('button', { class: 'btn', onclick: () => settingsModal(() => load(true)) }, icon('settings', 15), 'Настройки'),
     h('button', { class: 'btn primary', onclick: () => startAll() }, icon('database', 15), 'Копировать сейчас')] : null)), body);
 

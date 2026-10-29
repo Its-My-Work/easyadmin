@@ -203,8 +203,9 @@ export function serviceRow(s, { showPanel, openService }) {
   return h('tr', { class: 'row', tabindex: 0, onclick: () => openService(s), onkeydown: (e) => { if (e.key === 'Enter') openService(s); } },
     h('td', { class: 'w-check' }, can('operator') ? cb : null),
     h('td', { class: 'c-name' }, h('div', { class: 'svc-name' }, h('b', null, fav ? h('span', { class: 'fav' }, icon('star', 11)) : null, s.name),
-      showPanel ? h('span', { class: 'muted small svc-proj' }, s.project) : null,
+      showPanel ? h('span', { class: 'muted small svc-proj svc-proj-m' }, s.project) : null, // на десктопе проект — отдельная колонка, под именем он только на узком экране
       showPanel && s.panel ? h('span', { class: 'svc-panel-m' }, panelChip(s.panel)) : null)), // на узком экране колонка «Панель» скрыта — панель показывается под именем
+    showPanel ? h('td', { class: 'hide-sm c-project' }, h('span', { class: 'muted small', title: s.project }, s.project)) : null,
     showPanel ? h('td', { class: 'hide-sm c-panel' }, panelChip(s.panel)) : null,
     h('td', { class: 'hide-sm c-domain' }, s.domain ? h('a', { class: 'muted small svc-domain', href: `https://${s.domain}`, target: '_blank', rel: 'noopener', title: (s.domains ?? [s.domain]).join('\n'), onclick: (e) => e.stopPropagation() }, s.domain, s.domains?.length > 1 ? ` +${s.domains.length - 1}` : '') : h('span', { class: 'muted' }, '—')),
     h('td', { class: 'hide-sm c-type' }, typeChip(s.type)),

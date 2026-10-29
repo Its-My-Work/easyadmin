@@ -277,7 +277,7 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .stats-note { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
 
 /* итоговая раскладка колонок сервисов: название умеренной ширины, домен занимает остаток, тип/статус/действия — рядом справа */
-.svc-tbl .c-name { width: 28%; } .svc-tbl .c-domain { width: auto; } .svc-tbl .c-panel { width: 170px; } .svc-tbl .c-type { width: 116px; } .svc-tbl .c-status { width: 130px; } .svc-tbl .w-actions { width: 132px; }
+.svc-tbl .c-name { width: 24%; } .svc-tbl .c-domain { width: auto; } .svc-tbl .c-panel { width: 170px; } .svc-tbl .c-type { width: 116px; } .svc-tbl .c-status { width: 130px; } .svc-tbl .w-actions { width: 132px; }
 .svc-tbl .svc-domain { display: block; margin: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .svc-tbl .svc-domain:hover { color: var(--text); text-decoration: underline; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip.clickable { cursor: pointer; border: 1px solid var(--border2); background: var(--panel); font-family: var(--mono, monospace); font-size: 12px; } .chip.clickable:hover { border-color: var(--accent); }
@@ -349,6 +349,8 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 }
 .audit-bar .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; } .audit-bar .seg::-webkit-scrollbar { display: none; }
 
+.svc-tbl .svc-proj-m { display: none; } .svc-tbl .c-project { width: 150px; overflow: hidden; } .svc-tbl .c-project > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) { .svc-tbl .svc-proj-m { display: block; } }
 .svc-panel-m { display: none; } @media (max-width: 900px) { .svc-tbl .svc-panel-m { display: block; font-size: 12px; } .svc-panel-m .panel-chip { color: var(--muted); } }
 .svc-panel-m .panel-chip { font-weight: 500; }
 
@@ -479,3 +481,7 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .rw-ic { flex: none; display: inline-flex; margin-top: 1px; color: var(--muted); } .rw-ic.ok { color: var(--ok); } .rw-ic.fail { color: var(--err); }
 .modal-foot-inline { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; padding-top: 6px; }
 @media (max-width: 700px) { .modal-foot-inline .btn { flex: 1 1 auto; justify-content: center; } }
+
+/* Переезд на новый сервер */
+.mig-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; } .mig-steps b { display: inline-block; width: 16px; text-align: center; }
+.mig-log { max-height: 220px; } .mig-cmd { user-select: all; }

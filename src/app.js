@@ -554,7 +554,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
       return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
 
-    ...extraRoutes({ db, key, config, fetchImpl, ssh, loadmon, backups, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef, cleanSource }),
+    ...extraRoutes({ db, key, config, fetchImpl, ssh, hostRun, dataPollMs, loadmon, backups, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef, cleanSource }),
   ]);
 
   const decryptOf = (row) => manager.clientFor(row).token;
@@ -583,7 +583,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
         if (LEVEL[user.role] < LEVEL[min]) throw new HttpError(403, `Недостаточно прав (роль ${user.role})`);
         if (url.pathname.startsWith('/api/panels/') && /^\d+$/.test(params.id ?? '') && !canPanel(user, params.id)) throw new HttpError(403, 'Нет доступа к этой панели');
       }
-      const ctx = { req, res, url, user, params, body: mutating ? await readJson(req) : {} };
+      const ctx = { req, res, url, user, params, body: mutating && !route.opts.raw ? await readJson(req) : {} };
       const out = await route.handler(ctx);
       if (out instanceof StreamResponse) return await out.run(req, res);
       if (out instanceof RawResponse) sendRaw(res, out); else sendJson(res, 200, out);
