@@ -25,7 +25,7 @@ export function backupsView({ s, ref }) {
       h('div', { class: 'card flat' }, h('div', { class: 'inline' }, switchBtn(r.included || ov.mode === 'all', t('Копировать этот сервис'), toggle, ov.mode === 'all'), h('div', null, h('b', null, 'Копировать этот сервис'),
         h('div', { class: 'muted small' }, ov.mode === 'all' ? 'Включено для всех сервисов (в разделе «Бэкапы»).' : 'Дамп базы или копия томов, зашифрованные паролем копий.')), h('span', { class: 'spacer' }), h('span', { class: `badge ${cls}` }, h('i', { class: 'dot' }), label)),
         h('div', { class: 'kv' }, h('span', null, 'Последняя копия'), h('b', null, last))),
-      h('div', { class: 'inline' }, h('button', { class: 'btn primary', disabled: !r.included || ov.running, onclick: async () => { if (await runCopy({ panelId: s.panelId, project: ref.project, service: ref.name })) setTimeout(load, 1500); } }, icon('play', 14), 'Копировать сейчас'),
+      h('div', { class: 'inline' }, h('button', { class: 'btn primary', disabled: !r.included || ov.running, onclick: async () => { if (await runCopy({ panelId: s.panelId, project: ref.project, service: ref.name })) setTimeout(load, 1500); } }, icon('play', 14), t('Запустить бэкап')),
         h('a', { class: 'btn ghost', href: '#/backups' }, icon('database', 14), 'Все бэкапы'), h('a', { class: 'btn ghost', onclick: () => settingsModal(load) }, icon('settings', 14), 'Настройки')),
       h('h4', null, 'Копии сервиса'), copiesList({ panelId: s.panelId, project: ref.project, name: ref.name }),
       h('h4', null, 'Последние запуски'), serviceHistory({ project: ref.project, name: ref.name, panelName: s.panel?.name }));

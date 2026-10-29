@@ -4,9 +4,8 @@ import { empty, panelChip, typeChip } from './components.js';
 import { clear, fmtTime, h, icon, relTime, toast } from './dom.js';
 import { t } from './i18n.js';
 import { can } from './store.js';
-import { restoresModal } from './restore-wizard.js';
 import { migrationModal } from './migration-modal.js';
-import { STATUS, copiesModal, inclusionPatch, logModal, partTitle, runCopy, saveSettings, settingsModal, size, switchBtn, systemCopiesModal } from './backups-modals.js';
+import { STATUS, copiesModal, inclusionPatch, backupHistoryModal, partTitle, runCopy, saveSettings, settingsModal, size, switchBtn, systemCopiesModal } from './backups-modals.js';
 
 /* ======================= Раздел «Бэкапы»: одна страница ======================= */
 const filters = { q: '', show: 'all' };
@@ -34,11 +33,10 @@ function lastCell(r) {
 export function backupsPage() {
   const body = h('div', { class: 'stack' }); let timer = null;
   const page = h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', null, 'Бэкапы'), h('div', { class: 'inline' }, can('admin') ? [
-    h('button', { class: 'btn', onclick: () => logModal() }, icon('activity', 15), 'Журнал копий'),
-    h('button', { class: 'btn', onclick: () => restoresModal() }, icon('rotate', 15), 'Восстановления'),
-    h('button', { class: 'btn', onclick: () => migrationModal() }, icon('server', 15), 'Переезд на новый сервер'),
-    h('button', { class: 'btn', onclick: () => settingsModal(() => load(true)) }, icon('settings', 15), 'Настройки'),
-    h('button', { class: 'btn primary', onclick: () => startAll() }, icon('database', 15), 'Копировать сейчас')] : null)), body);
+    h('button', { class: 'btn', onclick: () => backupHistoryModal() }, icon('activity', 15), t('Журнал и восстановления')),
+    h('button', { class: 'btn', onclick: () => migrationModal() }, icon('server', 15), t('Переезд на новый сервер')),
+    h('button', { class: 'btn', onclick: () => settingsModal(() => load(true)) }, icon('settings', 15), t('Настройки')),
+    h('button', { class: 'btn primary', onclick: () => startAll() }, icon('play', 14), t('Запустить бэкап'))] : null)), body);
 
   async function startAll() { if (await runCopy()) load(true); }
   async function include(ov, r, on) {

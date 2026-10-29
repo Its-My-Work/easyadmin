@@ -2,7 +2,7 @@ import { del, get, post, put } from './api.js';
 import { clear, confirmDialog, field, fmtTime, h, icon, modal, toast } from './dom.js';
 import { t } from './i18n.js';
 import { store } from './store.js';
-import { isArchive, restoreWizard } from './restore-wizard.js';
+import { isArchive, restoreWizard, RESTORE_BADGE, showRestoreJob } from './restore-wizard.js';
 
 /** Окна и кирпичики раздела «Бэкапы» и вкладки «Бэкапы» сервиса. Резервные копии EasyAdmin: что копировать (система, панели — все или выбранные), расписание, хранилище, пароль, список копий, проверка и восстановление. */
 export const size = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`);
@@ -120,21 +120,62 @@ export function runDetails(run) {
     ...p.items.map(itemLine), p.empty?.length ? h('div', { class: 'muted small', style: { marginLeft: '12px' } }, `${t('нечего копировать')}: ${p.empty.join(', ')}`) : null)));
 }
 
-export async function logModal() {
-  const body = h('div', { class: 'stack' }, h('div', { class: 'skeleton', style: { height: '80px' } }));
-  modal({ title: 'Журнал копирования', wide: true, body, actions: [{ label: 'Закрыть', kind: 'ghost' }] });
-  try {
-    const { runs } = await get('/api/backups/data/log'); clear(body);
-    if (!runs.length) return body.append(h('p', { class: 'muted' }, 'Запусков ещё не было.'));
-    body.append(h('p', { class: 'muted small' }, 'Последние запуски копирования данных: что и как скопировалось, полный текст ошибок.'), ...runs.map((r) => {
-      const det = h('div', { hidden: true, style: { padding: '8px 4px 2px' } }, runDetails(r));
-      const head = h('button', { type: 'button', class: 'list-item link btn-row', onclick: () => { det.hidden = !det.hidden; } },
-        h('div', null, h('b', null, fmtTime(r.ts)), h('span', { class: 'muted small' }, `  ${t(r.only ? 'один сервис' : REASON[r.reason] ?? r.reason)}`)),
-        h('div', { class: 'inline' }, h('span', { class: `badge ${r.ok ? 'ok' : 'err'}` }, r.ok ? t('без ошибок') : `${t('ошибок')}: ${r.failed}`), h('span', { class: 'muted small' }, `${t('копий')}: ${r.files}`), icon('chevron', 14)));
-      return h('div', null, head, det);
-    }));
-  } catch (e) { clear(body).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
+/** Объединённое окно: Журнал бэкапов и Восстановления */
+export async function backupHistoryModal(initialTab = 'log') {
+  let curTab = initialTab;
+  const content = h('div', { class: 'stack' });
+  const tabs = [
+    ['log', 'Журнал бэкапов', 'activity'],
+    ['restores', 'Восстановления', 'rotate']
+  ];
+
+  const drawTabs = () => h('div', { class: 'tabs page-tabs', style: 'margin-bottom: 6px;' },
+    tabs.map(([id, label, ic]) => h('button', {
+      type: 'button',
+      class: `tab ${curTab === id ? 'active' : ''}`,
+      onclick: () => { curTab = id; render(); }
+    }, icon(ic, 14), ' ', t(label)))
+  );
+
+  const container = h('div', { class: 'stack' });
+  modal({ title: t('Журнал и восстановления'), wide: true, body: container, actions: [{ label: t('Закрыть'), kind: 'ghost' }] });
+
+  async function render() {
+    clear(container).append(drawTabs(), content);
+    clear(content).append(h('div', { class: 'skeleton', style: { height: '80px' } }));
+    if (curTab === 'log') {
+      try {
+        const { runs } = await get('/api/backups/data/log');
+        clear(content);
+        if (!runs.length) return content.append(h('p', { class: 'muted' }, t('Запусков ещё не было.')));
+        content.append(h('p', { class: 'muted small' }, t('Последние запуски копирования данных: что и как скопировалось, полный текст ошибок.')), ...runs.map((r) => {
+          const det = h('div', { hidden: true, style: { padding: '8px 4px 2px' } }, runDetails(r));
+          const head = h('button', { type: 'button', class: 'list-item link btn-row', onclick: () => { det.hidden = !det.hidden; } },
+            h('div', null, h('b', null, fmtTime(r.ts)), h('span', { class: 'muted small' }, `  ${t(r.only ? 'один сервис' : REASON[r.reason] ?? r.reason)}`)),
+            h('div', { class: 'inline' }, h('span', { class: `badge ${r.ok ? 'ok' : 'err'}` }, r.ok ? t('без ошибок') : `${t('ошибок')}: ${r.failed}`), h('span', { class: 'muted small' }, `${t('копий')}: ${r.files}`), icon('chevron', 14)));
+          return h('div', null, head, det);
+        }));
+      } catch (e) { clear(content).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
+    } else {
+      try {
+        const { jobs } = await get('/api/backups/data/restores');
+        clear(content);
+        if (!jobs.length) return content.append(h('p', { class: 'muted' }, t('Восстановлений ещё не было.')));
+        content.append(h('p', { class: 'muted small' }, t('История заданий восстановления: статус, время, целевой сервис.')), ...jobs.map((j) => {
+          const [label, cls] = RESTORE_BADGE[j.status] ?? ['—', ''];
+          return h('button', { type: 'button', class: 'list-item link btn-row', onclick: () => showRestoreJob(j.id, j) },
+            h('div', null, h('b', null, j.target), h('span', { class: 'muted small' }, `  ${fmtTime(j.startedAt)}`)),
+            h('span', { class: `badge ${cls}` }, t(label)));
+        }));
+      } catch (e) { clear(content).append(h('div', { class: 'callout err' }, icon('alert'), e.message)); }
+    }
+  }
+
+  await render();
 }
+
+export const logModal = () => backupHistoryModal('log');
+export const restoresModal = () => backupHistoryModal('restores');
 
 /** Последние запуски одного сервиса (из журнала): когда, чем закончились, текст ошибки. */
 export function serviceHistory({ project, name, panelName }) {

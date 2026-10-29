@@ -12,7 +12,8 @@ import { partTitle, seg, size } from './backups-modals.js';
 const ARCHIVE = /^([a-z0-9_-]+)__([a-z0-9_-]+)__(\d{8}-\d{6})\.tar(\.enc)?$/;
 export const isArchive = (name) => ARCHIVE.test(name);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const BADGE = { done: ['Восстановлено', 'ok'], partial: ['Есть ошибки', 'err'], error: ['Ошибка', 'err'], running: ['Идёт…', 'warn'] };
+export const RESTORE_BADGE = { done: ['Восстановлено', 'ok'], partial: ['Есть ошибки', 'err'], error: ['Ошибка', 'err'], running: ['Идёт…', 'warn'] };
+const BADGE = RESTORE_BADGE;
 
 /** Опрашивает задание, пока оно не завершится; прерывается, когда окно закрыли. */
 async function pollJob(id, alive, onTick) {
