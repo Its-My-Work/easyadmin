@@ -1,3 +1,4 @@
+import { sortRows, sortTh } from './sort.js';
 import { get, post } from './api.js';
 import { empty, panelChip, typeChip } from './components.js';
 import { clear, fmtTime, h, icon, relTime, toast } from './dom.js';
@@ -12,6 +13,8 @@ const filters = { q: '', show: 'all' };
 const SHOW = [['all', 'Все'], ['on', 'Копируются'], ['off', 'Не копируются'], ['bad', 'Проблемы']];
 const BAD = ['error', 'stale', 'pending'];
 const ORDER = { error: 0, running: 1, queued: 2, stale: 3, pending: 4, ok: 5, empty: 6, off: 7 };
+const bkSort = { key: 'default', dir: 1 };
+const BK_SORT = { name: (r) => r.name, last: (r) => r.last?.ts ?? null, size: (r) => r.last?.size ?? null, status: (r) => ORDER[r.status] ?? 99 };
 const pad2 = (n) => String(n).padStart(2, '0');
 
 const kpi = (label, value, tone, ic) => h('div', { class: `kpi ${tone}` }, h('div', { class: 'kpi-ic' }, icon(ic, 18)), h('div', null, h('div', { class: 'kpi-label' }, label), h('div', { class: 'kpi-value' }, value)));
@@ -63,9 +66,11 @@ export function backupsPage() {
     const list = h('div');
     const draw = () => {
       const q = filters.q.trim().toLowerCase();
-      const rows = ov.panels.flatMap((p) => p.rows.map((r) => ({ ...r, panel: p })))
+      let rows = ov.panels.flatMap((p) => p.rows.map((r) => ({ ...r, panel: p })))
         .filter((r) => (filters.show === 'all' || (filters.show === 'on' ? r.included : filters.show === 'off' ? !r.included : BAD.includes(r.status))) && (!q || `${r.name} ${r.project} ${r.panel.panelName}`.toLowerCase().includes(q)))
         .sort((a, b) => a.panel.panelName.localeCompare(b.panel.panelName) || ORDER[a.status] - ORDER[b.status] || `${a.project}/${a.name}`.localeCompare(`${b.project}/${b.name}`));
+      // своя сортировка — внутри панели (группы), порядок панелей сохраняется
+      if (bkSort.key !== 'default') rows = ov.panels.flatMap((p) => sortRows(rows.filter((r) => r.panel.panelId === p.panelId), bkSort, BK_SORT));
       const grouped = ov.panels.filter((p) => p.rows.length).length > 1; const out = []; let prev = null;
       for (const r of rows) {
         if (grouped && r.panel.panelId !== prev) { prev = r.panel.panelId; out.push(h('tr', { class: 'grp' }, h('td', { colspan: 5 }, h('div', { class: 'inline' }, panelChip({ name: r.panel.panelName, color: r.panel.color }), h('span', { class: 'muted small' }, `${rows.filter((x) => x.panel.panelId === prev).length}`))))); }
@@ -79,7 +84,7 @@ export function backupsPage() {
             h('button', { class: 'btn icon sm', title: t('Копии и восстановление'), 'aria-label': t('Копии и восстановление'), onclick: () => copiesModal(svc) }, icon('clock', 14))) : null)));
       }
       clear(list).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl compact' },
-        h('thead', null, h('tr', null, ['', 'Сервис', 'Последняя копия', 'Статус', ''].map((x) => h('th', null, x)))), h('tbody', null, out)))
+        h('thead', null, h('tr', null, h('th', null), sortTh('Сервис', 'name', bkSort, draw), sortTh('Последняя копия', 'last', bkSort, draw), sortTh('Статус', 'status', bkSort, draw), h('th', null))), h('tbody', null, out)))
         : empty(sum.total ? 'Ничего не найдено' : 'Нет сервисов', sum.total ? 'Измените фильтры.' : 'Подключите панель с сервисами, чтобы настроить копирование.'));
     };
     const search = h('input', { class: 'input search', placeholder: 'Поиск по сервису, проекту, панели…', value: filters.q, oninput: () => { filters.q = search.value; draw(); } });

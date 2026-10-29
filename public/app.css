@@ -485,3 +485,13 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 /* Переезд на новый сервер */
 .mig-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; } .mig-steps b { display: inline-block; width: 16px; text-align: center; }
 .mig-log { max-height: 220px; } .mig-cmd { user-select: all; }
+
+/* компактная форма «Переезд на новый сервер» */
+.modal-compact .modal-body { padding: 8px 16px 14px; } .modal-compact .stack { gap: 10px; } .modal-compact .stack.tight { gap: 6px; }
+.modal-compact .grid-2 { gap: 10px; } .modal-compact .field { gap: 4px; } .modal-compact .hint { font-size: 11px; }
+.mig-conn-grid { display: grid; grid-template-columns: minmax(0, 1fr) 90px 120px; gap: 10px; align-items: start; }
+.mig-auth-row { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px; align-items: start; }
+.mig-auth-val { min-width: 0; } .mig-auth-val textarea { resize: vertical; min-height: 0; }
+.mig-checks.grid-2 { gap: 6px 12px; } .mig-checks .check, .mig-add { font-size: 12.5px; }
+.modal-compact .mig-steps { margin: 0; }
+@media (max-width: 640px) { .mig-conn-grid { grid-template-columns: minmax(0, 1fr) 80px; } .mig-conn-grid > :first-child { grid-column: 1 / -1; } .mig-auth-row { grid-template-columns: 1fr; } }

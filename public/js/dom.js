@@ -115,12 +115,12 @@ export function toast(message, kind = 'info', ms = 4000) {
 }
 
 /* ---------- модальные окна ---------- */
-export function modal({ title, body, actions = [], wide = false, onClose }) {
+export function modal({ title, body, actions = [], wide = false, compact = false, onClose }) {
   const root = document.getElementById('overlay-root');
   const close = () => { back.remove(); document.removeEventListener('keydown', onKey); onClose?.(); };
   const onKey = (e) => { if (e.key === 'Escape' && root.lastElementChild === back) close(); };
   const back = h('div', { class: 'backdrop', onmousedown: (e) => { if (e.target === back) close(); } },
-    h('div', { class: `modal ${wide ? 'wide' : ''}`, role: 'dialog', 'aria-modal': 'true' },
+    h('div', { class: `modal ${wide ? 'wide' : ''} ${compact ? 'modal-compact' : ''}`, role: 'dialog', 'aria-modal': 'true' },
       h('div', { class: 'modal-head' }, h('h3', null, title), h('button', { class: 'btn icon ghost', onclick: close, 'aria-label': 'Закрыть' }, icon('x'))),
       h('div', { class: 'modal-body' }, body),
       actions.length ? h('div', { class: 'modal-foot' }, actions.map((a) => h('button', {

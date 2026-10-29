@@ -7,6 +7,7 @@ import { lang, setLang, t } from './i18n.js';
 import { sourcePicker } from './source-form.js';
 import { installFlow } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
+import { sortRows, sortTh } from './sort.js';
 import { loadSettingsCard, loadTab } from './load-tab.js';
 import { timeCard } from './time-card.js';
 import { actionLabel, detailLabel } from './action-names.js';
@@ -240,12 +241,15 @@ function systemMenu(p) {
 
 /* ======================= Сервисы ======================= */
 const allFilter = { q: '', type: 'all', status: 'all', panel: 'all' };
+const svcSort = { key: 'name', dir: 1 };
+const HEALTH = { failing: 1, missing: 2 };
+const SVC_SORT = { name: (s) => s.name, project: (s) => s.project, panel: (s) => s.panel.name, domain: (s) => s.domain || null, type: (s) => s.type, status: (s) => (s.enabled ? 1 + (HEALTH[s.health] ?? 0) : 0) };
 export function servicesPage() {
   const wrap = h('div');
   const draw = () => {
-    const rows = allServices().filter((s) => matches(s, allFilter));
+    const rows = sortRows(allServices().filter((s) => matches(s, allFilter)), svcSort, SVC_SORT);
     clear(wrap).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl svc-tbl' },
-      h('thead', null, h('tr', null, h('th', { class: 'w-check' }, selectAll(rows)), h('th', { class: 'c-name' }, 'Сервис'), h('th', { class: 'hide-sm c-project' }, 'Проект'), h('th', { class: 'hide-sm c-panel' }, 'Панель'), h('th', { class: 'hide-sm c-domain' }, 'Домен'), h('th', { class: 'hide-sm c-type' }, 'Тип'), h('th', { class: 'c-status' }, 'Статус'), h('th', { class: 'w-actions' }))),
+      h('thead', null, h('tr', null, h('th', { class: 'w-check' }, selectAll(rows)), sortTh('Сервис', 'name', svcSort, draw, 'c-name'), sortTh('Проект', 'project', svcSort, draw, 'hide-sm c-project'), sortTh('Панель', 'panel', svcSort, draw, 'hide-sm c-panel'), sortTh('Домен', 'domain', svcSort, draw, 'hide-sm c-domain'), sortTh('Тип', 'type', svcSort, draw, 'hide-sm c-type'), sortTh('Статус', 'status', svcSort, draw, 'c-status'), h('th', { class: 'w-actions' }))),
       h('tbody', null, rows.map((s) => serviceRow(s, { showPanel: true, openService }))))) : empty('Ничего не найдено', store.panels.length ? 'Измените фильтры.' : 'Подключите панель, чтобы увидеть сервисы.'));
     count.textContent = `${rows.length} из ${allServices().length}`;
   };

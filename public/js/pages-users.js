@@ -4,6 +4,7 @@ import { clear, confirmDialog, field, fmtTime, h, icon, modal, relTime, toast } 
 import { actionLabel, languageCard, pageHead, themeCard } from './views.js';
 import { can, panelById, store } from './store.js';
 import { twoFaCard } from './views2.js';
+import { sortRows, sortTh } from './sort.js';
 
 const ROLE = { admin: ['администратор', 'ok'], operator: ['оператор', 'warn'], viewer: ['только чтение', 'muted'] };
 const ROLE_HELP = { viewer: 'Только чтение — видит статусы, без env и секретов', operator: 'Оператор — деплой, перезапуск, env, домены; без удаления и системных операций', admin: 'Администратор — всё' };
@@ -81,6 +82,8 @@ export function profilePage() {
 
 /* ============================== ПОЛЬЗОВАТЕЛИ ============================== */
 const filters = { q: '', role: 'all', status: 'all' };
+const userSort = { key: 'name', dir: 1 };
+const USER_SORT = { name: (u) => (u.displayName || u.username).toLowerCase(), role: (u) => ['admin', 'operator', 'viewer'].indexOf(u.role), lastLogin: (u) => u.lastLogin || null, status: (u) => (u.disabled ? 1 : 0) };
 export function usersPage() {
   if (!can('admin')) return h('div', { class: 'page' }, empty('Нет доступа', 'Управление пользователями доступно администратору.'));
   let users = [];
@@ -91,11 +94,12 @@ export function usersPage() {
   const act = async (fn, okMsg) => { try { await fn(); if (okMsg) toast(okMsg, 'success'); load(); } catch (e) { toast(e.message, 'error'); } };
   function draw() {
     const q = filters.q.trim().toLowerCase();
-    const rows = users.filter((u) => (filters.role === 'all' || u.role === filters.role) && (filters.status === 'all' || (filters.status === 'off') === u.disabled)
+    let rows = users.filter((u) => (filters.role === 'all' || u.role === filters.role) && (filters.status === 'all' || (filters.status === 'off') === u.disabled)
       && (!q || [u.username, u.displayName, u.email].some((x) => x && x.toLowerCase().includes(q))));
+    rows = sortRows(rows, userSort, USER_SORT);
     count.textContent = `${rows.length} из ${users.length}`;
     clear(table).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl' },
-      h('thead', null, h('tr', null, ['Пользователь', 'Роль', 'Вход', 'Доступ', 'Последний вход', 'Статус', ''].map((x, i) => h('th', { class: i === 3 || i === 4 ? 'hide-sm' : '' }, x)))),
+      h('thead', null, h('tr', null, sortTh('Пользователь', 'name', userSort, draw), sortTh('Роль', 'role', userSort, draw), h('th', null, 'Вход'), h('th', { class: 'hide-sm' }, 'Доступ'), sortTh('Последний вход', 'lastLogin', userSort, draw, 'hide-sm'), sortTh('Статус', 'status', userSort, draw), h('th', null))),
       h('tbody', null, rows.map((u) => {
         const me = u.id === store.user.id;
         return h('tr', { class: `row ${u.disabled ? 'dim' : ''}`, onclick: () => userForm(u) },

@@ -16,10 +16,11 @@ function sourceFields(S, defaults) {
   const base = h('input', { class: 'input mono', placeholder: 'https://admin.example.com', value: S.baseUrl, oninput: () => { S.baseUrl = base.value.trim(); } });
   const data = h('input', { type: 'checkbox', checked: S.includeData, onchange: () => { S.includeData = data.checked; } });
   const pause = h('input', { type: 'checkbox', checked: S.consistency === 'pause', onchange: () => { S.consistency = pause.checked ? 'pause' : 'none'; } });
-  return [field('Панель, которую переносим', panel),
-    field('Адрес EasyAdmin для серверов', base, defaults?.baseUrl ? null : 'Внешний адрес, по которому EasyAdmin виден и старому, и новому серверу (не localhost)'),
-    h('label', { class: 'check' }, data, 'Переносить тома и базы данных'),
-    h('label', { class: 'check', title: t('Сервисы на время копирования приостанавливаются') }, pause, 'Согласованная копия (кратко приостановить сервисы)'),
+  return [h('div', { class: 'grid-2 mig-src' }, field('Панель, которую переносим', panel),
+      field('Адрес EasyAdmin для серверов', base, defaults?.baseUrl ? null : 'Внешний адрес, по которому EasyAdmin виден и старому, и новому серверу (не localhost)')),
+    h('div', { class: 'grid-2 mig-checks' },
+      h('label', { class: 'check' }, data, 'Переносить тома и базы данных'),
+      h('label', { class: 'check', title: t('Сервисы на время копирования приостанавливаются') }, pause, 'Согласованная копия (кратко приостановить сервисы)')),
     defaults?.encrypted ? h('p', { class: 'muted small' }, icon('key', 13), ' ', t('Слепок будет зашифрован паролем резервных копий.')) : h('p', { class: 'muted small' }, t('Пароль копий не задан — слепок не шифруется.'))];
 }
 
@@ -63,16 +64,17 @@ function sshTab(defaults, track) {
     const user = h('input', { class: 'input', value: S.user, autocomplete: 'off' });
     const mode = h('select', { class: 'input', onchange: () => drawAuth() }, [['password', 'Пароль'], ['key', 'Приватный ключ']].map(([v, l]) => h('option', { value: v, selected: v === S.mode }, t(l))));
     const pw = h('input', { class: 'input', type: 'password', autocomplete: 'off', value: S.password, 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
-    const key = h('textarea', { class: 'input mono', rows: 5, spellcheck: 'false', placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----' }, S.key);
+    const key = h('textarea', { class: 'input mono', rows: 3, spellcheck: 'false', placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----' }, S.key);
     const pass = h('input', { class: 'input', type: 'password', autocomplete: 'off', value: S.passphrase, 'data-bwignore': 'true', 'data-lpignore': 'true', 'data-1p-ignore': 'true' });
-    const auth = h('div', { class: 'stack' });
-    const drawAuth = () => { S.mode = mode.value; clear(auth).append(S.mode === 'password' ? field('Пароль', pw) : h('div', { class: 'stack' }, field('Приватный ключ', key), field('Фраза ключа', pass, 'Если ключ защищён фразой'))); };
+    const auth = h('div', { class: 'mig-auth-val' });
+    const drawAuth = () => { S.mode = mode.value; clear(auth).append(S.mode === 'password' ? field('Пароль', pw) : h('div', { class: 'stack tight' }, field('Приватный ключ', key), field('Фраза ключа', pass))); };
     drawAuth();
     const add = h('input', { type: 'checkbox', checked: S.addPanel, onchange: () => { S.addPanel = add.checked; } });
     clear(box).append(
       h('p', { class: 'muted small' }, 'EasyAdmin подключится к чистому серверу по SSH, поставит Docker, перенесёт слепок системы и запустит Easypanel. Доступ нигде не сохраняется.'),
-      h('div', { class: 'grid-2' }, field('Адрес нового сервера', host), field('Порт SSH', port)), field('Пользователь', user), field('Вход', mode), auth,
-      ...sourceFields(S, defaults), h('label', { class: 'check' }, add, 'Добавить новую панель в EasyAdmin после переезда'), err,
+      h('div', { class: 'mig-conn-grid' }, field('Адрес нового сервера', host), field('Порт SSH', port), field('Пользователь', user)),
+      h('div', { class: 'mig-auth-row' }, field('Вход', mode), auth),
+      ...sourceFields(S, defaults), h('label', { class: 'check mig-add' }, add, 'Добавить новую панель в EasyAdmin после переезда'), err,
       h('div', { class: 'inline' }, h('span', { class: 'spacer' }), run('Далее: ключ сервера', 'primary', async () => {
         Object.assign(S, { host: host.value.trim(), port: port.value, user: user.value.trim(), password: pw.value, key: key.value, passphrase: pass.value });
         if (!S.host) throw new Error(t('Укажите адрес сервера'));
@@ -148,5 +150,5 @@ export async function migrationModal() {
   const body = h('div', { class: 'stack' }); const bar = h('div', { class: 'tabs' }); let cur = 'ssh';
   const show = (id) => { cur = id; stops.splice(0).forEach((f) => f()); clear(bar).append(...tabs.map(([k, l]) => h('button', { class: `tab ${k === cur ? 'active' : ''}`, onclick: () => show(k) }, t(l)))); clear(body).append(tabs.find(([k]) => k === id)[2]()); };
   show('ssh');
-  return modal({ title: t('Переезд на новый сервер'), wide: true, body: h('div', { class: 'stack' }, bar, body), onClose: () => stops.forEach((f) => f()) });
+  return modal({ title: t('Переезд на новый сервер'), wide: true, compact: true, body: h('div', { class: 'stack' }, bar, body), onClose: () => stops.forEach((f) => f()) });
 }
