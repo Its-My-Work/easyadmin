@@ -10,6 +10,7 @@ import { backupsView } from './backups-tab.js';
 import { serviceLoad } from './load-tab.js';
 import { BUILDS, SOURCES, sourceFields, repoLabel, sourceKind, splitRepoUrl } from './source-form.js';
 import { cloneModal, saveTemplateModal } from './views2.js';
+import { openAiDoctor } from './ai-doctor.js';
 
 let current = null;
 
@@ -108,6 +109,7 @@ export function openService(s) {
       ro || isDb(s.type) ? null : act('deploy', 'rocket', 'Деплой', 'primary'),
       ro ? null : act('restart', 'rotate', 'Перезапуск'),
       ro ? null : (cur.enabled ? act('stop', 'stop', 'Стоп') : act('start', 'play', 'Запуск')),
+      ro ? null : h('button', { class: 'btn sm ai-btn', title: 'Диагностика сбоя в 1 клик: логи, состояние контейнера, причина и решение', onclick: () => openAiDoctor({ ...cur, panel: s.panel, panelId: s.panelId }) }, icon('stethoscope', 14), 'AI Doctor'),
       h('a', { class: 'btn sm ghost', href: s.panel.url, target: '_blank', rel: 'noopener', title: 'Открыть панель Easypanel' }, icon('external', 14), 'Easypanel'));
   };
   renderHead();

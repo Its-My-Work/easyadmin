@@ -2328,6 +2328,53 @@ const PALETTE = [
 ];
 for (const [ru, en, zh, de, es, pt] of PALETTE) { EN.push([ru, en]); ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
 
+/* --- AI Doctor: [ru, en, zh, de, es, pt] --- */
+const AIDOC = [
+  ["Что случилось", "What happened", "发生了什么", "Was ist passiert", "Qué ha pasado", "O que aconteceu"],
+  ["Причина", "Cause", "原因", "Ursache", "Causa", "Causa"],
+  ["Решение", "Solution", "解决方案", "Lösung", "Solución", "Solução"],
+  ["Диагностировать заново", "Diagnose again", "重新诊断", "Erneut diagnostizieren", "Diagnosticar de nuevo", "Diagnosticar novamente"],
+  ["Собираем логи и состояние контейнера…", "Collecting logs and container state…", "正在收集日志和容器状态…", "Logs und Container-Status werden gesammelt…", "Recopilando logs y estado del contenedor…", "Coletando logs e estado do contêiner…"],
+  ["AI анализирует сбой…", "AI is analysing the failure…", "AI 正在分析故障…", "KI analysiert den Fehler…", "La IA está analizando el fallo…", "A IA está analisando a falha…"],
+  ["Явных признаков сбоя нет — AI анализирует логи…", "No obvious signs of failure — AI is analysing the logs…", "没有明显的故障迹象 — AI 正在分析日志…", "Keine offensichtlichen Fehler — KI analysiert die Logs…", "Sin señales claras de fallo — la IA analiza los logs…", "Sem sinais claros de falha — a IA está analisando os logs…"],
+  ["Готово (из кэша, не старше часа)", "Done (from cache, up to 1 hour old)", "完成(来自缓存,不超过 1 小时)", "Fertig (aus dem Cache, höchstens 1 Stunde alt)", "Listo (de la caché, de menos de 1 hora)", "Pronto (do cache, com até 1 hora)"],
+  ["Соединение прервано", "Connection interrupted", "连接已中断", "Verbindung unterbrochen", "Conexión interrumpida", "Conexão interrompida"],
+  ["Контейнеры", "Containers", "容器", "Container", "Contenedores", "Contêineres"],
+  ["Состояние", "State", "状态", "Zustand", "Estado", "Estado"],
+  ["Код выхода", "Exit code", "退出代码", "Exit-Code", "Código de salida", "Código de saída"],
+  ["Строк лога", "Log lines", "日志行数", "Log-Zeilen", "Líneas de log", "Linhas de log"],
+  ["Предложено AI. Действие будет выполнено для сервиса", "Suggested by AI. The action will be run for the service", "AI 建议。该操作将对以下服务执行", "Von der KI vorgeschlagen. Die Aktion wird für den Dienst ausgeführt", "Sugerido por la IA. La acción se ejecutará para el servicio", "Sugerido pela IA. A ação será executada para o serviço"],
+  ["Настроен", "Configured", "已配置", "Konfiguriert", "Configurado", "Configurado"],
+  ["Не настроен", "Not configured", "未配置", "Nicht konfiguriert", "No configurado", "Não configurado"],
+  ["Диагностика сбоев сервисов через любой OpenAI-совместимый API. Перед отправкой из логов вырезаются токены, пароли, ключи, значения .env и IP-адреса, но сами строки логов уходят провайдеру — для локальных данных используйте Ollama.", "Service failure diagnostics via any OpenAI-compatible API. Tokens, passwords, keys, .env values and IP addresses are stripped from the logs before sending, but the log lines themselves go to the provider — use Ollama to keep data local.", "通过任意 OpenAI 兼容 API 诊断服务故障。发送前会从日志中移除令牌、密码、密钥、.env 值和 IP 地址,但日志内容本身仍会发送给提供商 — 如需数据留在本地,请使用 Ollama。", "Fehlerdiagnose für Dienste über jede OpenAI-kompatible API. Vor dem Senden werden Token, Passwörter, Schlüssel, .env-Werte und IP-Adressen aus den Logs entfernt, die Logzeilen selbst gehen aber an den Anbieter — für lokale Daten Ollama verwenden.", "Diagnóstico de fallos de servicios mediante cualquier API compatible con OpenAI. Antes de enviar, se eliminan de los logs tokens, contraseñas, claves, valores de .env y direcciones IP, pero las líneas de log llegan al proveedor: usa Ollama para mantener los datos locales.", "Diagnóstico de falhas de serviços por qualquer API compatível com OpenAI. Antes do envio, tokens, senhas, chaves, valores do .env e endereços IP são removidos dos logs, mas as linhas de log vão para o provedor — use o Ollama para manter os dados locais."],
+  ["AI Doctor отключён переменной EASYADMIN_AI=off", "AI Doctor is disabled by the EASYADMIN_AI=off variable", "AI Doctor 已被 EASYADMIN_AI=off 变量禁用", "AI Doctor ist durch die Variable EASYADMIN_AI=off deaktiviert", "AI Doctor está desactivado por la variable EASYADMIN_AI=off", "O AI Doctor está desativado pela variável EASYADMIN_AI=off"],
+  ["Адрес API", "API address", "API 地址", "API-Adresse", "Dirección de la API", "Endereço da API"],
+  ["Без /chat/completions", "Without /chat/completions", "不含 /chat/completions", "Ohne /chat/completions", "Sin /chat/completions", "Sem /chat/completions"],
+  ["Модель", "Model", "模型", "Modell", "Modelo", "Modelo"],
+  ["API-ключ", "API key", "API 密钥", "API-Schlüssel", "Clave de API", "Chave de API"],
+  ["Ключ сохранён в зашифрованном виде. Оставьте пустым, чтобы не менять.", "The key is stored encrypted. Leave empty to keep it.", "密钥已加密保存。留空则不更改。", "Der Schlüssel ist verschlüsselt gespeichert. Leer lassen, um ihn beizubehalten.", "La clave se guarda cifrada. Déjalo vacío para no cambiarla.", "A chave é armazenada criptografada. Deixe em branco para mantê-la."],
+  ["Для Ollama можно оставить пустым", "Can be left empty for Ollama", "Ollama 可留空", "Bei Ollama kann das Feld leer bleiben", "Puede dejarse vacío para Ollama", "Pode ficar vazio para o Ollama"],
+  ["Удалить ключ", "Delete key", "删除密钥", "Schlüssel löschen", "Eliminar clave", "Excluir chave"],
+  ["Диагностика сбоя в 1 клик: логи, состояние контейнера, причина и решение", "One-click failure diagnosis: logs, container state, cause and solution", "一键故障诊断:日志、容器状态、原因和解决方案", "Fehlerdiagnose mit 1 Klick: Logs, Container-Status, Ursache und Lösung", "Diagnóstico de fallos en 1 clic: logs, estado del contenedor, causa y solución", "Diagnóstico de falhas em 1 clique: logs, estado do contêiner, causa e solução"],
+  ["AI Doctor не настроен: укажите адрес провайдера и модель в настройках", "AI Doctor is not configured: set the provider address and model in Settings", "AI Doctor 尚未配置:请在设置中填写提供商地址和模型", "AI Doctor ist nicht konfiguriert: Anbieteradresse und Modell in den Einstellungen angeben", "AI Doctor no está configurado: indica la dirección del proveedor y el modelo en Ajustes", "O AI Doctor não está configurado: informe o endereço do provedor e o modelo nas configurações"],
+  ["AI Doctor отключён (EASYADMIN_AI=off)", "AI Doctor is disabled (EASYADMIN_AI=off)", "AI Doctor 已禁用 (EASYADMIN_AI=off)", "AI Doctor ist deaktiviert (EASYADMIN_AI=off)", "AI Doctor está desactivado (EASYADMIN_AI=off)", "O AI Doctor está desativado (EASYADMIN_AI=off)"],
+  ["AI-провайдер вернул пустой ответ", "The AI provider returned an empty response", "AI 提供商返回了空响应", "Der KI-Anbieter hat eine leere Antwort geliefert", "El proveedor de IA devolvió una respuesta vacía", "O provedor de IA retornou uma resposta vazia"],
+  ["AI-провайдер ответил {0}", "The AI provider responded {0}", "AI 提供商返回 {0}", "Der KI-Anbieter antwortete {0}", "El proveedor de IA respondió {0}", "O provedor de IA respondeu {0}"],
+  ["Адрес AI-провайдера должен начинаться с http:// или https://", "The AI provider address must start with http:// or https://", "AI 提供商地址必须以 http:// 或 https:// 开头", "Die Adresse des KI-Anbieters muss mit http:// oder https:// beginnen", "La dirección del proveedor de IA debe empezar por http:// o https://", "O endereço do provedor de IA deve começar com http:// ou https://"],
+  ["Не удалось связаться с AI-провайдером: {0}", "Could not reach the AI provider: {0}", "无法连接 AI 提供商:{0}", "KI-Anbieter nicht erreichbar: {0}", "No se pudo contactar con el proveedor de IA: {0}", "Não foi possível contatar o provedor de IA: {0}"],
+  ["Не указывайте логин и пароль в адресе — используйте поле «API-ключ»", "Do not put a login and password in the address — use the “API key” field", "请勿在地址中包含用户名和密码 — 请使用“API 密钥”字段", "Keine Zugangsdaten in der Adresse angeben — das Feld „API-Schlüssel“ verwenden", "No incluyas usuario y contraseña en la dirección: usa el campo «Clave de API»", "Não inclua usuário e senha no endereço — use o campo “Chave de API”"],
+  ["Некорректное имя модели", "Invalid model name", "模型名称无效", "Ungültiger Modellname", "Nombre de modelo no válido", "Nome de modelo inválido"],
+  ["Некорректный адрес AI-провайдера", "Invalid AI provider address", "AI 提供商地址无效", "Ungültige Adresse des KI-Anbieters", "Dirección del proveedor de IA no válida", "Endereço do provedor de IA inválido"],
+  ["Слишком длинный API-ключ", "The API key is too long", "API 密钥过长", "Der API-Schlüssel ist zu lang", "La clave de API es demasiado larga", "A chave de API é longa demais"],
+  ["Уже идёт диагностика — дождитесь её завершения", "A diagnosis is already running — wait for it to finish", "诊断正在进行 — 请等待其完成", "Eine Diagnose läuft bereits — bitte warten", "Ya hay un diagnóstico en curso: espera a que termine", "Já há um diagnóstico em andamento — aguarde a conclusão"],
+  ["Ошибка диагностики: {0}", "Diagnosis error: {0}", "诊断出错:{0}", "Diagnosefehler: {0}", "Error de diagnóstico: {0}", "Erro de diagnóstico: {0}"],
+  ["Открыть настройки", "Open settings", "打开设置", "Einstellungen öffnen", "Abrir ajustes", "Abrir configurações"],
+  ["Применить", "Apply", "应用", "Anwenden", "Aplicar", "Aplicar"],
+  ["Сервис не найден", "Service not found", "未找到服务", "Dienst nicht gefunden", "Servicio no encontrado", "Serviço não encontrado"],
+];
+for (const [ru, en, zh, de, es, pt] of AIDOC) { EN.push([ru, en]); ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
+
+
 function compileDict(entries) {
   const exact = new Map();
   const patterns = [];
