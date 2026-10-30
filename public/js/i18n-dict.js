@@ -2229,6 +2229,44 @@ export const PT = [
   ["Файл загружен", "Arquivo enviado"],
 ];
 
+/* --- Server Doctor: [ru, en, zh, de, es, pt] --- */
+const DOCTOR = [
+  ["Критично", "Critical", "严重", "Kritisch", "Crítico", "Crítico"],
+  ["Предупреждения", "Warnings", "警告", "Warnungen", "Advertencias", "Avisos"],
+  ["Информация", "Information", "信息", "Information", "Información", "Informações"],
+  ["Оценка", "Grade", "评分", "Note", "Calificación", "Nota"],
+  ["Транспорт", "Transport", "传输方式", "Transport", "Transporte", "Transporte"],
+  ["консоль хоста Easypanel", "Easypanel host console", "Easypanel 主机控制台", "Easypanel-Host-Konsole", "consola del host de Easypanel", "console do host do Easypanel"],
+  ["Здоровье сервера", "Server health", "服务器健康状况", "Serverzustand", "Estado del servidor", "Saúde do servidor"],
+  ["Проверить заново", "Check again", "重新检查", "Erneut prüfen", "Comprobar de nuevo", "Verificar novamente"],
+  ["Проблем не найдено", "No problems found", "未发现问题", "Keine Probleme gefunden", "No se encontraron problemas", "Nenhum problema encontrado"],
+  ["Проверка выполняется на самом сервере, это занимает до минуты…", "The check runs on the server itself and takes up to a minute…", "检查在服务器上运行,最多需要一分钟…", "Die Prüfung läuft auf dem Server selbst und dauert bis zu einer Minute…", "La comprobación se ejecuta en el propio servidor y tarda hasta un minuto…", "A verificação é executada no próprio servidor e leva até um minuto…"],
+  ["Будет выполнено на сервере", "Will be run on the server", "将在服务器上执行", "Wird auf dem Server ausgeführt", "Se ejecutará en el servidor", "Será executado no servidor"],
+  ["Исправить", "Fix", "修复", "Beheben", "Corregir", "Corrigir"],
+  ["Исправить в 1 клик", "Fix in 1 click", "一键修复", "Mit 1 Klick beheben", "Corregir con 1 clic", "Corrigir com 1 clique"],
+  ["Размер", "Size", "大小", "Größe", "Tamaño", "Tamanho"],
+  ["Раздел {0} заполнен на {1}%", "Partition {0} is {1}% full", "分区 {0} 已使用 {1}%", "Partition {0} ist zu {1}% belegt", "La partición {0} está al {1}%", "A partição {0} está {1}% cheia"],
+  ["Inode на {0} заполнены на {1}%", "Inodes on {0} are {1}% used", "{0} 上的 inode 已使用 {1}%", "Inodes auf {0} sind zu {1}% belegt", "Los inodos de {0} están al {1}%", "Os inodes em {0} estão {1}% usados"],
+  ["Что занимает место", "What takes up space", "空间占用情况", "Was Platz belegt", "Qué ocupa espacio", "O que ocupa espaço"],
+  ["Docker: можно освободить {0} МБ", "Docker: {0} MB can be freed", "Docker:可释放 {0} MB", "Docker: {0} MB können freigegeben werden", "Docker: se pueden liberar {0} MB", "Docker: {0} MB podem ser liberados"],
+  ["Огромные логи контейнеров: {0} шт., {1} МБ", "Huge container logs: {0} files, {1} MB", "容器日志过大:{0} 个,{1} MB", "Riesige Container-Logs: {0} Dateien, {1} MB", "Logs de contenedores enormes: {0} archivos, {1} MB", "Logs de contêineres enormes: {0} arquivos, {1} MB"],
+  ["Журнал systemd занимает {0} МБ", "The systemd journal takes {0} MB", "systemd 日志占用 {0} MB", "Das systemd-Journal belegt {0} MB", "El journal de systemd ocupa {0} MB", "O journal do systemd ocupa {0} MB"],
+  ["Нет swap при {0} МБ RAM", "No swap with {0} MB of RAM", "内存 {0} MB 且没有 swap", "Kein Swap bei {0} MB RAM", "Sin swap con {0} MB de RAM", "Sem swap com {0} MB de RAM"],
+  ["Swap почти исчерпан: свободно {0}%", "Swap is almost exhausted: {0}% free", "Swap 几乎耗尽:剩余 {0}%", "Swap fast erschöpft: {0}% frei", "Swap casi agotado: {0}% libre", "Swap quase esgotado: {0}% livre"],
+  ["Требуется перезагрузка сервера", "A server reboot is required", "需要重启服务器", "Ein Neustart des Servers ist erforderlich", "Se requiere reiniciar el servidor", "É necessário reiniciar o servidor"],
+  ["Очистить журнал systemd до 100 МБ", "Vacuum the systemd journal to 100 MB", "将 systemd 日志清理至 100 MB", "systemd-Journal auf 100 MB verkleinern", "Reducir el journal de systemd a 100 MB", "Reduzir o journal do systemd para 100 MB"],
+  ["Очистить билд-кэш и неиспользуемые образы Docker", "Prune Docker build cache and unused images", "清理 Docker 构建缓存和未使用的镜像", "Docker-Build-Cache und ungenutzte Images bereinigen", "Limpiar caché de build y imágenes sin usar de Docker", "Limpar cache de build e imagens não usadas do Docker"],
+  ["Добавить swap-файл", "Add a swap file", "添加 swap 文件", "Swap-Datei hinzufügen", "Añadir un archivo swap", "Adicionar um arquivo swap"],
+  ["Обнулить логи контейнеров больше 200 МБ", "Truncate container logs over 200 MB", "清空超过 200 MB 的容器日志", "Container-Logs über 200 MB leeren", "Vaciar logs de contenedores de más de 200 MB", "Esvaziar logs de contêineres acima de 200 MB"],
+  ["Размер swap: {0}", "Swap size: {0}", "Swap 大小:{0}", "Swap-Größe: {0}", "Tamaño de swap: {0}", "Tamanho do swap: {0}"],
+  ["Неизвестный рецепт исправления", "Unknown fix recipe", "未知的修复方案", "Unbekanntes Reparaturrezept", "Receta de corrección desconocida", "Receita de correção desconhecida"],
+  ["Недопустимые параметры рецепта", "Invalid recipe parameters", "修复方案参数无效", "Ungültige Rezeptparameter", "Parámetros de receta no válidos", "Parâmetros de receita inválidos"],
+  ["На этом сервере уже выполняется исправление", "A fix is already running on this server", "此服务器上已有修复正在运行", "Auf diesem Server läuft bereits eine Reparatur", "Ya hay una corrección en curso en este servidor", "Já há uma correção em andamento neste servidor"],
+  ["отклонено: {0}", "rejected: {0}", "已拒绝:{0}", "abgelehnt: {0}", "rechazado: {0}", "rejeitado: {0}"],
+  ["{0}, находок: {1}", "{0}, findings: {1}", "{0},发现 {1} 项", "{0}, Befunde: {1}", "{0}, hallazgos: {1}", "{0}, achados: {1}"],
+];
+for (const [ru, en, zh, de, es, pt] of DOCTOR) { EN.push([ru, en]); ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
+
 function compileDict(entries) {
   const exact = new Map();
   const patterns = [];

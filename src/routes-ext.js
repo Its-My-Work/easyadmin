@@ -20,6 +20,7 @@ import { loadRoutes } from './load-monitor.js';
 import { backupRoutes as backupApiRoutes } from './backups.js';
 import { moveRoutes } from './service-move.js';
 import { filesRoutes } from './files.js';
+import { serverDoctorRoutes } from './server-doctor.js';
 import { parseTs } from './ts.js';
 
 const CHANNEL_TYPES = ['telegram', 'webhook', 'email'];
@@ -781,5 +782,5 @@ export function extraRoutes(d) {
   };
   const certTimer = setInterval(checkCerts, 6 * 3600_000); certTimer.unref();
 
-  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...migrationRoutes({ ...d, treeOf }), ...loadRoutes(d), ...backupApiRoutes({ ...d, treeOf }), ...backupOverviewRoutes({ ...d, treeOf }), ...moveRoutes({ ...d, treeOf }), ...filesRoutes(d), ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...serviceHistoryRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes];
+  return [...consoleRoutes, ...psettingsRoutes(d), ...extrasRoutes(d), ...licenseRoutes(d), ...installRoutes(d), ...migrationRoutes({ ...d, treeOf }), ...loadRoutes(d), ...backupApiRoutes({ ...d, treeOf }), ...backupOverviewRoutes({ ...d, treeOf }), ...moveRoutes({ ...d, treeOf }), ...filesRoutes(d), ...serverDoctorRoutes(d), ...catalogRoutes, ...sshRoutes, ...channelRoutes, ...reissueRoutes, ...settingsRoutes, ...diagRoutes, ...logRoutes, ...historyRoutes, ...serviceHistoryRoutes, ...templateRoutes, ...bulkRoutes, ...scheduleRoutes, ...hookRoutes, ...inventoryRoutes];
 }

@@ -9,6 +9,7 @@ import { installFlow } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
 import { sortRows, sortTh } from './sort.js';
 import { loadSettingsCard, loadTab } from './load-tab.js';
+import { doctorTab } from './server-doctor.js';
 import { timeCard } from './time-card.js';
 import { actionLabel, detailLabel } from './action-names.js';
 import { channelsCard, cleanAllModal } from './views2.js';
@@ -80,7 +81,7 @@ export function panelPage(id, sub) {
   const tab = sub || 'services';
   const st = p.stats;
   const down = !['online', 'degraded'].includes(p.status);
-  const tabs = [['services', 'Сервисы'], ['load', 'Нагрузка'], ['activity', 'Активность'], ...(can('admin') ? [['settings', 'Настройки']] : [])];
+  const tabs = [['services', 'Сервисы'], ['load', 'Нагрузка'], ...(can('admin') ? [['doctor', 'Server Doctor']] : []), ['activity', 'Активность'], ...(can('admin') ? [['settings', 'Настройки']] : [])];
   const content = h('div');
   const page = h('div', { class: 'page', style: { '--pc': p.color } },
     h('div', { class: 'page-head' },
@@ -102,6 +103,7 @@ export function panelPage(id, sub) {
     content);
   if (tab === 'services') content.append(servicesTab(p));
   else if (tab === 'load') content.append(loadTab(p));
+  else if (tab === 'doctor' && can('admin')) content.append(doctorTab(p));
   else if (tab === 'activity') content.append(activityTab(p));
   else content.append(settingsTab(p));
   return page;
