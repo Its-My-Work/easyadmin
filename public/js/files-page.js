@@ -67,8 +67,9 @@ export function filesPage() {
 
   function paintHead() {
     const p = panels.find((x) => x.id === S.panelId); swatch.style.background = p?.color ?? 'transparent';
-    clear(crumbBar).append(...crumbs(curPath()).flatMap((c, i, a) => [i ? h('span', { class: 'fm-sep' }, '/') : null,
-      h('button', { class: `fm-crumb ${i === a.length - 1 ? 'last' : ''}`, onclick: () => go(c.path), title: c.path }, i === 0 ? icon('home', 14) : raw(c.name))]),
+    clear(crumbBar).append(...crumbs(curPath()).flatMap((c, i, a) => (i
+      ? [h('span', { class: 'fm-sep' }, '/'), h('button', { class: `fm-crumb ${i === a.length - 1 ? 'last' : ''}`, onclick: () => go(c.path), title: c.path }, raw(c.name))]
+      : [h('button', { class: `fm-crumb ${i === a.length - 1 ? 'last' : ''}`, onclick: () => go(c.path), title: c.path }, icon('home', 14))])),
     h('button', { class: 'btn icon ghost sm fm-edit-path', title: 'Ввести путь вручную', 'aria-label': 'Ввести путь вручную', onclick: typePath }, icon('edit', 14)));
     quick.querySelectorAll('.chip-btn').forEach((b, i) => b.classList.toggle('on', QUICK_JUMPS[i][1] === curPath()));
   }
@@ -112,9 +113,10 @@ export function filesPage() {
   function renderList() {
     clear(listBox);
     if (S.panelId == null) return listBox.append(empty('Нет панелей', 'Добавьте панель Easypanel, чтобы работать с файлами её сервера.'));
-    if (S.loading && !S.data) return listBox.append(h('div', { class: 'skeleton card', style: { height: '220px' } }));
+    if ((S.loading || !S.data) && !S.error) return listBox.append(h('div', { class: 'skeleton card', style: { height: '220px' } }));
     if (S.error) return listBox.append(h('div', { class: 'callout err' }, icon('alert'), raw(S.error), h('button', { class: 'btn sm', onclick: () => load() }, t('Повторить'))));
-    const q = S.filter.trim().toLowerCase(); const items = S.data.items.filter((i) => !q || i.name.toLowerCase().includes(q));
+    if (!S.data) return;
+    const q = S.filter.trim().toLowerCase(); const items = (S.data.items || []).filter((i) => !q || i.name.toLowerCase().includes(q));
     statusLine.textContent = `${t('Папок')}: ${S.data.items.filter((i) => i.isDir).length} · ${t('Файлов')}: ${S.data.items.filter((i) => !i.isDir).length}${S.data.truncated ? ` · ${t('показаны не все элементы')}` : ''}${S.busy ? ` · ${S.busy}` : ''}`;
     const up = S.data.parent == null ? null : h('tr', { class: 'row fm-row' }, h('td', { class: 'fm-name', colspan: 5 }, h('button', { class: 'fm-link', onclick: () => go(S.data.parent) }, h('span', { class: 'fm-ic fi-folder' }, icon('up', 17)), h('span', { class: 'fm-fname' }, '..'))));
     listBox.append(h('div', { class: 'fm-table-wrap' }, h('table', { class: 'tbl fm-table' },
