@@ -334,8 +334,8 @@ export function settingsPage() {
   const page = h('div', { class: 'page' }, pageHead('Настройки'));
   page.append(
     h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h3', null, 'Панели'), can('admin') ? h('button', { class: 'btn primary sm', onclick: () => panelForm() }, icon('plus', 14), 'Добавить') : null),
-      store.panels.length ? h('div', { class: 'list' }, store.panels.map((p, i) => h('div', { class: 'list-item' },
-        h('div', { class: 'inline' }, h('i', { class: 'swatch lg', style: { background: p.color } }), h('div', null, h('b', null, p.name), h('div', { class: 'muted small' }, p.url))),
+      store.panels.length ? h('div', { class: 'list panels-list' }, store.panels.map((p, i) => h('div', { class: 'list-item' },
+        h('div', { class: 'inline' }, h('i', { class: 'swatch lg', style: { background: p.color } }), h('div', null, h('b', null, p.name), h('div', { class: 'mono-sub' }, p.url))),
         h('div', { class: 'inline' }, statusBadge(p.status),
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),

@@ -58,7 +58,12 @@ Demo without real panels (several Easypanel mocks): `npm run demo` → http://lo
 - **2FA (TOTP)**, password change, admin-side 2FA reset.
 - Audit log with search and **CSV export** (kept for 90 days).
 
-**Operations**: backup from the UI (+ `scripts/restore.js`), Prometheus metrics (`/metrics`), light/dark theme, responsive layout. An unreachable panel does not affect the others.
+**Operations**:
+- **Server Migration**: complete migration of panels, SSL certs, Git keys, volumes, and databases to a fresh clean Ubuntu/Debian server in one click via SSH or a single curl bootstrap command.
+- **6 Color Themes**: 3 dark (Midnight, Emerald, Ocean) and 3 light (Classic, Warm Sand, Mint Breeze) with an instant topbar switcher.
+- **Column Sorting & Projects**: interactive sorting on Services, Backups, and Users pages; dedicated project column.
+- **Backups & Restore**: unified backup and restore history, automatic schedules, pre-restore safety copies, and step-by-step restoration wizard.
+- Backup from the UI (+ `scripts/restore.js`), Prometheus metrics (`/metrics`), responsive layout. An unreachable panel does not affect the others.
 
 ## Security
 

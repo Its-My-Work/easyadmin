@@ -6,7 +6,7 @@ import { runServiceOp } from '../src/easypanel.js';
 const fake = () => { const calls = []; return { calls, mutate: async (proc, input) => { calls.push({ proc, input }); return null; } }; };
 const ref = { type: 'compose', project: 'main', name: 'mcp-tools' };
 // домен в том виде, в каком его отдаёт панель (ssh-mcp из реального стека)
-const existing = { certificateResolver: '', host: 'mcp-ssh.itsmywork.vip', https: true, id: 'd1', middlewares: ['auth'], path: '/', wildcard: false, destinationType: 'service',
+const existing = { certificateResolver: '', host: 'mcp-ssh.example.com', https: true, id: 'd1', middlewares: ['auth'], path: '/', wildcard: false, destinationType: 'service',
   serviceDestination: { composeService: 'ssh-mcp', path: '/', port: 3000, projectName: 'main', protocol: 'http', serviceName: 'mcp-tools' } };
 
 describe('домены: создание', () => {
@@ -32,7 +32,7 @@ describe('домены: создание', () => {
 describe('домены: изменение', () => {
   test('меняется только заданное; middlewares, сертификат и прочие поля домена сохраняются', async () => {
     const c = fake();
-    await runServiceOp(c, 'domainUpdate', ref, { id: 'd1', original: existing, host: 'mcp-ssh.itsmywork.vip', https: true, path: '/', port: 3001, protocol: 'https', destPath: '/mcp', composeService: 'desktop-auth' });
+    await runServiceOp(c, 'domainUpdate', ref, { id: 'd1', original: existing, host: 'mcp-ssh.example.com', https: true, path: '/', port: 3001, protocol: 'https', destPath: '/mcp', composeService: 'desktop-auth' });
     const b = c.calls[0].input;
     assert.deepEqual(b.serviceDestination, { composeService: 'desktop-auth', path: '/mcp', port: 3001, projectName: 'main', protocol: 'https', serviceName: 'mcp-tools' });
     assert.deepEqual([b.middlewares, b.wildcard, b.certificateResolver, b.destinationType, b.id, b.domainId, b.path], [['auth'], false, '', 'service', 'd1', 'd1', '/']);
