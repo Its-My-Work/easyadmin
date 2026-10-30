@@ -355,10 +355,7 @@ export function languageCard() {
   return h('section', { class: 'card stack' }, h('h3', null, 'Язык интерфейса'), h('div', { class: 'inline' }, btn('ru', 'Русский'), btn('en', 'English')));
 }
 
-export function themeCard() {
-  const set = (t) => { try { t ? localStorage.setItem('ea-theme', t) : localStorage.removeItem('ea-theme'); } catch {} if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; };
-  return h('section', { class: 'card' }, h('h3', null, 'Оформление'), h('div', { class: 'inline' }, [['', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([v, l]) => h('button', { class: 'btn', onclick: () => set(v) }, l))));
-}
+export { themeCard, themePickerModal } from './theme-picker.js';
 
 /* ======================= Форма панели ======================= */
 const COLORS = ['#7c83ff', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#a855f7', '#64748b'];

@@ -10,7 +10,7 @@ import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './view
 import { avatar, profilePage, usersPage } from './pages-users.js';
 import { consolePage } from './server-console.js';
 import { backupsPage } from './backups-page.js';
-import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead } from './views.js';
+import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead, themePickerModal } from './views.js';
 
 const root = document.getElementById('root');
 let shell = null;
@@ -39,6 +39,8 @@ function authScreen(setup, sso) {
 }
 /** Переключатель языка интерфейса: показывает текущий, по клику переключает на другой. */
 const langToggle = (cls = '') => h('button', { class: `btn ghost sm lang-btn ${cls}`, type: 'button', title: 'Language / Язык', onclick: () => setLang(lang === 'ru' ? 'en' : 'ru') }, icon('globe', 14), h('span', { class: 'lang-txt' }, lang.toUpperCase()));
+/** Кнопка выбора темы оформления в шапке */
+const themeToggle = (cls = '') => h('button', { class: `btn icon ghost sm theme-btn ${cls}`, type: 'button', title: t('Тема оформления'), 'aria-label': t('Тема оформления'), onclick: () => themePickerModal() }, icon('palette', 14));
 const logoMark = () => h('span', { class: 'logo-mark' }, icon('layers', 16));
 
 /* ======================= каркас ======================= */
@@ -58,7 +60,7 @@ function buildShell() {
   const top = h('header', { class: 'topbar' },
     h('button', { class: 'btn icon ghost menu-btn', title: 'Свернуть / развернуть меню', onclick: toggleMenu, 'aria-label': 'Меню' }, icon('menu', 18)),
     h('button', { class: 'search-trigger', title: 'Поиск и команды', 'aria-label': 'Поиск и команды', onclick: openPalette }, icon('search', 15), h('span', null, 'Поиск и команды'), h('kbd', null, navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K')),
-    h('span', { class: 'spacer' }), clock, updated, refreshBtn, h('span', { class: 'top-sep' }), langToggle(),
+    h('span', { class: 'spacer' }), clock, updated, refreshBtn, h('span', { class: 'top-sep' }), themeToggle(), langToggle(),
     h('a', { class: 'user user-chip', href: '#/profile', title: 'Профиль' }, avatar(store.user, 30), h('div', null, h('b', null, store.user.displayName || store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
     h('button', { class: 'btn icon ghost', title: 'Выйти', 'aria-label': 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16)));
   clear(root).append(h('div', { class: 'app' }, sidebar, back, h('div', { class: 'content' }, top, view)));

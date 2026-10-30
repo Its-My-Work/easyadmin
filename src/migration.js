@@ -49,24 +49,24 @@ export function buildSnapshotScript({ runId, baseDir, items = [], consistency = 
   const slug = items[0]?.slug;
   let script = buildScript({ runId, baseDir, dest: 'local', keep: 1, minFreeKb, items, consistency, password: '', selfId, mpMin, partMb });
   script = script.replace(/echo DONE >> "\$ST"\n$/, '');
-  const mv = [...new Set(items.map((j) => j.file))].map((f) => `mv ${shq(`${baseDir}/${slug}/${f}`)} "$PK/data/" || snap_fail "Не удалось подготовить $(basename ${shq(f)})"`);
+  const mv = [...new Set(items.map((j) => j.file))].map((f) => `mv ${shq(`${baseDir}/${slug}/${f}`)} "$PK/data/" || snap_fail "Failed to prepare $(basename ${shq(f)})"`);
   const covered = [...new Set(items.flatMap((j) => j.parts).filter((p) => p.kind === 'volume' && /^\/etc\/easypanel\/[A-Za-z0-9_./-]+$/.test(p.hostPath ?? '')).map((p) => p.hostPath.slice(1)))];
   const lines = [
     'snap_fail() { fail snapshot CMD "$1"; echo DONE >> "$ST"; exit 1; }',
-    `if grep -q '^FAIL|' "$ST"; then snap_fail "Не все сервисы скопированы — переезд остановлен, чтобы не потерять данные"; fi`,
+    `if grep -q '^FAIL|' "$ST"; then snap_fail "Not all services copied — migration stopped to prevent data loss"; fi`,
     'printf \'RUN|snapshot|pack\\n\' >> "$ST"',
     'ROOTDIR="${EA_MIGRATION_ROOT:-/}"; PK="$TMPD/$RUN.pack"; FINAL="$TMPD/$RUN.final"; PASSF2=""', // $RUN.* чистит trap
-    'mkdir -p "$PK/data" || snap_fail "Не удалось создать рабочую папку"',
+    'mkdir -p "$PK/data" || snap_fail "Failed to create working directory"',
     "cat > \"$PK/manifest.json\" <<'EA_MANIFEST'", JSON.stringify(manifest), 'EA_MANIFEST',
     ...mv,
     `TAREX=(--no-wildcards --anchored${covered.map((x) => ` --exclude=${shq(x)}`).join('')})`,
     'tar -czf "$FINAL" "${TAREX[@]}" -C "$ROOTDIR" etc/easypanel -C "$PK" manifest.json data 2>"$LOGD/$RUN.err"; rc=$?', // 1 — «файл изменился при чтении» (живая LMDB), не ошибка
-    '[ $rc -le 1 ] || snap_fail "Не удалось упаковать /etc/easypanel: $(tail -c 200 "$LOGD/$RUN.err" | tr \'\\n|\' \'  \')"',
+    '[ $rc -le 1 ] || snap_fail "Failed to package /etc/easypanel: $(tail -c 200 "$LOGD/$RUN.err" | tr \'\\n|\' \'  \')"',
     password ? `PASSF2="$LOGD/$RUN.pw"; printf %s ${shq(Buffer.from(password).toString('base64'))} | base64 -d > "$PASSF2"` : '',
-    password ? 'openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt -pass file:"$PASSF2" -in "$FINAL" -out "$FINAL.enc" 2>"$LOGD/$RUN.err" && mv "$FINAL.enc" "$FINAL" || snap_fail "Не удалось зашифровать слепок"' : '',
+    password ? 'openssl enc -aes-256-cbc -pbkdf2 -iter 100000 -salt -pass file:"$PASSF2" -in "$FINAL" -out "$FINAL.enc" 2>"$LOGD/$RUN.err" && mv "$FINAL.enc" "$FINAL" || snap_fail "Failed to encrypt snapshot"' : '',
     'size=$(stat -c %s "$FINAL" 2>/dev/null || echo 0)',
     'printf \'RUN|snapshot|upload\\n\' >> "$ST"',
-    `curl -sS -f --retry 3 -T "$FINAL" -o /dev/null ${shq(uploadUrl)} 2>"$LOGD/$RUN.err" || snap_fail "Не удалось отправить слепок в EasyAdmin: $(tail -c 200 "$LOGD/$RUN.err" | tr '\\n|' '  ')"`,
+    `curl -sS -f --retry 3 -T "$FINAL" -o /dev/null ${shq(uploadUrl)} 2>"$LOGD/$RUN.err" || snap_fail "Failed to upload snapshot to EasyAdmin: $(tail -c 200 "$LOGD/$RUN.err" | tr '\\n|' '  ')"`,
     `printf 'OK|snapshot|%s|%s\\n' ${shq(name)} "$size" >> "$ST"`,
     items.length ? `rmdir ${shq(`${baseDir}/${slug}`)} 2>/dev/null` : '',
     'echo DONE >> "$ST"',

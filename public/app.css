@@ -1,11 +1,64 @@
-:root {
+/* ==================== 1. ТЁМНЫЕ ТЕМЫ (3 темы) ==================== */
+
+/* 1.1 Полночь (Индиго) — дефолт на :root и [data-theme="dark"] / [data-theme="dark-indigo"] */
+:root, :root[data-theme="dark"], :root[data-theme="dark-indigo"] {
   --bg: #0b0d12; --bg2: #0f1218; --panel: #13161e; --panel2: #191d27; --border: #242938; --border2: #2f3548;
   --text: #e7e9f0; --muted: #8b93a8; --accent: #7c83ff; --accent-fg: #0b0d12; --accent-soft: rgba(124,131,255,.14);
   --ok: #34d399; --warn: #fbbf24; --err: #f87171; --shadow: 0 10px 40px rgba(0,0,0,.45);
   --radius: 12px; color-scheme: dark;
 }
-@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#f4f5f9; --bg2:#eceef4; --panel:#fff; --panel2:#f5f6fa; --border:#e3e6ef; --border2:#d3d8e6; --text:#161a26; --muted:#657089; --accent:#5a62ee; --accent-fg:#fff; --accent-soft:rgba(90,98,238,.1); --shadow:0 10px 40px rgba(20,25,50,.15); color-scheme: light; } }
-:root[data-theme="light"] { --bg:#f4f5f9; --bg2:#eceef4; --panel:#fff; --panel2:#f5f6fa; --border:#e3e6ef; --border2:#d3d8e6; --text:#161a26; --muted:#657089; --accent:#5a62ee; --accent-fg:#fff; --accent-soft:rgba(90,98,238,.1); --shadow:0 10px 40px rgba(20,25,50,.15); color-scheme: light; }
+
+/* 1.2 Изумруд (Нефрит) — [data-theme="dark-emerald"] */
+:root[data-theme="dark-emerald"] {
+  --bg: #080f0c; --bg2: #0d1713; --panel: #111e19; --panel2: #162821; --border: #1f382d; --border2: #2c4e3f;
+  --text: #e1efe8; --muted: #7ca796; --accent: #10b981; --accent-fg: #042016; --accent-soft: rgba(16,185,129,.16);
+  --ok: #34d399; --warn: #fbbf24; --err: #f87171; --shadow: 0 10px 40px rgba(0,0,0,.5);
+  --radius: 12px; color-scheme: dark;
+}
+
+/* 1.3 Океан (Слейт) — [data-theme="dark-slate"] */
+:root[data-theme="dark-slate"] {
+  --bg: #070d18; --bg2: #0c1424; --panel: #101a2e; --panel2: #15233d; --border: #1e3355; --border2: #2b4676;
+  --text: #e2ebf7; --muted: #7d96ba; --accent: #38bdf8; --accent-fg: #041727; --accent-soft: rgba(56,189,248,.16);
+  --ok: #2dd4bf; --warn: #fbbf24; --err: #f87171; --shadow: 0 10px 40px rgba(0,0,0,.5);
+  --radius: 12px; color-scheme: dark;
+}
+
+/* ==================== 2. СВЕТЛЫЕ ТЕМЫ (3 темы) ==================== */
+
+/* Системная светлая (если prefers-color-scheme: light и тема не выбрана принудительно) */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme^="dark"]):not([data-theme="light-sand"]):not([data-theme="light-teal"]) {
+    --bg: #f4f5f9; --bg2: #eceef4; --panel: #ffffff; --panel2: #f5f6fa; --border: #e3e6ef; --border2: #d3d8e6;
+    --text: #161a26; --muted: #657089; --accent: #5a62ee; --accent-fg: #ffffff; --accent-soft: rgba(90,98,238,.12);
+    --ok: #10b981; --warn: #d97706; --err: #ef4444; --shadow: 0 10px 40px rgba(20,25,50,.12);
+    color-scheme: light;
+  }
+}
+
+/* 2.1 Классическая (Светлая) — [data-theme="light"], [data-theme="light-indigo"] */
+:root[data-theme="light"], :root[data-theme="light-indigo"] {
+  --bg: #f4f5f9; --bg2: #eceef4; --panel: #ffffff; --panel2: #f5f6fa; --border: #e3e6ef; --border2: #d3d8e6;
+  --text: #161a26; --muted: #657089; --accent: #5a62ee; --accent-fg: #ffffff; --accent-soft: rgba(90,98,238,.12);
+  --ok: #10b981; --warn: #d97706; --err: #ef4444; --shadow: 0 10px 40px rgba(20,25,50,.12);
+  --radius: 12px; color-scheme: light;
+}
+
+/* 2.2 Тёплый песок (Янтарь) — [data-theme="light-sand"] */
+:root[data-theme="light-sand"] {
+  --bg: #f8f6f0; --bg2: #efebe1; --panel: #ffffff; --panel2: #f5f1e8; --border: #e3dccd; --border2: #d1c7b3;
+  --text: #26211a; --muted: #7c705f; --accent: #d97706; --accent-fg: #ffffff; --accent-soft: rgba(217,119,6,.14);
+  --ok: #15803d; --warn: #b45309; --err: #b91c1c; --shadow: 0 10px 40px rgba(60,45,20,.10);
+  --radius: 12px; color-scheme: light;
+}
+
+/* 2.3 Морской бриз (Мята) — [data-theme="light-teal"] */
+:root[data-theme="light-teal"] {
+  --bg: #edf6f5; --bg2: #e1efec; --panel: #ffffff; --panel2: #e7f3f1; --border: #cbe3df; --border2: #b4d6d1;
+  --text: #112624; --muted: #507570; --accent: #0d9488; --accent-fg: #ffffff; --accent-soft: rgba(13,148,136,.14);
+  --ok: #059669; --warn: #d97706; --err: #e11d48; --shadow: 0 10px 40px rgba(10,40,35,.10);
+  --radius: 12px; color-scheme: light;
+}
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -495,3 +548,17 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .mig-checks.grid-2 { gap: 6px 12px; } .mig-checks .check, .mig-add { font-size: 12.5px; }
 .modal-compact .mig-steps { margin: 0; }
 @media (max-width: 640px) { .mig-conn-grid { grid-template-columns: minmax(0, 1fr) 80px; } .mig-conn-grid > :first-child { grid-column: 1 / -1; } .mig-auth-row { grid-template-columns: 1fr; } }
+
+/* Выбор тем оформления */
+.theme-section { display: grid; gap: 14px; }
+.theme-group-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 2px; }
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.theme-choice { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1.5px solid var(--border); background: var(--panel2); border-radius: var(--radius); cursor: pointer; text-align: left; font: inherit; color: var(--text); transition: border-color .15s, background .15s, transform .1s; }
+.theme-choice:hover { border-color: var(--accent); transform: translateY(-1px); }
+.theme-choice.active { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.theme-preview { width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(128,128,128,.3); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+.theme-preview-accent { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.theme-info { min-width: 0; flex: 1; }
+.theme-title { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.theme-hint { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.theme-auto-row { display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
