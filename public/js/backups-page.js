@@ -33,7 +33,7 @@ function lastCell(r) {
 export function backupsPage() {
   const body = h('div', { class: 'stack' }); let timer = null;
   const page = h('div', { class: 'page' }, h('div', { class: 'page-head' }, h('h1', null, 'Бэкапы'), h('div', { class: 'inline' }, can('admin') ? [
-    h('button', { class: 'btn', onclick: () => backupHistoryModal() }, icon('activity', 15), t('Журнал и восстановления')),
+    h('button', { class: 'btn', onclick: () => backupHistoryModal() }, icon('activity', 15), t('История')),
     h('button', { class: 'btn', onclick: () => migrationModal() }, icon('server', 15), t('Переезд на новый сервер')),
     h('button', { class: 'btn', onclick: () => settingsModal(() => load(true)) }, icon('settings', 15), t('Настройки')),
     h('button', { class: 'btn primary', onclick: () => startAll() }, icon('play', 14), t('Запустить бэкап'))] : null)), body);

@@ -138,7 +138,7 @@ export async function backupHistoryModal(initialTab = 'log') {
   );
 
   const container = h('div', { class: 'stack' });
-  modal({ title: t('Журнал и восстановления'), wide: true, body: container, actions: [{ label: t('Закрыть'), kind: 'ghost' }] });
+  modal({ title: t('История'), wide: true, body: container, actions: [{ label: t('Закрыть'), kind: 'ghost' }] });
 
   async function render() {
     clear(container).append(drawTabs(), content);
