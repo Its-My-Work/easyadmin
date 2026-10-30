@@ -4,6 +4,15 @@
  * Пробелы по краям при поиске игнорируются.
  */
 export const EN = [
+  ['Успешно выполнено', 'Successfully completed'],
+  ['Завершено с ошибками', 'Completed with errors'],
+  ['Вывод сервера:', 'Server output:'],
+  ['Результат выполнения', 'Execution result'],
+  ['Отлично', 'Great'],
+  ['Внимание', 'Warning'],
+  ['Инфо', 'Info'],
+  ['Все проверенные параметры хоста в полной норме.', 'All checked host parameters are healthy.'],
+  ['Проверяем хост…', 'Checking host…'],
   /* --- общие --- */
   ['Закрыть', 'Close'], ['Новый сервис', 'New service'], ['Новый проект будет создан автоматически', 'A new project will be created automatically'], ['Укажите проект', 'Enter a project'], ['Укажите имя сервиса', 'Enter a service name'], ['Нет доступных панелей — сначала подключите панель', 'No available panels — connect a panel first'], ['Избранные', 'Favorites'], ['Недавние', 'Recent'], ['Страницы', 'Pages'], ['Команды', 'Commands'], ['↑↓ — выбор · Enter — открыть · Esc — закрыть', '↑↓ — navigate · Enter — open · Esc — close'], ['— ок', '— ok'], ['— {0}', '— {0}'], ['Отмена', 'Cancel'], ['Подтвердить', 'Confirm'], ['Выполнить', 'Run'], ['Применить', 'Apply'], ['Сохранить', 'Save'],
   ['Создать', 'Create'], ['Удалить', 'Delete'], ['Добавить', 'Add'], ['Изменить', 'Edit'], ['Повторить', 'Retry'], ['Копировать', 'Copy'],
@@ -2475,6 +2484,41 @@ const INTERACTIVE = [
   ["🤖 AI-диагноз {0} отправлен", "🤖 AI diagnosis of {0} sent", "🤖 {0} 的 AI 诊断已发送", "🤖 KI-Diagnose für {0} gesendet", "🤖 Diagnóstico de IA de {0} enviado", "🤖 Diagnóstico de IA de {0} enviado"],
 ];
 for (const [ru, en, zh, de, es, pt] of INTERACTIVE) { EN.push([ru, en]); ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
+
+/* --- Файловый менеджер: дерево, поиск и замена, переход к строке, перенос строк, полный экран: [ru, en, zh, de, es, pt] --- */
+const FILES_IDE = [
+  ["Фильтр файлов…", "Filter files…", "筛选文件…", "Dateien filtern…", "Filtrar archivos…", "Filtrar arquivos…"],
+  ["Папка пуста", "The folder is empty", "文件夹为空", "Der Ordner ist leer", "La carpeta está vacía", "A pasta está vazia"],
+  ["Файлы в папке", "Files in folder", "文件夹中的文件", "Dateien im Ordner", "Archivos de la carpeta", "Arquivos da pasta"],
+  ["Боковая панель", "Sidebar", "侧边栏", "Seitenleiste", "Barra lateral", "Barra lateral"],
+  ["К таблице файлов", "Back to file table", "返回文件表格", "Zurück zur Dateitabelle", "Volver a la tabla de archivos", "Voltar à tabela de arquivos"],
+  ["Найти в файле…", "Find in file…", "在文件中查找…", "In Datei suchen…", "Buscar en el archivo…", "Localizar no arquivo…"],
+  ["Заменить на…", "Replace with…", "替换为…", "Ersetzen durch…", "Reemplazar por…", "Substituir por…"],
+  ["Заменить", "Replace", "替换", "Ersetzen", "Reemplazar", "Substituir"],
+  ["Все", "All", "全部", "Alle", "Todo", "Todos"],
+  ["Предыдущее совпадение", "Previous match", "上一个匹配项", "Vorheriger Treffer", "Coincidencia anterior", "Correspondência anterior"],
+  ["Следующее совпадение", "Next match", "下一个匹配项", "Nächster Treffer", "Siguiente coincidencia", "Próxima correspondência"],
+  ["Закрыть поиск", "Close search", "关闭搜索", "Suche schließen", "Cerrar búsqueda", "Fechar busca"],
+  ["Не найдено", "Not found", "未找到", "Nicht gefunden", "No se encontró", "Não encontrado"],
+  ["{0} из {1}", "{0} of {1}", "第 {0} 个,共 {1} 个", "{0} von {1}", "{0} de {1}", "{0} de {1}"],
+  ["Учитывать регистр", "Match case", "区分大小写", "Groß-/Kleinschreibung beachten", "Distinguir mayúsculas", "Diferenciar maiúsculas"],
+  ["Перейти к строке", "Go to line", "转到行", "Gehe zu Zeile", "Ir a la línea", "Ir para a linha"],
+  ["Строка (1–{0})", "Line (1–{0})", "行号 (1–{0})", "Zeile (1–{0})", "Línea (1–{0})", "Linha (1–{0})"],
+  ["Перейти", "Go", "跳转", "Gehen", "Ir", "Ir"],
+  ["Закрыть", "Close", "关闭", "Schließen", "Cerrar", "Fechar"],
+  ["Заменено: {0}", "Replaced: {0}", "已替换:{0}", "Ersetzt: {0}", "Reemplazadas: {0}", "Substituídas: {0}"],
+  ["Перенос строк", "Word wrap", "自动换行", "Zeilenumbruch", "Ajuste de línea", "Quebra de linha"],
+  ["Перенос строк: вкл", "Word wrap: on", "自动换行:开", "Zeilenumbruch: an", "Ajuste de línea: sí", "Quebra de linha: ativada"],
+  ["Перенос строк: выкл", "Word wrap: off", "自动换行:关", "Zeilenumbruch: aus", "Ajuste de línea: no", "Quebra de linha: desativada"],
+  ["Полный экран", "Fullscreen", "全屏", "Vollbild", "Pantalla completa", "Tela cheia"],
+  ["Выйти из полноэкранного режима", "Exit fullscreen", "退出全屏", "Vollbild beenden", "Salir de pantalla completa", "Sair da tela cheia"],
+  ["Открыть другой файл?", "Open another file?", "打开其他文件?", "Andere Datei öffnen?", "¿Abrir otro archivo?", "Abrir outro arquivo?"],
+  ["Несохранённые изменения в этом файле будут потеряны.", "Unsaved changes in this file will be lost.", "此文件中未保存的更改将丢失。", "Nicht gespeicherte Änderungen in dieser Datei gehen verloren.", "Los cambios sin guardar en este archivo se perderán.", "As alterações não salvas neste arquivo serão perdidas."],
+  ["Открыть", "Open", "打开", "Öffnen", "Abrir", "Abrir"],
+];
+for (const [ru, ...tr] of FILES_IDE) {
+  [EN, ZH, DE, ES, PT].forEach((arr, i) => { if (!arr.some(([k]) => k.trim() === ru)) arr.push([ru, tr[i]]); });
+}
 
 function compileDict(entries) {
   const exact = new Map();

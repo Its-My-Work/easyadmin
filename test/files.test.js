@@ -184,3 +184,18 @@ describe('files: помощники интерфейса', () => {
     assert.deepEqual(u.QUICK_JUMPS.map((q) => q[1]), ['/etc/easypanel/projects', '/var/lib/docker/volumes', '/etc', '/var/log', '/']);
   });
 });
+
+describe('files: поиск, замена и переход к строке', () => {
+  test('findAll, pickMatch, replaceAllIn, lineStart, dirOf', async () => {
+    const u = await import('../public/js/files-util.js');
+    assert.deepEqual(u.findAll('Foo foo FOO', 'foo'), [0, 4, 8]);
+    assert.deepEqual(u.findAll('Foo foo FOO', 'foo', { matchCase: true }), [4]);
+    assert.deepEqual(u.findAll('aaaa', 'aa'), [0, 2]); assert.deepEqual(u.findAll('abc', ''), []);
+    assert.equal(u.pickMatch([], 0), -1);
+    assert.equal(u.pickMatch([2, 10, 20], 5, 1), 1); assert.equal(u.pickMatch([2, 10, 20], 25, 1), 0);
+    assert.equal(u.pickMatch([2, 10, 20], 10, -1), 0); assert.equal(u.pickMatch([2, 10, 20], 1, -1), 2);
+    assert.deepEqual(u.replaceAllIn('a-b-A', 'a', 'x'), ['x-b-x', 2]); assert.deepEqual(u.replaceAllIn('abc', 'z', 'x'), ['abc', 0]);
+    assert.equal(u.lineStart('ab\ncd\nef', 1), 0); assert.equal(u.lineStart('ab\ncd\nef', 3), 6); assert.equal(u.lineStart('ab\ncd', 99), 3);
+    assert.equal(u.dirOf('/etc/nginx/nginx.conf'), '/etc/nginx'); assert.equal(u.dirOf('/a'), '/'); assert.equal(u.dirOf('/'), '/');
+  });
+});

@@ -152,17 +152,20 @@ export function filesPage() {
       document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
     } catch (e) { fail(e); }
   }
-  async function openFile(it, full) {
-    if (it.size > LIMITS.edit * 5) return toast(t('Файл слишком большой для просмотра — скачайте его'), 'error');
-    S.busy = t('Открываем файл…'); renderList();
+  /** Открывает файл в редакторе/просмотрщике; switching — замена уже открытого вида (переход по дереву). Возвращает true при успехе. */
+  async function openFile(it, full, switching = false) {
+    if (it.size > LIMITS.edit * 5) { toast(t('Файл слишком большой для просмотра — скачайте его'), 'error'); return false; }
+    if (!switching) { S.busy = t('Открываем файл…'); renderList(); }
     try {
       const d = await get(url(`/read${qp(full)}`));
-      if (d.mime && d.binary) showView(imageView({ path: full, data: d, onClose: closeView, onDownload: () => download(full, false) }));
-      else if (d.binary) toast(t('Бинарный файл нельзя открыть в редакторе — скачайте его'), 'error');
-      else showView(editorView({ panelId: S.panelId, path: full, data: d, onClose: () => { closeView(); load(); } }));
-    } catch (e) { fail(e); } finally { S.busy = null; if (S.data) renderList(); }
+      const tree = { listDir: (p) => get(url(`/list${qp(p)}`)), onOpen: (i, f) => openFile(i, f, true) };
+      if (d.mime && d.binary) showView(imageView({ path: full, data: d, onClose: closeView, onDownload: () => download(full, false), ...tree }));
+      else if (d.binary) { toast(t('Бинарный файл нельзя открыть в редакторе — скачайте его'), 'error'); return false; }
+      else showView(editorView({ panelId: S.panelId, path: full, data: d, onClose: () => { closeView(); load(); }, ...tree }));
+      return true;
+    } catch (e) { fail(e); return false; } finally { if (!switching) { S.busy = null; if (S.data) renderList(); } }
   }
-  const showView = (node) => { browser.hidden = true; page.append(node); node.dataset.view = '1'; window.scrollTo(0, 0); };
+  const showView = (node) => { page.querySelector('[data-view]')?.remove(); browser.hidden = true; page.append(node); node.dataset.view = '1'; window.scrollTo(0, 0); };
   const closeView = () => { page.querySelector('[data-view]')?.remove(); browser.hidden = false; };
 
   async function uploadFiles(files) {

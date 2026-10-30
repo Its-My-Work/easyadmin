@@ -54,3 +54,33 @@ export function bytesToB64(bytes) {
   return btoa(s);
 }
 export const b64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+/** Поиск в тексте: индексы всех совпадений (без пересечений). Пустой запрос → []. */
+export function findAll(text, query, { matchCase = false, limit = 10000 } = {}) {
+  if (!query) return [];
+  const hay = matchCase ? text : text.toLowerCase(); const needle = matchCase ? query : query.toLowerCase();
+  const out = [];
+  for (let i = hay.indexOf(needle); i !== -1 && out.length < limit; i = hay.indexOf(needle, i + needle.length)) out.push(i);
+  return out;
+}
+/** Индекс в списке совпадений, ближайшего к позиции pos в заданную сторону (по кругу); -1 — совпадений нет. */
+export function pickMatch(matches, pos, dir = 1) {
+  if (!matches.length) return -1;
+  if (dir >= 0) { const i = matches.findIndex((m) => m >= pos); return i === -1 ? 0 : i; }
+  for (let i = matches.length - 1; i >= 0; i--) if (matches[i] < pos) return i;
+  return matches.length - 1;
+}
+/** Заменяет все совпадения; возвращает [новый текст, число замен]. */
+export function replaceAllIn(text, query, repl, opts = {}) {
+  const m = findAll(text, query, { ...opts, limit: Infinity });
+  let out = ''; let last = 0;
+  for (const i of m) { out += text.slice(last, i) + repl; last = i + query.length; }
+  return [out + text.slice(last), m.length];
+}
+/** Номер строки (с 1) → индекс её начала в тексте; номер за пределами прижимается к диапазону. */
+export function lineStart(text, line) {
+  const n = Math.max(1, Math.floor(line) || 1); let idx = 0;
+  for (let k = 1; k < n; k++) { const nl = text.indexOf('\n', idx); if (nl === -1) return idx; idx = nl + 1; }
+  return idx;
+}
+export const dirOf = (p) => p.replace(/\/[^/]*\/*$/, '') || '/';
