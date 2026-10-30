@@ -19,6 +19,7 @@ const SIX_HOURS = 6 * 3600_000;
 /** Каналы уведомлений (Telegram, webhook) и детектор событий по снимкам панелей. */
 export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) {
   const state = new Map(); // panelId → { fails, down, authErr, diskHigh, diskAt, svc: Map }
+  let interactive = null; // createInteractiveAlerts: кнопки, ссылки, заглушение
   const expected = new Map(); // "panelId|project/name" → ts: действия, сделанные через EasyAdmin, не алертим
 
   const open = (row) => ({ ...row, config: JSON.parse(decrypt(key, row.config_enc)), events: row.events ? row.events.split(',') : [] });
@@ -33,26 +34,28 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
     const event = { ...rawEvent, text: tr(rawEvent.text) };
     const text = `${event.icon ?? '⚠️'} ${event.text}`;
     const c = channel.config;
+    const actions = event.ref && channel.type !== 'telegram' ? (interactive?.links(event.ref) ?? []) : [];
     if (channel.type === 'telegram') {
       const r = await fetchImpl(`https://api.telegram.org/bot${c.botToken}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: c.chatId, text, disable_web_page_preview: true }),
+        body: JSON.stringify({ chat_id: c.chatId, text, disable_web_page_preview: true, ...(event.ref && interactive?.enabledFor(channel) ? { reply_markup: { inline_keyboard: interactive.keyboard(event.ref) } } : {}) }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!r.ok) throw new Error(`Telegram: HTTP ${r.status}`);
     } else if (channel.type === 'webhook') {
       const r = await fetchImpl(c.url, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(c.secret ? { 'X-EasyAdmin-Secret': c.secret } : {}) },
-        body: JSON.stringify({ type: event.type, text: event.text, panel: event.panel ?? null, ts: Date.now() }),
+        body: JSON.stringify({ type: event.type, text: event.text, panel: event.panel ?? null, ts: Date.now(), ...(actions.length ? { actions } : {}) }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!r.ok) throw new Error(`Webhook: HTTP ${r.status}`);
     } else if (channel.type === 'email') {
-      await sendMail({ ...c, subject: `EasyAdmin: ${tr(EVENT_TYPES[event.type] ?? 'уведомление')}`, text: `${event.text}\n\n— EasyAdmin` });
+      await sendMail({ ...c, subject: `EasyAdmin: ${tr(EVENT_TYPES[event.type] ?? 'уведомление')}`, text: `${event.text}${actions.map((a) => `\n${a.label}: ${a.url}`).join('')}\n\n— EasyAdmin` });
     } else throw new Error('Неизвестный тип канала');
   }
 
   async function emit(event) {
+    if (event.ref && interactive?.isMuted(event.ref.panelId, event.ref.project, event.ref.service)) return; // «Заглушить 1ч»
     const channels = list().filter((c) => c.enabled && c.events.includes(event.type));
     await Promise.allSettled(channels.map((c) => sendTo(c, event).catch((e) => console.error(`[alerts] ${c.name}: ${e.message}`))));
   }
@@ -87,7 +90,7 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
         const bad = !svc.enabled ? 'остановлен' : svc.health === 'failing' ? 'не работает (контейнер упал)' : null;
         const was = s.svc.get(k);
         s.svc.set(k, bad ? 'bad' : 'ok');
-        if (bad && was === 'ok' && !wasExpected(row.id, k)) events.push({ type: 'service_down', icon: '🟠', text: `Сервис ${k} на панели «${panel}» ${bad}` });
+        if (bad && was === 'ok' && !wasExpected(row.id, k)) events.push({ type: 'service_down', icon: '🟠', ref: { panelId: row.id, project: p.name, service: svc.name }, text: `Сервис ${k} на панели «${panel}» ${bad}` });
       }
       for (const k of s.svc.keys()) if (!seen.has(k)) s.svc.delete(k);
     }
@@ -96,6 +99,7 @@ export function createAlerts({ db, key, config, fetchImpl = globalThis.fetch }) 
   }
 
   return {
+    attachInteractive: (ia) => { interactive = ia; },
     list, emit, evaluate, expect, sendTo, getLang, setLang,
     seal: (cfg) => encrypt(key, JSON.stringify(cfg)),
     publicChannel: (c) => ({ id: c.id, name: c.name, type: c.type, enabled: !!c.enabled, events: c.events,

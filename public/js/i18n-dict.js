@@ -2447,6 +2447,35 @@ const STATUSPAGE_GAPS = [ // строки, которые уже были в EN,
 for (const [ru, zh, de, es, pt] of STATUSPAGE_GAPS) { ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
 
 
+/* --- Интерактивные алерты: [ru, en, zh, de, es, pt] --- */
+const INTERACTIVE = [
+  ["AI Диагноз", "AI Diagnosis", "AI 诊断", "KI-Diagnose", "Diagnóstico de IA", "Diagnóstico de IA"],
+  ["Заглушить 1ч", "Mute for 1h", "静音 1 小时", "1 Std. stummschalten", "Silenciar 1 h", "Silenciar por 1 h"],
+  ["Действие не выполнено", "Action failed", "操作未执行", "Aktion nicht ausgeführt", "Acción no ejecutada", "Ação não executada"],
+  ["Для вебхука Telegram нужен HTTPS-адрес в EASYADMIN_PUBLIC_URL", "The Telegram webhook requires an HTTPS address in EASYADMIN_PUBLIC_URL", "Telegram Webhook 需要在 EASYADMIN_PUBLIC_URL 中设置 HTTPS 地址", "Der Telegram-Webhook benötigt eine HTTPS-Adresse in EASYADMIN_PUBLIC_URL", "El webhook de Telegram requiere una dirección HTTPS en EASYADMIN_PUBLIC_URL", "O webhook do Telegram exige um endereço HTTPS em EASYADMIN_PUBLIC_URL"],
+  ["Заглушаю алерты…", "Muting alerts…", "正在静音告警…", "Alarme werden stummgeschaltet…", "Silenciando alertas…", "Silenciando alertas…"],
+  ["Запускаю AI-диагностику…", "Running AI diagnosis…", "正在运行 AI 诊断…", "KI-Diagnose wird gestartet…", "Ejecutando diagnóstico de IA…", "Executando diagnóstico de IA…"],
+  ["Кнопка уже использована", "This button has already been used", "此按钮已被使用", "Diese Schaltfläche wurde bereits verwendet", "Este botón ya se ha usado", "Este botão já foi usado"],
+  ["Кнопка устарела — дождитесь нового алерта", "This button has expired — wait for a new alert", "此按钮已过期 — 请等待新的告警", "Diese Schaltfläche ist abgelaufen — warten Sie auf einen neuen Alarm", "Este botón ha caducado: espere a una nueva alerta", "Este botão expirou — aguarde um novo alerta"],
+  ["Логи недоступны или пусты", "Logs are unavailable or empty", "日志不可用或为空", "Logs sind nicht verfügbar oder leer", "Los registros no están disponibles o están vacíos", "Os logs estão indisponíveis ou vazios"],
+  ["Неверный секрет вебхука", "Invalid webhook secret", "Webhook 密钥无效", "Ungültiges Webhook-Geheimnis", "Secreto de webhook no válido", "Segredo de webhook inválido"],
+  ["Некорректная ссылка действия", "Invalid action link", "操作链接无效", "Ungültiger Aktionslink", "Enlace de acción no válido", "Link de ação inválido"],
+  ["Нет включённых Telegram-каналов", "No enabled Telegram channels", "没有已启用的 Telegram 渠道", "Keine aktivierten Telegram-Kanäle", "No hay canales de Telegram habilitados", "Nenhum canal do Telegram ativado"],
+  ["Перезапуск запущен…", "Restart started…", "重启已开始…", "Neustart gestartet…", "Reinicio iniciado…", "Reinício iniciado…"],
+  ["Подтвердите действие. Ссылка одноразовая и действует 15 минут.", "Confirm the action. The link is single-use and valid for 15 minutes.", "请确认操作。该链接仅可使用一次,有效期 15 分钟。", "Aktion bestätigen. Der Link ist einmalig und 15 Minuten gültig.", "Confirme la acción. El enlace es de un solo uso y válido durante 15 minutos.", "Confirme a ação. O link é de uso único e vale por 15 minutos."],
+  ["Получаю логи…", "Fetching logs…", "正在获取日志…", "Logs werden abgerufen…", "Obteniendo registros…", "Obtendo logs…"],
+  ["Ссылка действия уже использована", "The action link has already been used", "操作链接已被使用", "Der Aktionslink wurde bereits verwendet", "El enlace de acción ya se ha usado", "O link de ação já foi usado"],
+  ["Ссылка действия устарела", "The action link has expired", "操作链接已过期", "Der Aktionslink ist abgelaufen", "El enlace de acción ha caducado", "O link de ação expirou"],
+  ["✅ Сервис {0} перезапущен", "✅ Service {0} restarted", "✅ 服务 {0} 已重启", "✅ Dienst {0} neu gestartet", "✅ Servicio {0} reiniciado", "✅ Serviço {0} reiniciado"],
+  ["❌ Не удалось выполнить действие: {0}", "❌ Could not perform the action: {0}", "❌ 无法执行操作:{0}", "❌ Aktion konnte nicht ausgeführt werden: {0}", "❌ No se pudo ejecutar la acción: {0}", "❌ Não foi possível executar a ação: {0}"],
+  ["📜 Логи {0} (последние {1} строк)", "📜 Logs of {0} (last {1} lines)", "📜 {0} 的日志(最近 {1} 行)", "📜 Logs von {0} (letzte {1} Zeilen)", "📜 Registros de {0} (últimas {1} líneas)", "📜 Logs de {0} (últimas {1} linhas)"],
+  ["📜 Логи {0} отправлены", "📜 Logs of {0} sent", "📜 {0} 的日志已发送", "📜 Logs von {0} gesendet", "📜 Registros de {0} enviados", "📜 Logs de {0} enviados"],
+  ["🔕 Алерты по {0} заглушены на 1 час", "🔕 Alerts for {0} muted for 1 hour", "🔕 {0} 的告警已静音 1 小时", "🔕 Alarme für {0} für 1 Stunde stummgeschaltet", "🔕 Alertas de {0} silenciadas durante 1 hora", "🔕 Alertas de {0} silenciados por 1 hora"],
+  ["🤖 AI-диагноз {0}", "🤖 AI diagnosis of {0}", "🤖 {0} 的 AI 诊断", "🤖 KI-Diagnose für {0}", "🤖 Diagnóstico de IA de {0}", "🤖 Diagnóstico de IA de {0}"],
+  ["🤖 AI-диагноз {0} отправлен", "🤖 AI diagnosis of {0} sent", "🤖 {0} 的 AI 诊断已发送", "🤖 KI-Diagnose für {0} gesendet", "🤖 Diagnóstico de IA de {0} enviado", "🤖 Diagnóstico de IA de {0} enviado"],
+];
+for (const [ru, en, zh, de, es, pt] of INTERACTIVE) { EN.push([ru, en]); ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
+
 function compileDict(entries) {
   const exact = new Map();
   const patterns = [];
