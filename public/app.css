@@ -656,3 +656,16 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .dr-body { flex: 1; min-width: 0; display: grid; gap: 4px; } .dr-fix { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .dr-top { display: grid; gap: 2px; margin-top: 6px; font-size: 12px; } .dr-top-row { display: flex; justify-content: space-between; gap: 12px; } .dr-top-row .mono { overflow-wrap: anywhere; font-family: var(--mono, monospace); }
 .dr-busy { opacity: .55; pointer-events: none; }
+
+/* Command Palette 2.0: плашки аргументов, подсказки префиксов, горячие клавиши */
+.pal-chips { display: flex; align-items: center; gap: 6px; flex: none; max-width: 55%; overflow: hidden; }
+.pal-chips[hidden], .pal-prefixes[hidden] { display: none; }
+.pal-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 7px; background: var(--panel2); border: 1px solid var(--border2); color: var(--text); font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-chip.cmd { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.pal-chip + .pal-chip::before { content: '›'; margin-right: 7px; color: var(--muted); }
+.pal-prefixes { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 2px; }
+.pal-prefix { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 4px; border-radius: 8px; border: 1px solid var(--border); background: none; color: var(--muted); font-size: 12px; cursor: pointer; }
+.pal-prefix:hover, .pal-prefix:focus-visible { border-color: var(--accent); color: var(--text); background: var(--accent-soft); outline: none; }
+.pal-prefix kbd, .pal-keys kbd { min-width: 20px; text-align: center; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border2); background: var(--bg2); color: var(--text); font: 600 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pal-keys { display: inline-flex; gap: 3px; margin-right: 4px; }
+.pal-item.danger .pal-title { color: var(--err); }

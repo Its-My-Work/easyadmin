@@ -16,6 +16,11 @@ const raw = (s) => document.createTextNode(s); // имена файлов не �
 const sizeText = (n) => { const [v, u] = fmtSize(n); return `${v} ${t(u)}`; };
 const url = (suffix, id = S.panelId) => `/api/panels/${id}/files${suffix}`;
 const qp = (p, extra = '') => `?path=${encodeURIComponent(p)}${extra}`;
+/** Палитра команд: открыть файлы на нужной панели и каталоге (страница подхватит состояние при построении). */
+export function jumpFiles(panelId, path) {
+  S.panelId = panelId; lsSet('ea-files-panel', panelId); S.data = null; S.filter = '';
+  if (path) { S.paths[panelId] = path; lsSet('ea-files-paths', S.paths); }
+}
 const curPath = () => S.data?.path ?? S.paths[S.panelId] ?? DEFAULT_PATH;
 const fmtDate = (ts) => (ts ? fmtServer(ts, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 

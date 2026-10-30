@@ -12,6 +12,8 @@ const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return nu
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* приватный режим */ } };
 
 const S = { panelId: null, on: false, cid: null, msg: 'Не подключено', cls: 'muted', err: null, warn: null, term: null, keep: {}, send: null };
+/** Палитра команд: выбрать панель для открытия (если сеанс не идёт — применяем сразу). */
+export function selectConsolePanel(id) { lsSet('ea-console-panel', String(id)); if (!S.on) S.panelId = id; }
 let ui = null; // элементы текущей отрисовки страницы
 
 const ensureTerm = () => {

@@ -8,9 +8,12 @@ import { fmtServer, serverNow, serverTz, setServerTime, tzOffset } from './clock
 import { STATUS, store, notify, refresh, subscribe, allServices, can, favorites, recents, svcKey } from './store.js';
 import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './views2.js';
 import { avatar, profilePage, usersPage } from './pages-users.js';
-import { consolePage } from './server-console.js';
+import { consolePage, selectConsolePanel } from './server-console.js';
 import { backupsPage } from './backups-page.js';
-import { filesPage } from './files-page.js';
+import { filesPage, jumpFiles } from './files-page.js';
+import { THEMES, applyTheme } from './theme-picker.js';
+import { AVAILABLE_LANGS } from './i18n.js';
+import { argOptions, buildRows, needsConfirm, nextNeed, parseQuery, prefixHints, runCommand } from './palette-commands.js';
 import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead, themePickerModal, languagePickerModal } from './views.js';
 
 const root = document.getElementById('root');
@@ -173,12 +176,30 @@ function onStoreChange() {
   if (r.hash !== lastHash || (sig !== lastSig && !typing)) { renderView(); lastHash = r.hash; lastSig = sig; }
 }
 
-/* ======================= командная палитра ======================= */
+/* ======================= командная палитра 2.0 ======================= */
+const lsPut = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* приватный режим */ } };
+const paletteUi = {
+  api: { post }, toast, t,
+  go: (hash) => { location.hash = hash; },
+  openService: (s, tab) => { if (tab) lsPut('ea-drawer-tab', tab); openService(s); },
+  openFiles: (id, path) => { jumpFiles(id, path); if (location.hash === '#/files') window.dispatchEvent(new Event('ea:rerender')); else location.hash = '#/files'; },
+  openConsole: (id) => { selectConsolePanel(id); location.hash = '#/console'; },
+  applyTheme, setLang,
+};
+const paletteCtx = () => {
+  let filesPanelId = null; try { filesPanelId = JSON.parse(localStorage.getItem('ea-files-panel')); } catch { /* нет значения */ }
+  return { panels: store.panels, services: allServices(), can, t, filesPanelId,
+    themes: THEMES.map((x) => ({ id: x.id, label: x.label })), langs: AVAILABLE_LANGS.map((x) => ({ code: x.code, label: x.label })) };
+};
+
 function openPalette() {
   if (document.getElementById('palette')) return;
-  const input = h('input', { class: 'input', placeholder: 'Найти сервис, панель или команду…', autocomplete: 'off' });
+  const input = h('input', { class: 'input', placeholder: t('Найти сервис, панель или команду…'), autocomplete: 'off' });
   const list = h('div', { class: 'pal-list', role: 'listbox' });
-  let rows = [], idx = 0;
+  const chips = h('div', { class: 'pal-chips' });
+  const prefixBar = h('div', { class: 'pal-prefixes' }, prefixHints().map((p) => h('button', { type: 'button', class: 'pal-prefix', title: t(p.hint), onclick: () => { input.value = p.prefix; flow = null; idx = 0; draw(); input.focus(); } }, h('kbd', null, p.prefix), h('span', null, t(p.title)))));
+  const ctx = paletteCtx();
+  let rows = [], idx = 0, flow = null; // flow — многошаговая команда: { cmd, args, rest, confirm }
   const close = () => { pal.remove(); document.removeEventListener('keydown', onKey, true); };
   const go = (hash) => () => { location.hash = hash; };
   const fav = favorites(), rec = recents();
@@ -195,33 +216,90 @@ function openPalette() {
         group: fav.has(k) ? 'fav' : ri >= 0 ? 'recent' : 'service', recentIndex: ri, sortKey: `${s.name} ${s.panel.name} ${s.project}`, run: () => openService(s) };
     }),
   ];
+
+  /** Что сейчас запрашивает поток: аргумент или подтверждение. */
+  const flowNeed = () => (flow ? nextNeed(flow.cmd, flow.args) : null);
+  const PLACEHOLDER = { service: 'Выберите сервис…', panel: 'Выберите панель…', path: 'Введите путь…', choice: 'Выберите вариант…' };
+  const entry = (r, q = '') => ({ title: r.title, hint: r.hint, ic: r.ic, color: r.color, hotkey: r.hotkey, keys: r.keys, q, act: r.act ?? (() => {}) });
+
+  const entries = () => {
+    const raw = input.value;
+    if (flow) {
+      if (flow.confirm) return [{ title: `${t(flow.cmd.title)}?`, hint: t('Enter — подтвердить, Esc — отмена'), ic: 'alert', danger: flow.cmd.risk === 'high', act: () => finish() }];
+      const need = flowNeed();
+      return argOptions(need, raw.trim(), ctx, flow.cmd).map((o) => entry({ ...o, act: () => { flow.args[need] = o.value; advance(); } }, raw.trim()));
+    }
+    const parsed = parseQuery(raw);
+    if (parsed.prefix) {
+      return buildRows(raw, ctx).map((r) => entry({ ...r, title: r.type === 'command' || r.type === 'go' ? r.title : r.title, act:
+        r.type === 'command' ? () => startFlow(r.cmd, { ...r.args }, r.rest)
+          : r.type === 'go' ? () => { close(); location.hash = r.hash; }
+            : r.type === 'fill' ? () => { input.value = r.text; idx = 0; draw(); } : () => {} }, parsed.text));
+    }
+    rows = orderItems(items, parsed.text);
+    return rows.map(({ section, item: c }) => ({ ...entry({ title: t(c.title), hint: c.hint, ic: c.ic, color: c.color, act: () => { close(); c.run(); } }, parsed.text), section, extra: c.group === 'service' ? c.extra : '' }));
+  };
+
+  function startFlow(cmd, args, rest) { flow = { cmd, args, rest, confirm: false, presets: new Set(Object.keys(args)) }; input.value = rest || ''; idx = 0; advance(true); }
+  function advance(first = false) {
+    flow.confirm = false;
+    if (!flowNeed()) {
+      if (needsConfirm(flow.cmd)) { flow.confirm = true; input.value = ''; idx = 0; return draw(); }
+      return finish();
+    }
+    if (!first) input.value = '';
+    idx = 0; draw(); input.focus();
+  }
+  function finish() { const { cmd, args } = flow; close(); runCommand(cmd, args, paletteUi); }
+  function back() {
+    if (flow.confirm) { flow.confirm = false; }
+    else {
+      const filled = flow.cmd.needs.filter((k) => flow.args[k] != null && flow.args[k] !== '');
+      if (!filled.length || filled.every((k) => flow.presets?.has(k))) { flow = null; input.value = ''; idx = 0; return draw(); }
+      delete flow.args[filled[filled.length - 1]];
+    }
+    input.value = ''; idx = 0; draw();
+  }
+
+  let view = [];
   const draw = () => {
-    const q = input.value.trim();
-    rows = orderItems(items, q);
-    idx = Math.min(idx, Math.max(0, rows.length - 1));
+    view = entries();
+    idx = Math.min(idx, Math.max(0, view.length - 1));
+    const need = flowNeed();
+    input.placeholder = flow ? t(PLACEHOLDER[need] ?? 'Enter — выполнить') : t('Найти сервис, панель или команду…');
+    clear(chips);
+    if (flow) {
+      chips.append(h('span', { class: 'pal-chip cmd' }, t(flow.cmd.title)));
+      for (const k of flow.cmd.needs) if (flow.args[k] != null && flow.args[k] !== '') chips.append(h('span', { class: 'pal-chip' }, String(flow.args[k].name ?? flow.args[k].label ?? flow.args[k])));
+    }
+    chips.hidden = !flow;
+    prefixBar.hidden = !!flow || !!parseQuery(input.value).text || !!parseQuery(input.value).prefix;
     clear(list);
-    if (!rows.length) { list.append(h('div', { class: 'muted pad' }, 'Ничего не найдено')); return; }
-    rows.forEach(({ section, item: c }, i) => {
-      if (section && !q) list.append(h('div', { class: 'pal-group' }, GROUP_LABEL[section]));
-      list.append(h('div', { class: `pal-item ${i === idx ? 'on' : ''}`, role: 'option', 'data-i': i, onmousemove: () => { idx = i; mark(); }, onclick: () => pick(i) },
-        c.color ? h('i', { class: 'swatch', style: { background: c.color } }) : icon(c.ic, 15),
-        h('span', { class: 'pal-title' }, ...highlight(t(c.title), q).map((p) => (p.match ? h('mark', null, p.text) : p.text)), c.extra && c.group === 'service' ? h('span', { class: 'muted small pal-extra' }, c.extra) : null),
-        h('span', { class: 'muted small' }, c.hint)));
+    if (!view.length) { list.append(h('div', { class: 'muted pad' }, t('Ничего не найдено'))); return; }
+    const showSections = !flow && !parseQuery(input.value).prefix && !input.value.trim();
+    view.forEach((c, i) => {
+      if (c.section && showSections) list.append(h('div', { class: 'pal-group' }, t(GROUP_LABEL[c.section])));
+      list.append(h('div', { class: `pal-item ${i === idx ? 'on' : ''}${c.danger ? ' danger' : ''}`, role: 'option', 'data-i': i, onmousemove: () => { idx = i; mark(); }, onclick: () => pick(i) },
+        c.color ? h('i', { class: 'swatch', style: { background: c.color } }) : icon(c.ic ?? 'search', 15),
+        h('span', { class: 'pal-title' }, ...highlight(String(c.title), c.q).map((p) => (p.match ? h('mark', null, p.text) : p.text)), c.extra ? h('span', { class: 'muted small pal-extra' }, c.extra) : null),
+        c.keys || c.hotkey ? h('span', { class: 'pal-keys' }, String(c.keys ?? c.hotkey).split(' ').map((k) => h('kbd', null, k))) : null,
+        h('span', { class: 'muted small' }, t(c.hint ?? ''))));
     });
   };
   const mark = () => list.querySelectorAll('.pal-item').forEach((el) => { const on = Number(el.dataset.i) === idx; el.classList.toggle('on', on); if (on) el.scrollIntoView({ block: 'nearest' }); });
-  const pick = (i) => { const c = rows[i]?.item; close(); c?.run(); };
+  const pick = (i) => view[i]?.act();
   const onKey = (e) => {
     if (e.key === 'Escape') { e.stopPropagation(); close(); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, rows.length - 1); mark(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, view.length - 1); mark(); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); mark(); }
     else if (e.key === 'Home' && e.ctrlKey) { e.preventDefault(); idx = 0; mark(); }
+    else if (e.key === 'Backspace' && flow && !input.value) { e.preventDefault(); back(); }
     else if (e.key === 'Enter') { e.preventDefault(); pick(idx); }
   };
   input.addEventListener('input', () => { idx = 0; draw(); });
   document.addEventListener('keydown', onKey, true);
-  const pal = h('div', { class: 'backdrop top', id: 'palette', onmousedown: (e) => { if (e.target === pal) close(); } }, h('div', { class: 'palette' }, h('div', { class: 'pal-input' }, icon('search', 16), input, h('kbd', null, 'Esc')), list,
-    h('div', { class: 'pal-foot muted small' }, '↑↓ — выбор · Enter — открыть · Esc — закрыть')));
+  const pal = h('div', { class: 'backdrop top', id: 'palette', onmousedown: (e) => { if (e.target === pal) close(); } }, h('div', { class: 'palette' }, h('div', { class: 'pal-input' }, icon('search', 16), chips, input, h('kbd', null, 'Esc')), prefixBar, list,
+    h('div', { class: 'pal-foot muted small' }, t('↑↓ — выбор · Enter — выполнить · Backspace — назад · Esc — закрыть'))));
   document.getElementById('overlay-root').append(pal);
   draw(); input.focus();
 }
