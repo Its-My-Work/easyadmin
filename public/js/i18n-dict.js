@@ -1727,31 +1727,176 @@ export const EN = [
 const CYR = /[А-Яа-яЁё]/;
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function compile() {
+export const ZH = [
+  ['Закрыть', '关闭'], ['Отмена', '取消'], ['Подтвердить', '确认'], ['Сохранить', '保存'],
+  ['Создать', '创建'], ['Удалить', '删除'], ['Добавить', '添加'], ['Изменить', '编辑'],
+  ['Повторить', '重试'], ['Копировать', '复制'], ['Скопировано', '已复制'], ['Сохранено', '已保存'],
+  ['Готово', '完成'], ['Ошибка', '错误'], ['Ошибка {0}', '错误 {0}'], ['Включить', '启用'], ['Отключить', '禁用'],
+  ['Вкл/выкл', '开关'], ['Скачать', '下载'], ['Очистить', '清空'], ['Выше', '上移'], ['Ниже', '下移'],
+  ['Проверить', '测试'], ['Новый', '新建'], ['Текущий', '当前'], ['Пока пусто', '暂无数据'],
+  ['Название', '名称'], ['Имя', '名称'], ['Тип', '类型'], ['Статус', '状态'], ['Роль', '角色'],
+  ['Порт', '端口'], ['без изменений', '未更改'], ['Меню', '菜单'], ['или', '或'], ['Время', '时间'],
+  ['Пользователь', '用户'], ['Действие', '操作'], ['Обзор', '概览'], ['Консоль', '控制台'],
+  ['Сервисы', '服务'], ['Сервис', '服务'], ['Журнал', '审计日志'], ['Не копируется', '未备份'], ['Нет свежей копии', '无近期备份'], ['Профиль', '个人资料'], ['Консоль сервера', '服务器终端'], ['Инвентарь', '资产清单'], ['Шаблоны', '模板'], ['Расписания', '计划任务'],
+  ['Журнал действий', '审计日志'], ['Бэкапы', '备份管理'], ['Пользователи', '用户管理'],
+  ['Настройки', '系统设置'], ['Переезд на новый сервер', '迁移到新服务器'], ['Запустить бэкап', '立即备份'],
+  ['История', '历史记录'], ['Проект', '项目'], ['Панель', '面板'], ['Последняя копия', '最近备份'],
+  ['Размер', '大小'], ['Действия', '操作'], ['В сети', '在线'], ['Недоступна', '离线'],
+  ['Деградация', '异常'], ['Работает', '运行中'], ['Остановлен', '已停止'], ['Сбой', '故障'],
+  ['Все', '全部'], ['Копируются', '已备份'], ['Не копируются', '未备份'], ['Проблемы', '异常'],
+  ['В порядке', '正常'], ['Ошибки', '错误'], ['Нет свежей копии', '备份过期'], ['Оформление', '界面外观'],
+  ['Тема оформления', '主题配色'], ['Как в системе', '跟随系统'], ['Тёмные темы', '深色主题'],
+  ['Светлые темы', '浅色主题'], ['Полночь', '午夜蓝'], ['Изумруд', '翡翠绿'], ['Океан', '深海蓝'],
+  ['Классическая', '经典亮色'], ['Песок', '暖沙色'], ['Мята', '薄荷青'], ['Индиго', '靓蓝'],
+  ['Нефрит', '碧玉'], ['Слейт', '板岩'], ['Лаванда', '薰衣草'], ['Янтарь', '琥珀'], ['Лагуна', '泻湖'],
+  ['Время сервера', '服务器时间'], ['Часовой пояс', '时区'], ['Мониторинг нагрузки', '负载监控'],
+  ['Как часто замерять', '采集频率'], ['Сколько хранить', '保留时长'], ['Уведомлять о перегрузке', '过载告警'],
+  ['Язык интерфейса', '界面语言'], ['Войти', '登录'], ['Выйти', '退出登录'],
+  ['Поиск и команды', '搜索与命令'], ['Поиск по сервису, проекту, панели…', '搜索服务、项目或面板…'],
+  ['Ничего не найдено', '未找到结果'], ['Панели', '面板列表'], ['Пароль', '密码'], ['Токен', '令牌'],
+  ['Домен', '域名'], ['Справка', '帮助'], ['Задать пароль', '设置密码'], ['Все сервисы', '所有服务'],
+  ['Очистка Docker', 'Docker 清理'], ['Перезапуск', '重启'], ['Деплой', '部署'], ['Старт', '启动'], ['Стоп', '停止']
+];
+
+export const DE = [
+  ['Закрыть', 'Schließen'], ['Отмена', 'Abbrechen'], ['Подтвердить', 'Bestätigen'], ['Сохранить', 'Speichern'],
+  ['Создать', 'Erstellen'], ['Удалить', 'Löschen'], ['Добавить', 'Hinzufügen'], ['Изменить', 'Bearbeiten'],
+  ['Повторить', 'Wiederholen'], ['Копировать', 'Kopieren'], ['Скопировано', 'Kopiert'], ['Сохранено', 'Gespeichert'],
+  ['Готово', 'Fertig'], ['Ошибка', 'Fehler'], ['Ошибка {0}', 'Fehler {0}'], ['Включить', 'Aktivieren'], ['Отключить', 'Deaktivieren'],
+  ['Вкл/выкл', 'Ein/Aus'], ['Скачать', 'Herunterladen'], ['Очистить', 'Leeren'], ['Выше', 'Nach oben'], ['Ниже', 'Nach unten'],
+  ['Проверить', 'Prüfen'], ['Новый', 'Neu'], ['Текущий', 'Aktuell'], ['Пока пусто', 'Noch keine Daten'],
+  ['Название', 'Name'], ['Имя', 'Name'], ['Тип', 'Typ'], ['Статус', 'Status'], ['Роль', 'Rolle'],
+  ['Порт', 'Port'], ['без изменений', 'Unverändert'], ['Меню', 'Menü'], ['или', 'oder'], ['Время', 'Zeit'],
+  ['Пользователь', 'Benutzer'], ['Действие', 'Aktion'], ['Обзор', 'Übersicht'], ['Консоль', 'Konsole'],
+  ['Сервисы', 'Dienste'], ['Сервис', 'Dienst'], ['Журнал', 'Audit-Log'], ['Не копируется', 'Nicht gesichert'], ['Нет свежей копии', 'Kein aktuelles Backup'], ['Профиль', 'Profil'], ['Консоль сервера', 'Serverkonsole'], ['Инвентарь', 'Inventar'], ['Шаблоны', 'Vorlagen'], ['Расписания', 'Zeitpläne'],
+  ['Журнал действий', 'Audit-Protokoll'], ['Бэкапы', 'Backups'], ['Пользователи', 'Benutzer'],
+  ['Настройки', 'Einstellungen'], ['Переезд на новый сервер', 'Server-Migration'], ['Запустить бэкап', 'Backup starten'],
+  ['История', 'Verlauf'], ['Проект', 'Projekt'], ['Панель', 'Panel'], ['Последняя копия', 'Letztes Backup'],
+  ['Размер', 'Größe'], ['Действия', 'Aktionen'], ['В сети', 'Online'], ['Недоступна', 'Offline'],
+  ['Деградация', 'Beeinträchtigt'], ['Работает', 'Aktiv'], ['Остановлен', 'Gestoppt'], ['Сбой', 'Fehlgeschlagen'],
+  ['Все', 'Alle'], ['Копируются', 'Aktiviert'], ['Не копируются', 'Deaktiviert'], ['Проблемы', 'Probleme'],
+  ['В порядке', 'Fehlerfrei'], ['Ошибки', 'Fehler'], ['Нет свежей копии', 'Veraltet'], ['Оформление', 'Erscheinungsbild'],
+  ['Тема оформления', 'Farbschema'], ['Как в системе', 'Systemstandard'], ['Тёмные темы', 'Dunkle Designs'],
+  ['Светлые темы', 'Helle Designs'], ['Полночь', 'Mitternacht'], ['Изумруд', 'Smaragd'], ['Океан', 'Ozean'],
+  ['Классическая', 'Klassisch'], ['Песок', 'Sand'], ['Мята', 'Minze'], ['Индиго', 'Indigo'],
+  ['Нефрит', 'Jade'], ['Слейт', 'Schiefer'], ['Лаванда', 'Lavendel'], ['Янтарь', 'Bernstein'], ['Лагуна', 'Lagune'],
+  ['Время сервера', 'Serverzeit'], ['Часовой пояс', 'Zeitzone'], ['Мониторинг нагрузки', 'Auslastung'],
+  ['Как часто замерять', 'Messintervall'], ['Сколько хранить', 'Aufbewahrungsdauer'], ['Уведомлять о перегрузке', 'Überlastungsalarm'],
+  ['Язык интерфейса', 'Sprache'], ['Войти', 'Anmelden'], ['Выйти', 'Abmelden'],
+  ['Поиск и команды', 'Suche und Befehle'], ['Поиск по сервису, проекту, панели…', 'Nach Dienst, Projekt, Panel suchen…'],
+  ['Ничего не найдено', 'Keine Ergebnisse'], ['Панели', 'Panels'], ['Пароль', 'Passwort'], ['Токен', 'Token'],
+  ['Домен', 'Domain'], ['Справка', 'Hilfe'], ['Задать пароль', 'Passwort festlegen'], ['Все сервисы', 'Alle Dienste'],
+  ['Очистка Docker', 'Docker bereinigen'], ['Перезапуск', 'Neustart'], ['Деплой', 'Bereitstellen'], ['Старт', 'Starten'], ['Стоп', 'Stoppen']
+];
+
+export const ES = [
+  ['Закрыть', 'Cerrar'], ['Отмена', 'Cancelar'], ['Подтвердить', 'Confirmar'], ['Сохранить', 'Guardar'],
+  ['Создать', 'Crear'], ['Удалить', 'Eliminar'], ['Добавить', 'Añadir'], ['Изменить', 'Editar'],
+  ['Повторить', 'Reintentar'], ['Копировать', 'Copiar'], ['Скопировано', 'Copiado'], ['Сохранено', 'Guardado'],
+  ['Готово', 'Completado'], ['Ошибка', 'Error'], ['Ошибка {0}', 'Error {0}'], ['Включить', 'Activar'], ['Отключить', 'Desactivar'],
+  ['Вкл/выкл', 'Encender/Apagar'], ['Скачать', 'Descargar'], ['Очистить', 'Limpiar'], ['Выше', 'Subir'], ['Ниже', 'Bajar'],
+  ['Проверить', 'Probar'], ['Новый', 'Nuevo'], ['Текущий', 'Actual'], ['Пока пусто', 'Sin datos aún'],
+  ['Название', 'Nombre'], ['Имя', 'Nombre'], ['Тип', 'Tipo'], ['Статус', 'Estado'], ['Роль', 'Rol'],
+  ['Порт', 'Puerto'], ['без изменений', 'Sin cambios'], ['Меню', 'Menú'], ['или', 'o'], ['Время', 'Hora'],
+  ['Пользователь', 'Usuario'], ['Действие', 'Acción'], ['Обзор', 'Panel general'], ['Консоль', 'Consola'],
+  ['Сервисы', 'Servicios'], ['Сервис', 'Servicio'], ['Журнал', 'Auditoría'], ['Не копируется', 'No respaldado'], ['Нет свежей копии', 'Sin copia reciente'], ['Профиль', 'Perfil'], ['Консоль сервера', 'Consola del servidor'], ['Инвентарь', 'Inventario'], ['Шаблоны', 'Plantillas'], ['Расписания', 'Programaciones'],
+  ['Журнал действий', 'Registro de auditoría'], ['Бэкапы', 'Copias de seguridad'], ['Пользователи', 'Usuarios'],
+  ['Настройки', 'Ajustes'], ['Переезд на новый сервер', 'Migrar a nuevo servidor'], ['Запустить бэкап', 'Iniciar copia'],
+  ['История', 'Historial'], ['Проект', 'Proyecto'], ['Панель', 'Panel'], ['Последняя копия', 'Última copia'],
+  ['Размер', 'Tamaño'], ['Действия', 'Acciones'], ['В сети', 'En línea'], ['Недоступна', 'Desconectado'],
+  ['Деградация', 'Degradado'], ['Работает', 'En ejecución'], ['Остановлен', 'Detenido'], ['Сбой', 'Fallo'],
+  ['Все', 'Todos'], ['Копируются', 'Respaldados'], ['Не копируются', 'No respaldados'], ['Проблемы', 'Problemas'],
+  ['В порядке', 'Correcto'], ['Ошибки', 'Errores'], ['Нет свежей копии', 'Desactualizado'], ['Оформление', 'Apariencia'],
+  ['Тема оформления', 'Tema de color'], ['Как в системе', 'Predeterminado del sistema'], ['Тёмные темы', 'Temas oscuros'],
+  ['Светлые темы', 'Temas claros'], ['Полночь', 'Medianoche'], ['Изумруд', 'Esmeralda'], ['Океан', 'Océano'],
+  ['Классическая', 'Clásico'], ['Песок', 'Arena'], ['Мята', 'Menta'], ['Индиго', 'Índigo'],
+  ['Нефрит', 'Jade'], ['Слейт', 'Pizarra'], ['Лаванда', 'Lavanda'], ['Янтарь', 'Ámbar'], ['Лагуна', 'Laguna'],
+  ['Время сервера', 'Hora del servidor'], ['Часовой пояс', 'Zona horaria'], ['Мониторинг нагрузки', 'Monitoreo de carga'],
+  ['Как часто замерять', 'Frecuencia de muestreo'], ['Сколько хранить', 'Retención'], ['Уведомлять о перегрузке', 'Alertas de sobrecarga'],
+  ['Язык интерфейса', 'Idioma'], ['Войти', 'Iniciar sesión'], ['Выйти', 'Cerrar sesión'],
+  ['Поиск и команды', 'Búsqueda y comandos'], ['Поиск по сервису, проекту, панели…', 'Buscar por servicio, proyecto, panel…'],
+  ['Ничего не найдено', 'No se encontraron resultados'], ['Панели', 'Paneles'], ['Пароль', 'Contraseña'], ['Токен', 'Token'],
+  ['Домен', 'Dominio'], ['Справка', 'Ayuda'], ['Задать пароль', 'Establecer contraseña'], ['Все сервисы', 'Todos los servicios'],
+  ['Очистка Docker', 'Limpieza de Docker'], ['Перезапуск', 'Reiniciar'], ['Деплой', 'Desplegar'], ['Старт', 'Iniciar'], ['Стоп', 'Detener']
+];
+
+export const PT = [
+  ['Закрыть', 'Fechar'], ['Отмена', 'Cancelar'], ['Подтвердить', 'Confirmar'], ['Сохранить', 'Salvar'],
+  ['Создать', 'Criar'], ['Удалить', 'Excluir'], ['Добавить', 'Adicionar'], ['Изменить', 'Editar'],
+  ['Повторить', 'Repetir'], ['Копировать', 'Copiar'], ['Скопировано', 'Copiado'], ['Сохранено', 'Salvo'],
+  ['Готово', 'Concluído'], ['Ошибка', 'Erro'], ['Ошибка {0}', 'Erro {0}'], ['Включить', 'Ativar'], ['Отключить', 'Desativar'],
+  ['Вкл/выкл', 'Ligar/Desligar'], ['Скачать', 'Baixar'], ['Очистить', 'Limpar'], ['Выше', 'Mover para cima'], ['Ниже', 'Mover para baixo'],
+  ['Проверить', 'Testar'], ['Новый', 'Novo'], ['Текущий', 'Atual'], ['Пока пусто', 'Sem dados ainda'],
+  ['Название', 'Nome'], ['Имя', 'Nome'], ['Тип', 'Tipo'], ['Статус', 'Status'], ['Роль', 'Função'],
+  ['Порт', 'Porta'], ['без изменений', 'Sem alterações'], ['Меню', 'Menu'], ['или', 'ou'], ['Время', 'Hora'],
+  ['Пользователь', 'Usuário'], ['Действие', 'Ação'], ['Обзор', 'Visão geral'], ['Консоль', 'Console'],
+  ['Сервисы', 'Serviços'], ['Сервис', 'Serviço'], ['Журнал', 'Auditoria'], ['Не копируется', 'Não copiado'], ['Нет свежей копии', 'Sem cópia recente'], ['Профиль', 'Perfil'], ['Консоль сервера', 'Console do servidor'], ['Инвентарь', 'Inventário'], ['Шаблоны', 'Modelos'], ['Расписания', 'Agendamentos'],
+  ['Журнал действий', 'Log de auditoria'], ['Бэкапы', 'Backups'], ['Пользователи', 'Usuários'],
+  ['Настройки', 'Configurações'], ['Переезд на новый сервер', 'Migrar para novo servidor'], ['Запустить бэкап', 'Executar backup'],
+  ['История', 'Histórico'], ['Проект', 'Projeto'], ['Панель', 'Painel'], ['Последняя копия', 'Último backup'],
+  ['Размер', 'Tamanho'], ['Действия', 'Ações'], ['В сети', 'Online'], ['Недоступна', 'Offline'],
+  ['Деградация', 'Degradado'], ['Работает', 'Em execução'], ['Остановлен', 'Parado'], ['Сбой', 'Falha'],
+  ['Все', 'Todos'], ['Копируются', 'Com backup'], ['Не копируются', 'Sem backup'], ['Проблемы', 'Problemas'],
+  ['В порядке', 'Saudável'], ['Ошибки', 'Erros'], ['Нет свежей копии', 'Desatualizado'], ['Оформление', 'Aparência'],
+  ['Тема оформления', 'Tema de cores'], ['Как в системе', 'Padrão do sistema'], ['Тёмные темы', 'Temas escuros'],
+  ['Светлые темы', 'Temas claros'], ['Полночь', 'Meia-noite'], ['Изумруд', 'Esmeralda'], ['Океан', 'Oceano'],
+  ['Классическая', 'Clássico'], ['Песок', 'Areia'], ['Мята', 'Menta'], ['Индиго', 'Índigo'],
+  ['Нефрит', 'Jade'], ['Слейт', 'Ardósia'], ['Лаванда', 'Lavanda'], ['Янтарь', 'Âmbar'], ['Лагуна', 'Lagoa'],
+  ['Время сервера', 'Hora do servidor'], ['Часовой пояс', 'Fuso horário'], ['Мониторинг нагрузки', 'Monitoramento de carga'],
+  ['Как часто замерять', 'Frequência de medição'], ['Сколько хранить', 'Retenção'], ['Уведомлять о перегрузке', 'Alertas de sobrecarga'],
+  ['Язык интерфейса', 'Idioma'], ['Войти', 'Entrar'], ['Выйти', 'Sair'],
+  ['Поиск и команды', 'Busca e comandos'], ['Поиск по сервису, проекту, панели…', 'Buscar por serviço, projeto, painel…'],
+  ['Ничего не найдено', 'Nenhum resultado'], ['Панели', 'Painéis'], ['Пароль', 'Senha'], ['Токен', 'Token'],
+  ['Домен', 'Domínio'], ['Справка', 'Ajuda'], ['Задать пароль', 'Definir senha'], ['Все сервисы', 'Todos os serviços'],
+  ['Очистка Docker', 'Limpeza do Docker'], ['Перезапуск', 'Reiniciar'], ['Деплой', 'Implantar'], ['Старт', 'Iniciar'], ['Стоп', 'Parar']
+];
+
+function compileDict(entries) {
   const exact = new Map();
   const patterns = [];
-  for (const [ru, en] of EN) {
+  for (const [ru, val] of entries) {
     const key = ru.trim();
-    if (!/\{\d+\}/.test(key)) { if (!exact.has(key)) exact.set(key, en.trim()); continue; }
+    if (!/\{\d+\}/.test(key)) { if (!exact.has(key)) exact.set(key, val.trim()); continue; }
     const re = new RegExp(`^${key.split(/(\{\d+\})/).map((p) => (/^\{\d+\}$/.test(p) ? '([\\s\\S]+?)' : esc(p))).join('')}$`);
-    patterns.push({ re, en: en.trim(), weight: key.replace(/\{\d+\}/g, '').length });
+    patterns.push({ re, en: val.trim(), tmpl: val.trim(), weight: key.replace(/\{\d+\}/g, '').length });
   }
   patterns.sort((a, b) => b.weight - a.weight);
   return { exact, patterns };
 }
-const { exact, patterns } = compile();
 
-/** Переводит русскую строку на английский; неизвестные строки (и данные пользователя) возвращает как есть. */
-export function translate(str) {
+const { exact, patterns } = compileDict(EN);
+const LANG_PACKS = {
+  zh: compileDict(ZH),
+  de: compileDict(DE),
+  es: compileDict(ES),
+  pt: compileDict(PT)
+};
+
+/** Переводит русскую строку на выбранный язык (по умолчанию English); неизвестные строки возвращает на английском или как есть. */
+export function translate(str, targetLang = 'en') {
   if (typeof str !== 'string' || !CYR.test(str)) return str;
+  if (targetLang === 'ru') return str;
   const lead = str.match(/^\s*/)[0], trail = str.match(/\s*$/)[0];
   const core = str.trim();
   if (!core) return str;
-  const hit = exact.get(core);
-  if (hit !== undefined) return lead + hit + trail;
+
+  // 1. Попытка перевести на целевой язык (zh, de, es, pt)
+  if (targetLang && targetLang !== 'en' && LANG_PACKS[targetLang]) {
+    const pack = LANG_PACKS[targetLang];
+    const hit = pack.exact.get(core);
+    if (hit !== undefined) return lead + hit + trail;
+    for (const { re, tmpl } of pack.patterns) {
+      const m = re.exec(core);
+      if (m) return lead + tmpl.replace(/\{(\d+)\}/g, (_, i) => translate(m[Number(i) + 1] ?? '', targetLang)) + trail;
+    }
+  }
+
+  // 2. Фоллбэк на English (EN)
+  const hitEn = exact.get(core);
+  if (hitEn !== undefined) return lead + hitEn + trail;
   for (const { re, en } of patterns) {
     const m = re.exec(core);
-    if (m) return lead + en.replace(/\{(\d+)\}/g, (_, i) => translate(m[Number(i) + 1] ?? '')) + trail;
+    if (m) return lead + en.replace(/\{(\d+)\}/g, (_, i) => translate(m[Number(i) + 1] ?? '', targetLang)) + trail;
   }
   return str;
 }

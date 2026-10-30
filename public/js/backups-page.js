@@ -13,7 +13,15 @@ const SHOW = [['all', 'Все'], ['on', 'Копируются'], ['off', 'Не �
 const BAD = ['error', 'stale', 'pending'];
 const ORDER = { error: 0, running: 1, queued: 2, stale: 3, pending: 4, ok: 5, empty: 6, off: 7 };
 const bkSort = { key: 'default', dir: 1 };
-const BK_SORT = { name: (r) => r.name, last: (r) => r.last?.ts ?? null, size: (r) => r.last?.size ?? null, status: (r) => ORDER[r.status] ?? 99 };
+const BK_SORT = {
+  name: (r) => r.name,
+  project: (r) => r.project,
+  panel: (r) => r.panel.panelName,
+  type: (r) => r.type,
+  last: (r) => r.last?.ts ?? null,
+  size: (r) => r.last?.size ?? null,
+  status: (r) => ORDER[r.status] ?? 99
+};
 const pad2 = (n) => String(n).padStart(2, '0');
 
 const kpi = (label, value, tone, ic) => h('div', { class: `kpi ${tone}` }, h('div', { class: 'kpi-ic' }, icon(ic, 18)), h('div', null, h('div', { class: 'kpi-label' }, label), h('div', { class: 'kpi-value' }, value)));
@@ -71,18 +79,30 @@ export function backupsPage() {
       if (bkSort.key !== 'default') rows = ov.panels.flatMap((p) => sortRows(rows.filter((r) => r.panel.panelId === p.panelId), bkSort, BK_SORT));
       const grouped = ov.panels.filter((p) => p.rows.length).length > 1; const out = []; let prev = null;
       for (const r of rows) {
-        if (grouped && r.panel.panelId !== prev) { prev = r.panel.panelId; out.push(h('tr', { class: 'grp' }, h('td', { colspan: 5 }, h('div', { class: 'inline' }, panelChip({ name: r.panel.panelName, color: r.panel.color }), h('span', { class: 'muted small' }, `${rows.filter((x) => x.panel.panelId === prev).length}`))))); }
+        if (grouped && r.panel.panelId !== prev) { prev = r.panel.panelId; out.push(h('tr', { class: 'grp' }, h('td', { colspan: 8 }, h('div', { class: 'inline' }, panelChip({ name: r.panel.panelName, color: r.panel.color }), h('span', { class: 'muted small' }, `${rows.filter((x) => x.panel.panelId === prev).length}`))))); }
         const svc = { panelId: r.panel.panelId, project: r.project, name: r.name, type: r.type, panelName: r.panel.panelName };
         out.push(h('tr', { class: `row ${r.included ? '' : 'dim'}`, tabindex: 0, onclick: () => copiesModal(svc) },
           h('td', { class: 'w-check bk-sw', onclick: (e) => e.stopPropagation() }, admin ? switchBtn(r.included || ov.mode === 'all', r.included ? t('Не копировать этот сервис') : t('Копировать этот сервис'), () => include(ov, r, !r.included), ov.mode === 'all') : null),
-          h('td', { class: 'svc-cell bk-name' }, h('b', null, r.name), h('span', { class: 'muted small' }, `  ${r.project}`), grouped ? null : h('span', { class: 'ml' }, panelChip({ name: r.panel.panelName, color: r.panel.color })), h('span', { class: 'ml hide-sm' }, typeChip(r.type))),
+          h('td', { class: 'svc-cell bk-name' }, h('b', null, r.name), h('span', { class: 'show-sm muted small' }, `  ${r.project}`)),
+          h('td', { class: 'bk-project hide-sm' }, h('span', { class: 'tagp' }, r.project)),
+          h('td', { class: 'bk-panel hide-sm' }, panelChip({ name: r.panel.panelName, color: r.panel.color })),
+          h('td', { class: 'bk-type hide-sm' }, typeChip(r.type)),
           h('td', { class: 'bk-last' }, lastCell(r)), h('td', { class: 'bk-status' }, badge(r.status)),
           h('td', { class: 'w-actions bk-act', onclick: (e) => e.stopPropagation() }, admin ? h('div', { class: 'inline nowrap' },
             h('button', { class: 'btn icon sm', title: t('Копировать этот сервис сейчас'), 'aria-label': t('Копировать этот сервис сейчас'), disabled: !r.included || ov.running, onclick: async () => { if (await runCopy(svc)) load(true); } }, icon('play', 13)),
             h('button', { class: 'btn icon sm', title: t('Копии и восстановление'), 'aria-label': t('Копии и восстановление'), onclick: () => copiesModal(svc) }, icon('clock', 14))) : null)));
       }
       clear(list).append(rows.length ? h('div', { class: 'card flush' }, h('table', { class: 'tbl compact' },
-        h('thead', null, h('tr', null, h('th', null), sortTh('Сервис', 'name', bkSort, draw), sortTh('Последняя копия', 'last', bkSort, draw), sortTh('Статус', 'status', bkSort, draw), h('th', null))), h('tbody', null, out)))
+        h('thead', null, h('tr', null,
+          h('th', { class: 'w-check' }),
+          sortTh('Сервис', 'name', bkSort, draw, 'c-name'),
+          sortTh('Проект', 'project', bkSort, draw, 'hide-sm c-project'),
+          sortTh('Панель', 'panel', bkSort, draw, 'hide-sm c-panel'),
+          sortTh('Тип', 'type', bkSort, draw, 'hide-sm c-type'),
+          sortTh('Последняя копия', 'last', bkSort, draw, 'bk-last'),
+          sortTh('Статус', 'status', bkSort, draw, 'bk-status'),
+          h('th', { class: 'w-actions' }))),
+        h('tbody', null, out)))
         : empty(sum.total ? 'Ничего не найдено' : 'Нет сервисов', sum.total ? 'Измените фильтры.' : 'Подключите панель с сервисами, чтобы настроить копирование.'));
     };
     const search = h('input', { class: 'input search', placeholder: 'Поиск по сервису, проекту, панели…', value: filters.q, oninput: () => { filters.q = search.value; draw(); } });

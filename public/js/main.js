@@ -10,7 +10,7 @@ import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './view
 import { avatar, profilePage, usersPage } from './pages-users.js';
 import { consolePage } from './server-console.js';
 import { backupsPage } from './backups-page.js';
-import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead, themePickerModal } from './views.js';
+import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead, themePickerModal, languagePickerModal } from './views.js';
 
 const root = document.getElementById('root');
 let shell = null;
@@ -37,8 +37,8 @@ function authScreen(setup, sso) {
   if (ssoError) err.textContent = ssoError;
   clear(root).append(h('div', { class: 'auth' }, langToggle('lang-corner'), form));
 }
-/** Переключатель языка интерфейса: показывает текущий, по клику переключает на другой. */
-const langToggle = (cls = '') => h('button', { class: `btn ghost sm lang-btn ${cls}`, type: 'button', title: 'Language / Язык', onclick: () => setLang(lang === 'ru' ? 'en' : 'ru') }, icon('globe', 14), h('span', { class: 'lang-txt' }, lang.toUpperCase()));
+/** Переключатель языка интерфейса: показывает текущий, по клику открывает выбор языка. */
+const langToggle = (cls = '') => h('button', { class: `btn ghost sm lang-btn ${cls}`, type: 'button', title: 'Language / Язык', 'aria-label': 'Language / Язык', onclick: () => languagePickerModal() }, icon('globe', 14), h('span', { class: 'lang-txt' }, lang.toUpperCase()));
 /** Кнопка выбора темы оформления в шапке */
 const themeToggle = (cls = '') => h('button', { class: `btn icon ghost sm theme-btn ${cls}`, type: 'button', title: t('Тема оформления'), 'aria-label': t('Тема оформления'), onclick: () => themePickerModal() }, icon('palette', 14));
 const logoMark = () => h('span', { class: 'logo-mark' }, icon('layers', 16));

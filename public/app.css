@@ -571,6 +571,11 @@ body.nav-collapsed .sidebar { overflow: hidden; padding-left: 0; padding-right: 
 .theme-hint { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .theme-auto-row { display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--border); gap: 12px; flex-wrap: wrap; }
 
+.show-sm { display: none; }
+@media (max-width: 640px) {
+  .show-sm { display: inline; }
+}
+
 /* Настройки: сочные карточки параметров, виджет времени и списки */
 .setting-box { display: grid; gap: 8px; padding: 14px 16px; background: color-mix(in srgb, var(--accent) 3%, var(--panel2)); border: 1px solid var(--border); border-radius: 10px; transition: border-color .15s; }
 .setting-box:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }

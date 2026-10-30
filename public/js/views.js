@@ -3,7 +3,7 @@ import { empty, matches, meter, panelChip, serviceFilters, serviceRow, statusBad
 import { openService } from './drawer.js';
 import { clear, confirmDialog, field, fmtTime, gb, h, host, icon, modal, pct, relTime, toast, uptime } from './dom.js';
 import { allServices, can, panelById, refresh, store } from './store.js';
-import { lang, setLang, t } from './i18n.js';
+import { AVAILABLE_LANGS, lang, setLang, t } from './i18n.js';
 import { sourcePicker } from './source-form.js';
 import { installFlow } from './panel-install.js';
 import { settingsTab } from './panel-settings.js';
@@ -351,8 +351,30 @@ async function move(i, d) {
 
 
 export function languageCard() {
-  const btn = (code, label) => h('button', { class: `btn ${lang === code ? 'on' : ''}`, onclick: () => setLang(code) }, label);
-  return h('section', { class: 'card stack' }, h('h3', null, 'Язык интерфейса'), h('div', { class: 'inline' }, btn('ru', 'Русский'), btn('en', 'English')));
+  const btn = (x) => h('button', { class: `btn ${lang === x.code ? 'on' : ''}`, onclick: () => setLang(x.code) }, `${x.flag} ${x.label}`);
+  return h('section', { class: 'card stack' }, h('h3', null, 'Язык интерфейса'), h('div', { class: 'inline' }, AVAILABLE_LANGS.map(btn)));
+}
+
+export function languagePickerModal() {
+  const grid = h('div', { class: 'theme-grid' },
+    ...AVAILABLE_LANGS.map((item) => h('button', {
+      type: 'button',
+      class: `theme-choice ${lang === item.code ? 'active' : ''}`,
+      onclick: () => setLang(item.code)
+    },
+      h('span', { style: 'font-size: 20px; line-height: 1;' }, item.flag),
+      h('div', { class: 'theme-info' },
+        h('div', { class: 'theme-title' }, item.label),
+        h('div', { class: 'theme-hint' }, item.code.toUpperCase())
+      ),
+      lang === item.code ? icon('check', 16) : null
+    ))
+  );
+  return modal({
+    title: t('Язык интерфейса'),
+    body: h('div', { class: 'stack' }, grid),
+    actions: [{ label: t('Закрыть'), kind: 'primary' }]
+  });
 }
 
 export { themeCard, themePickerModal } from './theme-picker.js';
