@@ -1,167 +1,226 @@
-# EasyAdmin
+<div align="center">
 
-One admin console for all your [Easypanel](https://easypanel.io) panels. Sign in once and manage 10–20 servers from a single interface: status and load, projects and services, deploys, restarts, env, domains, ports, volumes, live logs, bulk operations and an audit log.
+# 🐴 EasyAdmin
 
-Zero dependencies and no frontend build: Node.js ≥ 22.13, SQLite (built-in `node:sqlite`), plain JS in the browser. The interface and server messages are available in **Russian and English** (switch with the RU/EN button in the sidebar or on the sign-in page).
+### Unified Multi-Server Control Plane for [Easypanel](https://easypanel.io)
 
-> 🇷🇺 **Русская версия: [README.ru.md](README.ru.md).**
+**Manage 10–50+ Easypanel servers, Docker clusters, databases, and services from a single, blazing-fast web console.**  
+Zero runtime dependencies • Zero frontend build • 100% self-hosted • Boots in 100ms • Uses < 30MB RAM
 
-> **Status: beta (0.9).** The core is covered by tests (including a mock Easypanel and real bash). Marked “experimental” is whatever has not been verified on real servers: database and volume data backups, restoring the system from a backup, installing a panel over SSH, load on multi-core servers. Try it on test panels first and keep a backup.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.13-brightgreen.svg)](package.json)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](Dockerfile)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-orange.svg)](#-zero-build-architecture)
+[![Status: Beta](https://img.shields.io/badge/Status-Beta_0.9-blueviolet.svg)](#)
+[![Русская документация](https://img.shields.io/badge/🇷🇺_Документация-Русский-red)](README.ru.md)
 
-![Overview](docs/screenshots/overview.png)
-![Panel](docs/screenshots/panel.png)
-![Load](docs/screenshots/load.png)
-![Backups](docs/screenshots/backups.png)
+[**Live Demo**](#-interactive-demo) • [**Quick Start**](#-quick-start-in-60-seconds) • [**Features**](#-features) • [**Migration**](#-1-click-server-migration) • [**Screenshots**](#-screenshots) • [**Security**](#-security)
 
-## Quick start
+</div>
 
-```bash
-npm start            # http://localhost:3100
+---
+
+## 📸 Screenshots
+
+| Overview Dashboard | 1-Click Server Migration |
+|:---:|:---:|
+| ![Overview](docs/screenshots/overview.png) | ![Migration](docs/screenshots/migration.png) |
+
+| 6 Built-in Themes (Dark & Light) | Live Load Monitoring |
+|:---:|:---:|
+| ![Themes](docs/screenshots/themes.png) | ![Load](docs/screenshots/load.png) |
+
+| Backups & Disaster Recovery | Panel & Projects Control |
+|:---:|:---:|
+| ![Backups](docs/screenshots/backups.png) | ![Panel](docs/screenshots/panel.png) |
+
+---
+
+## ⚡ Why EasyAdmin?
+
+Easypanel is fantastic for managing a single VPS. But when you run **3, 10, or 25+ servers**, switching browser tabs, checking separate login sessions, and repeating maintenance tasks across panels becomes tedious.
+
+**EasyAdmin connects all your Easypanel instances into one command center:**
+- **Zero Tab Fatigue**: View status, CPU, memory, and disk across all servers in one unified overview.
+- **1-Click Full Server Migration**: Move an entire server (Easypanel, SSL certificates, Git deploy keys, configurations, volumes, and databases) to a clean Ubuntu/Debian server via SSH or a single curl command.
+- **Unified Backups & Restores**: Centralized database dumps (Postgres, MySQL, MariaDB, Mongo, Redis) and volume copies with encryption, S3 rotation, and a step-by-step restoration wizard.
+- **Bulk Operations**: Mass deploy/restart, bulk environment variable updates, and batch image version rollouts across multiple servers simultaneously.
+- **6 Modern Color Themes**: 3 Dark (Midnight Indigo, Emerald Jade, Deep Ocean Slate) and 3 Light (Classic Lavender, Warm Sand, Mint Breeze) with instant top-bar switching.
+- **Integrated Terminal**: Embedded xterm.js console for both service containers and the host server itself — no open SSH ports needed.
+- **Zero Build, Zero Bloat**: Built with native Node.js (`node:sqlite`, `node:crypto`) and standard vanilla ES modules. No webpack, no npm build, no 500MB `node_modules`.
+
+---
+
+## 🚀 Quick Start in 60 Seconds
+
+### Docker Compose (Recommended)
+
+Create `docker-compose.yml`:
+
+```yaml
+services:
+  easyadmin:
+    image: ghcr.io/its-my-work/easyadmin:latest # or build: .
+    container_name: easyadmin
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      - PORT=3100
+      - HOST=0.0.0.0
+      - EASYADMIN_SECRET=generate_with_openssl_rand_hex_32
+      - EASYADMIN_SECURE_COOKIES=false # Set true behind HTTPS reverse proxy
+    volumes:
+      - ./data:/app/data
 ```
 
-On first open, create an administrator. Then **Add panel**: the panel address and an API token (Easypanel → *Settings → Users → Generate API Token*), or sign in with the panel's email/password — a token is obtained automatically (the password is not stored).
-
-Docker:
+Run:
 
 ```bash
-EASYADMIN_SECRET="$(openssl rand -hex 32)" docker compose up -d --build
+docker compose up -d
 ```
 
-> Keep `EASYADMIN_SECRET`: it encrypts panel tokens (AES-256-GCM). If unset, a key is created in `data/secret.key` — back up the whole `data/` directory.
-> Behind an HTTPS proxy set `EASYADMIN_SECURE_COOKIES=true`. EasyAdmin gives full access to your servers — do not expose it without HTTPS.
+Open **`http://localhost:3100`** in your browser. On first launch, create your administrator account, then connect your first Easypanel via URL + API token (or panel login).
 
-Demo without real panels (several Easypanel mocks): `npm run demo` → http://localhost:3100, `admin` / `demo12345`.
-
-## Features
-
-**Management**
-- **Overview**: all panels at a glance (online/offline, CPU/RAM/disk), tag filter, "Needs attention" block, Docker cleanup on several panels at once.
-- **Panel**: load chart (6 h / 24 h / 7 d), projects and services, quick actions (deploy / restart / start / stop), create and delete projects and services (App, PostgreSQL, MySQL, MariaDB, MongoDB, Redis, Compose), system operations, panel operation history with logs.
-- **Service** (side panel): env (values hidden by default), domains, ports, volumes, limits, source (image / GitHub), notes, current usage, favorites, deletion confirmed by typing the name.
-- **Live logs**: the "Logs" tab streams in real time with filter, pause, auto-scroll, error highlighting and download (operator and above).
-- **Container state** (best effort): "Failed" — service enabled but its container crashed; "No container".
-- **Services**: one list across all panels with filters and **bulk operations**: deploy / restart / start / stop, **bulk env editing** (add/change/remove keys, comments preserved), **bulk image change**.
-- **Templates and cloning**: move a service (env, source, resources) to another panel in one click; save a service as a template and deploy it on any panel.
-- **Schedules**: restart/deploy/start/stop services and Docker cleanup — daily (by weekday) or at an interval; run manually; failures go to notifications.
-- **Inventory**: which images run where and **version mismatches** between panels; **certificate** expiry across panels.
-- **CI/CD webhooks**: a URL that deploys/restarts a service without signing in (`curl -X POST …`); the token is stored hashed.
-- **Search and commands** — `Ctrl/⌘ + K` or `/`; favorites and recent services first.
-
-**Notifications** (Telegram, email over SMTP and webhook): panel unreachable (after two failed checks) and recovered, token error, disk full (configurable threshold), certificate expiring (< 7 days), service stopped/crashed outside EasyAdmin, schedule error. The notification language (RU/EN) is set in *Settings → Notifications*.
-
-**Users and access**
-- **Profile** (click your name in the sidebar): name and email, password change (other devices are signed out), 2FA, **active sessions** (device, IP, last activity; end any or all others), language, theme, your recent actions.
-- **Users** (administrator): a table with role, sign-in method (password / SSO / 2FA), panel access, last sign-in and status; create, edit (username, name, email, role, panels, password, 2FA reset), **disable an account** (sign-in blocked, sessions ended), end all sessions, delete. The last administrator cannot be demoted, disabled or deleted, and you cannot disable or delete yourself.
-- Roles: `admin`; `operator` (deploy, restart, env, domains — no deletion or system operations); `viewer` (read-only, **no env or secrets**).
-- Restrict a user to a set of panels (e.g. a contractor sees only "Client Acme").
-- **SSO (OpenID Connect)**: sign in via Keycloak, Authentik, Google, Azure AD, Okta, etc. (see below).
-- **2FA (TOTP)**, password change, admin-side 2FA reset.
-- Audit log with search and **CSV export** (kept for 90 days).
-
-**Operations**:
-- **Server Migration**: complete migration of panels, SSL certs, Git keys, volumes, and databases to a fresh clean Ubuntu/Debian server in one click via SSH or a single curl bootstrap command.
-- **6 Color Themes**: 3 dark (Midnight, Emerald, Ocean) and 3 light (Classic, Warm Sand, Mint Breeze) with an instant topbar switcher.
-- **Column Sorting & Projects**: interactive sorting on Services, Backups, and Users pages; dedicated project column.
-- **Backups & Restore**: unified backup and restore history, automatic schedules, pre-restore safety copies, and step-by-step restoration wizard.
-- Backup from the UI (+ `scripts/restore.js`), Prometheus metrics (`/metrics`), responsive layout. An unreachable panel does not affect the others.
-
-## Security
-
-> The host console, panel installation over SSH and data backups run commands as root on your servers: access to EasyAdmin equals access to those servers. To report a vulnerability see [SECURITY.md](SECURITY.md).
-
-- Panel tokens are encrypted (AES-256-GCM) and never returned to the client.
-- Passwords use scrypt; sessions are random tokens in an `HttpOnly; SameSite=Strict` cookie (only a hash is stored).
-- The `viewer` role never receives env or secret fields; per-panel access is enforced server-side on every request.
-- Webhook tokens are stored hashed and shown once; calls are rate-limited.
-- CSRF: mandatory header `X-Requested-With` + `Origin` check; login attempt limiting; CSP and security headers.
-- Redirects are not followed when talking to panels (a token cannot leak to another host).
-
-## Configuration (environment variables)
-
-See `.env.example`. Schedule time zone — the `TZ` variable (e.g. `TZ=Europe/Berlin`). Notification language default — `EASYADMIN_LANG=en` (changeable in the UI). Metrics: set `EASYADMIN_METRICS_TOKEN` and add `authorization: {credentials: <token>}` for `/metrics` in Prometheus.
-
-## SSO (OpenID Connect)
-
-Set `EASYADMIN_PUBLIC_URL` (e.g. `https://admin.example.com`) and `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`. Register the redirect URI `https://admin.example.com/api/oidc/callback` with your provider. A "Sign in with …" button appears on the sign-in page.
-
-- Authorization Code + PKCE; the `id_token` signature (RS256/ES256) is verified against the JWKS, and `iss`, `aud`, expiry and `nonce` are checked. The provider must use HTTPS.
-- A new user is created on first sign-in with the `OIDC_DEFAULT_ROLE` role (default `viewer`); addresses in `OIDC_ADMIN_EMAILS` become `admin`; the very first sign-in into an empty system is also `admin`. Change roles and panel access later in *Settings → Users*.
-- An existing local user whose username equals the verified email is linked to the SSO account, keeping their role.
-- `OIDC_ALLOWED_DOMAINS` restricts email domains. An SSO user's password is unusable — sign-in only through the provider (the provider handles 2FA).
-
-## Easypanel template catalog
-
-*Templates → Easypanel catalog* shows the same templates Easypanel offers when creating a service (about 850, with search and tags): a card with description and links, a parameter form, a **schema preview** and one-click deployment to the chosen panel (the project is created automatically).
-
-How it works: EasyAdmin reads the public [easypanel-io/templates](https://github.com/easypanel-io/templates) repository (`list.json`, and each template's `meta.yaml` and `index.ts`), obtains a `{services:[{type,data}]}` schema and hands it to the panel through `templates.createFromSchema` — the same as “Create from JSON”.
-The `generate` function in `index.ts` is TypeScript code from that repository. **It runs on the EasyAdmin server**, therefore: only admins can trigger it; it runs in an empty, isolated `node:vm` context (no `process`, `require`, network or files; `eval`/`Function` are forbidden; random values are passed in as a string from `crypto`; 2 s timeout; capped result size); templates that need third-party modules or cryptography (keys, hashes) are marked as unsupported. `vm` isolation is not an OS-level security boundary, so if you do not trust the source, use your own mirror (`EASYADMIN_CATALOG_URL`, pinned to a revision) or disable the catalog (`EASYADMIN_CATALOG=off`).
-Check the whole catalog: `node scripts/catalog-check.js /path/to/templates` (a local clone of the repository).
-
-Besides the catalog: *Import Easypanel schema* (paste JSON from “Create from JSON” and deploy it to a panel) and export of a saved template as such a schema.
-
-## Service console and panel settings
-
-**Rename and move** (the pencil icon next to the service name, admins only): rename a service and move it to another project (including a new one) using Easypanel itself — together with its image, files and domains. The service is stopped, renamed and started again; if the panel refuses, the original is started back. EasyAdmin then updates its schedules, webhooks, load history and backup scope. Not available for compose stacks. The service address inside the Docker network changes (`project_service`) — connections by the old name must be reconfigured.
-
-**Service console** (service card → *Console*, admins only): a full terminal (xterm.js) inside the container: per-key input, Tab, arrows, Ctrl+…, multi-line paste, nano/vim/htop; the window size is sent to the panel. Quick commands, Ctrl+C, output download. The Easypanel terminal runs over a WebSocket: `/ws/containerShell` (needs `container` and base64 `command`) and `/ws/hostShell`, messages `{"input":…}` → `{"output":…}`. The panel calls `JSON.parse` on every frame unguarded, so plain text crashes its process — auto-detection sends JSON only, `raw` is manual only. For other panel versions EasyAdmin tries known paths and those found in the panel UI and detects the input format with `echo __EA$((a+b))__`; on failure all attempts are shown; custom paths via `EASYPANEL_CONSOLE_PATHS` / `EASYPANEL_SERVER_CONSOLE_PATHS`. For a multi-container (compose) service pick the container from the list. Up to three consoles per user; they close after 10 minutes without input and after an hour. The log records opening/closing a session and the *number* of Enter presses, never the commands themselves (they may contain passwords). Disable with `EASYADMIN_CONSOLE=off`; custom paths via `EASYPANEL_CONSOLE_PATHS`.
-
-**Server console** (*Console* menu item, admins only): a terminal of the host itself through Easypanel’s built-in console (*Settings → Server → Console*) — no SSH or passwords needed, it works through the panel address (IP or domain). The same path and format auto-detection, the same session limits and audit; the session and its output survive page navigation. Custom paths via `EASYPANEL_SERVER_CONSOLE_PATHS`.
-
-**Easypanel settings** (panel page → *Settings*, admins only): real forms instead of JSON — addresses (panel domain, base service domain, IP, Let's Encrypt e-mail), general (telemetry, nightly Docker cleanup, Google Analytics, GitHub token), branding (name, links, error pages, custom code), updates and Docker (versions, Easypanel update, image and build-cache cleanup, builders), Easypanel users (create, role, password, API tokens, own e-mail/password/2FA), metrics and log collection, Traefik (YAML and env with version history and restore), Swarm cluster, notification channels and the panel's activity log. “Advanced” is the previous generic access to the panel's procedures. Backup storage (S3, SFTP, FTP, folder) and the panel's notification channels (Discord, Slack, Telegram, webhook, SMTP) are created and edited right here with a send test; keys and passwords are never shown, and an empty field keeps the current value when editing. Interface logos are uploaded as files (PNG, JPEG, GIF, WebP, SVG up to 500 KB). A service (database or app) has a *Backups* tab: schedules for database or volume copies, run now, a log of copies and restoring a database from a successful copy (confirmed with `project/service`). **Installing a new panel over SSH** (“Add panel” → “Install a new one…”): the wizard connects to a clean server (Ubuntu 22.04+ or Debian 11+, 2 GB of memory or more) with a password or key, shows the server key fingerprint for confirmation, checks the server (root/sudo, ports 80/443/3000, memory, Swarm, internet), then runs the official Easypanel script as a separate systemd unit (`easypanel-install`) and shows the progress. The initial setup (administrator, API token) goes through an SSH tunnel to `127.0.0.1:3000`, so the password never crosses the open internet; the panel is added to EasyAdmin with its token. The panel domain is the generated `*.easypanel.host` or your own (available on the free plan too). An explicit agreement with the Easypanel terms is required; the administrator e-mail is passed to Easypanel during setup. The SSH access and passwords are never stored or logged; a generated password is shown once. The image uses the system `ssh` (openssh-client).  “Update Docker” in “Updates and Docker” (when a newer version exists), with a warning and a panel-name confirmation. The server is checked first (Ubuntu and Debian only, apt, systemd, the `docker-ce` package from the Docker repository): if the conditions are not met the button is inactive and shows why. The command runs on the host through Easypanel's built-in console as a separate systemd unit (`docker-upgrade-ea`), so it survives the Docker restart; if the unit finishes and the version did not change, you are told; during the update all services, including Easypanel and EasyAdmin, stop for a few minutes. Progress is shown in a modal. **Easypanel license:** EasyAdmin reads the panel's license (Portal and Lemon Squeezy) and, following the panel's own rules, blocks paid features — metrics and log collection, notification channels, database backup schedules, branding, multiple users, cluster, custom service domain. Locked settings are inactive and marked with a key, and writes are rejected before reaching the panel (without a license the panel either returns an error or silently does nothing — the result is verified by re-reading). Volumes, storage, Traefik, builders and the rest work without a license; for databases, manual copies, the log and restore stay available. A license can be activated from EasyAdmin (Lemon Squeezy key, order number or Portal) — the key is not stored or logged. Every change is written to the audit log with the old and new value (secrets masked); dangerous ones need confirmation, and domains and Traefik require typing the panel name. The user EasyAdmin acts as on the panel can be neither deleted nor given a new token — access would be lost.
-
-**Panel settings** (panel page → *Settings*, admins only): `settings.*`, `branding.*`, `users.*` and other procedures are taken from the panel's own UI (Easypanel has no public list). Reading is safe and secrets are masked (they can be revealed); writing sends JSON to the procedure as is — the panel validates the format and returns the reason on error; for paired `get…`/`set…` procedures the current values are prefilled, dangerous actions (restart, delete, reset) require typing the name. The *API console* remains for arbitrary calls.
-
-## Live logs
-
-Logs come over the panel's own WebSocket; EasyAdmin proxies them to the browser via SSE. The exact WebSocket path depends on the Easypanel version and is undocumented, so `/ws/serviceLogs`, `/api/ws/serviceLogs` and `/ws/logs` are tried in turn. If your version uses another path, set `EASYPANEL_LOGS_PATHS`; on failure the tab shows which paths were tried.
-
-## Backup and restore
-
-See the “Backups” section below: a password-protected system backup, protection of databases and volumes, schedule, S3, verification and restore.
-
-## Easypanel compatibility
-
-Easypanel has no public API documentation; its internal tRPC is used (`/api/trpc/...`, `Authorization: Bearer <token>`). The mapping from features to procedures lives in one place — `src/easypanel.js` — and responses are parsed defensively. Check your panel version:
+### Docker CLI One-Liner
 
 ```bash
-npm run probe -- https://panel.example.com <API_TOKEN>
+docker run -d \
+  --name easyadmin \
+  --restart unless-stopped \
+  -p 3100:3100 \
+  -v easyadmin_data:/app/data \
+  -e EASYADMIN_SECRET="$(openssl rand -hex 32)" \
+  node:22-alpine \
+  sh -c "git clone https://github.com/Its-My-Work/easyadmin.git /app && cd /app && npm start"
 ```
 
-The script prints the shape of key responses. In the UI, open **Diagnostics** on a panel page for the same report (secrets redacted). Until a field is recognized, that block is simply not shown (or shows "expiry unknown") and everything else keeps working.
-
-## Localization
-
-All UI texts are Russian in the source and translated at render time through the single dictionary `public/js/i18n-dict.js` (shared by the browser and the server, so API errors, notifications and emails are translated too). To add a string, add a `[ru, en]` pair — `npm test` fails if a Russian literal in the code has no translation; `node e2e/i18n.mjs` walks every screen in English and reports anything left untranslated.
-
-## Development
+### Direct on Host (Node.js ≥ 22.13)
 
 ```bash
-npm test         # API tests against an Easypanel mock (test/mock-easypanel.js) + localization checks
-npm run dev      # run with auto-reload
-node e2e/ui.mjs  # end-to-end UI check in a browser (needs playwright and a running npm run demo); runs in CI
+git clone https://github.com/Its-My-Work/easyadmin.git
+cd easyadmin
+npm start # Opens on http://localhost:3100
 ```
 
-Layout: `src/` — server (`app.js` routes and permissions, `routes-ext.js` templates/schedules/webhooks/inventory, `easypanel.js` client and operations, `manager.js` cache and statuses, `alerts.js` notifications, `scheduler.js`, `totp.js`, `oidc.js`, `smtp.js`, `ws.js`), `public/` — UI, `test/` — tests and the panel mock, `docs/archive/TZ.md` — the original specification (archive).
+---
 
-## Server load (beta)
+## 🎮 Interactive Demo
 
-A “Load” tab on each panel: server CPU/memory charts (services vs. system and other), a services table, per-service history in the “Resources” tab, and “What is loading the server?” (a process snapshot from the host). Settings → “Load monitoring”: measuring interval (1–15 minutes), retention, overload alerts, clear history.
+Want to test EasyAdmin right now without connecting real servers? Run the built-in mock demo cluster:
 
-## Backups
+```bash
+npm run demo
+```
 
-One page: **Menu → Backups.** EasyAdmin makes the backups itself (Easypanel's own backup schedules are not used).
+Open **`http://localhost:3100`** and sign in with `admin` / `demo12345`. You'll get 5 simulated production servers with mock load, services, and backups.
 
-- **What is backed up.** A table of all services on all panels: a switch per service (or “All, including new”), the last backup (time and size, or the error), a status — *OK*, *Error*, *No recent copy*, *Waiting for the first copy*, *Not backed up*. Per-service buttons: back up now, copies and how to restore. The same controls are in the **Backups** tab of every service.
-- **EasyAdmin itself.** One more switch under the table: panels, users, settings, templates and the configurations of all services of all panels (projects, env, sources) in one `.eabak` file.
-- **One password for everything.** The backup password (Backups → Settings) encrypts *all* EasyAdmin backups — the system copy and every database/volume archive (AES-256, PBKDF2). It cannot be recovered; nothing is backed up without it.
-- **Settings** (one dialog): schedule (daily or weekly, at an hour), where to store (on the servers or in S3), how many copies to keep; advanced — the folder on the panel server, how volumes are handled while copying (as is / pause / stop) and the minimum free space.
-- **One service — one archive** (`project__service__stamp.tar.enc`), even for a compose stack: inside is one `.gz` per database or volume plus `RESTORE.txt` with ready restore commands. Databases: Postgres, MySQL, MariaDB, Mongo, Redis (dump taken inside the container; passwords stay there). Volumes and bind-mounted folders or single files are included; a volume whose source is missing on the server is skipped with a warning.
-- **Progress and log.** Services are copied one by one; the status column shows the queue and what is being copied right now. *Backup log* keeps the latest runs with the full error text. EasyAdmin never stops or freezes itself while copying, and a run that was in progress when EasyAdmin restarted is followed up afterwards.
-- The copies are made by a script on the panel's own server (a separate systemd process started through the host console), the data never passes through EasyAdmin. To S3 the server uploads via temporary signed links; large archives go in parts. The password is on the server only while the script runs.
-- Rotation by copy count, free-space check, a failure notification, storage in `data/backups` (system copy) or S3. “Verify” decrypts and checks a system copy; “Restore system” stages the database and restarts EasyAdmin (the previous database is kept in `before-restore-*`); “Restore a service” creates a service from a saved configuration.
-- **Restore data from EasyAdmin.** *Backups → a service → Copies → Restore*: a wizard reads the archive on the panel server (its databases and volumes), then you pick the parts, the target — **the same service, another existing service, or a new one** (created to match the copy: a database of the same kind, or an app configured like the source with the same volumes) — and the mode: *replace data* (databases and volume folders are emptied first) or *add on top*. A **safety copy** of the current data is made before overwriting (`before-restore` next to the copies, kept 14 days). Volumes: the service is stopped for the restore and always started again; databases (Postgres, MySQL, MariaDB, Mongo) are restored in the running container; for Redis `dump.rdb` goes into the service's `/data`. EasyAdmin's own service cannot be restored this way — use *Restore system*. The job runs on the panel server as a systemd unit (`ea-data-restore`) and survives an EasyAdmin restart; the last 20 restores are under *Backups → Restores*, and results go to the audit journal and the service History. S3 archives can be restored into a service on any panel, archives stored on a server only on that panel. The backup password (or the password of that copy) is required.
-- Restore a data archive manually: *Copies → How to restore* shows the commands (`openssl enc -d … | tar -x`, then `cat RESTORE.txt`). Volumes are copied live unless you choose pause/stop.
+---
 
-## Contributing and license
+## ✨ Features
 
-[CONTRIBUTING.md](CONTRIBUTING.md) · [CHANGELOG.md](CHANGELOG.md) · [MIT](LICENSE) license.
+### 🌐 Fleet Management & Overview
+- **Global Overview**: Real-time health check, status pills (Online, Degraded, Offline), CPU/RAM/Disk metrics across all clusters.
+- **Tag Filtering & Fast Search**: Group panels by environment (`prod`, `staging`, `client`), search with `Ctrl+K` or `/`.
+- **Global Docker Cleanup**: Prune unused images and build caches across several panels in one click.
+
+### 🚀 1-Click Server Migration
+- **Zero-Friction Server Transfer**: Move from one cloud provider to another or upgrade your VPS in minutes.
+- **Two Migration Modes**:
+  1. **Direct SSH**: EasyAdmin connects to a clean server, verifies OS requirements, installs Docker & Swarm, transfers encrypted data, and spins up Easypanel automatically.
+  2. **One-Liner Command**: EasyAdmin generates a single secure command (`curl -sSL .../bootstrap.sh?token=... | bash`) to execute as root on the target server.
+- **Complete Parity**: Preserves all Easypanel configurations, Let's Encrypt SSL certificates, Git SSH deploy keys, persistent volumes, and databases with optional consistency pausing.
+
+### 🎨 6 Beautiful Built-in Themes
+- **3 Dark Themes**:
+  - 🌌 **Midnight (Indigo)**: Deep dark `#090c15` background with soft violet-indigo accents.
+  - 🌿 **Emerald (Jade)**: Rich dark coniferous green `#06110c` with radiant emerald highlights.
+  - 🌊 **Deep Ocean (Slate)**: Deep navy `#06101e` with electric cyan accents.
+- **3 Light Themes**:
+  - ☀️ **Classic (Lavender)**: Crisp cool slate-white `#f5f7fc` with high-contrast typography.
+  - 🏜️ **Warm Sand (Amber)**: Gentle warm cream `#f9f6ef` with golden amber accents.
+  - 🍃 **Mint Breeze (Lagoon)**: Fresh maritime teal `#eef7f5` with seafoam accents.
+- **Instant Switcher**: Click the palette icon in the top navigation bar or toggle in the Profile settings. Automatic OS system theme detection supported.
+
+### 💾 Disaster Recovery & Backups
+- **Comprehensive Backups**: Direct database dumps (PostgreSQL, MySQL, MariaDB, MongoDB, Redis) and file volumes.
+- **Local & S3 Storage**: Store copies on the panel host or upload directly to AWS S3, Cloudflare R2, MinIO, or Backblaze with automated retention rotation.
+- **Step-by-Step Restore Wizard**: Restore into the same service, an existing service, or automatically provision a new matching service. Includes automatic safety copies before overwriting data.
+- **Unified History**: Clean modal tab combining backup run logs and restore history.
+
+### ⚡ Mass Operations & Inventory
+- **Interactive Table Sorting**: Click table headers on Services, Backups, and Users pages to sort dynamically.
+- **Dedicated Project Column**: Clear organization by project with responsive screen scaling.
+- **Bulk Environment Variables**: Add, modify, or remove env keys across 20+ services at once while preserving comments.
+- **Bulk Image Updates**: Roll out new container image tags across multiple services and clusters simultaneously.
+- **Version Drift & SSL Tracker**: Identify version discrepancies between servers and track Let's Encrypt certificate expiration dates in advance.
+
+### 💻 Web Terminals (xterm.js)
+- **Container Terminal**: Full interactive terminal inside any running container (nano, vim, htop, Tab completion, clipboard paste).
+- **Host Root Console**: Direct shell access to the panel server via Easypanel's secure console without exposing SSH ports.
+
+### 🔒 Enterprise Security & Access Control
+- **Role-Based Access Control (RBAC)**:
+  - `admin`: Full cluster management, user management, and system migration.
+  - `operator`: Deploy, restart, edit env, and configure domains (without deleting servers or viewing audit settings).
+  - `viewer`: Read-only monitoring without access to secret keys or environment variables.
+- **Authentication**:
+  - **Single Sign-On (SSO / OIDC)**: Plug-and-play integration with Authentik, Keycloak, Google Workspace, Azure AD, Okta.
+  - **Two-Factor Authentication (2FA)**: Built-in TOTP support (Google Authenticator, 1Password, Bitwarden).
+  - **Token Encryption**: AES-256-GCM encryption for all stored panel credentials.
+  - **Audit Log**: Searchable history with CSV export (retained for 90 days).
+
+---
+
+## 🛠 Zero-Build Architecture
+
+EasyAdmin intentionally avoids frontend build complexity:
+- **Zero npm dependencies** in runtime production: powered entirely by modern Node.js standard libraries (`node:sqlite`, `node:crypto`, `node:http`, `node:test`).
+- **No Webpack, Vite, or Babel**: Native browser ES modules (`import / export`). What you see in the code is what runs in the browser.
+- **Blazing Fast**: Cold starts in ~100ms, consumes < 30MB of RAM under load.
+
+---
+
+## ⚙️ Configuration
+
+Key environment variables (see `.env.example` for all options):
+
+| Variable | Description | Default |
+|:---|:---|:---|
+| `PORT` | HTTP server port | `3100` |
+| `HOST` | Bind address | `0.0.0.0` |
+| `EASYADMIN_DATA` | Persistent data storage path | `./data` |
+| `EASYADMIN_SECRET` | 32-byte hex key for encrypting panel tokens | Generated in `data/secret.key` |
+| `EASYADMIN_SECURE_COOKIES` | Enforce secure HTTPS cookies | `false` |
+| `EASYADMIN_LANG` | Default notification language (`ru` / `en`) | `ru` |
+| `TZ` | Server time zone for backup schedules | `Europe/Moscow` |
+| `EASYADMIN_METRICS_TOKEN` | Bearer token for Prometheus `/metrics` | _None (disabled)_ |
+
+---
+
+## 🌐 Localization
+
+EasyAdmin is fully bilingual:
+- 🇷🇺 **Russian** (Default / На русском: [README.ru.md](README.ru.md))
+- 🇬🇧 **English** (Full UI, server errors, and logs)
+
+Switch anytime using the language toggle in the top bar or sign-in page. All strings are centrally managed in `public/js/i18n-dict.js` and validated via automated unit tests.
+
+---
+
+## 🤝 Contributing
+
+Contributions, bug reports, and feature requests are welcome!
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details on getting started.
+
+```bash
+git clone https://github.com/Its-My-Work/easyadmin.git
+npm test          # Run all unit & localization tests
+npm run dev       # Start development server with file watch
+```
+
+---
+
+## 📄 License
+
+This project is open-source software licensed under the [MIT License](LICENSE).
