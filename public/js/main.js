@@ -10,6 +10,7 @@ import { bulkOpModal, inventoryPage, schedulesPage, templatesPage } from './view
 import { avatar, profilePage, usersPage } from './pages-users.js';
 import { consolePage } from './server-console.js';
 import { backupsPage } from './backups-page.js';
+import { filesPage } from './files-page.js';
 import { auditPage, dashboard, panelForm, panelPage, servicesPage, settingsPage, pageHead, themePickerModal, languagePickerModal } from './views.js';
 
 const root = document.getElementById('root');
@@ -88,7 +89,7 @@ window.addEventListener('ea:timezone', syncServerTime);
 setInterval(paintClock, 1000);
 setInterval(() => { if (store.user && !document.hidden) syncServerTime(); }, 300_000);
 
-const NAV = [['#/', 'grid', 'Обзор'], ['#/console', 'terminal', 'Консоль', 'admin'], ['#/services', 'layers', 'Сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/backups', 'database', 'Бэкапы', 'admin'], ['#/users', 'users', 'Пользователи', 'admin'], ['#/settings', 'settings', 'Настройки', 'admin']];
+const NAV = [['#/', 'grid', 'Обзор'], ['#/console', 'terminal', 'Консоль', 'admin'], ['#/services', 'layers', 'Сервисы'], ['#/inventory', 'box', 'Инвентарь'], ['#/templates', 'copy', 'Шаблоны'], ['#/schedules', 'clock', 'Расписания'], ['#/audit', 'activity', 'Журнал'], ['#/files', 'folder', 'Файлы', 'admin'], ['#/backups', 'database', 'Бэкапы', 'admin'], ['#/users', 'users', 'Пользователи', 'admin'], ['#/settings', 'settings', 'Настройки', 'admin']];
 const dotClass = (s) => (s === 'online' ? 'ok' : s === 'degraded' ? 'warn' : s === 'unknown' ? 'muted' : 'err');
 
 function route() {
@@ -132,6 +133,7 @@ function renderView() {
   else if (r.a === 'templates') node = templatesPage();
   else if (r.a === 'schedules') node = schedulesPage();
   else if (r.a === 'audit') node = auditPage();
+  else if (r.a === 'files') node = can('admin') ? filesPage() : dashboard();
   else if (r.a === 'backups') node = can('admin') ? backupsPage() : dashboard();
   else if (r.a === 'settings') node = can('admin') ? settingsPage() : profilePage();
   else if (r.a === 'profile') node = profilePage();
@@ -161,7 +163,7 @@ let lastSig = '', lastHash = '', renderedReal = false; // renderedReal: на э�
  * Страницы, которые сами подгружают свои данные (журнал, настройки, расписания, шаблоны, инвентарь, пользователи, вкладки панели кроме «Сервисов»),
  * при фоновом обновлении списка панелей не перестраиваем: иначе они мигают скелетоном и теряют прокрутку. Они обновляются при переходе или своими кнопками.
  */
-const selfLoading = (r) => ['audit', 'settings', 'profile', 'users', 'schedules', 'templates', 'inventory', 'console', 'backups'].includes(r.a) || (r.a === 'panel' && !!r.c && r.c !== 'services');
+const selfLoading = (r) => ['audit', 'settings', 'profile', 'users', 'schedules', 'templates', 'inventory', 'console', 'backups', 'files'].includes(r.a) || (r.a === 'panel' && !!r.c && r.c !== 'services');
 function onStoreChange() {
   renderChrome();
   const r = route();
@@ -181,7 +183,7 @@ function openPalette() {
   const go = (hash) => () => { location.hash = hash; };
   const fav = favorites(), rec = recents();
   // порядок страниц — как в боковом меню
-  const pages = [['Обзор', 'grid', '#/'], ...(can('admin') ? [['Консоль сервера', 'terminal', '#/console']] : []), ['Сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ...(can('admin') ? [['Бэкапы', 'database', '#/backups'], ['Пользователи', 'users', '#/users'], ['Настройки', 'settings', '#/settings']] : []), ['Профиль', 'users', '#/profile']];
+  const pages = [['Обзор', 'grid', '#/'], ...(can('admin') ? [['Консоль сервера', 'terminal', '#/console']] : []), ['Сервисы', 'layers', '#/services'], ['Инвентарь', 'box', '#/inventory'], ['Шаблоны', 'copy', '#/templates'], ['Расписания', 'clock', '#/schedules'], ['Журнал действий', 'activity', '#/audit'], ...(can('admin') ? [['Файлы', 'folder', '#/files'], ['Бэкапы', 'database', '#/backups'], ['Пользователи', 'users', '#/users'], ['Настройки', 'settings', '#/settings']] : []), ['Профиль', 'users', '#/profile']];
   const items = [
     ...pages.map(([title, ic, hash], order) => ({ title, shown: t(title), hint: 'Страница', ic, group: 'page', order, run: go(hash) })),
     ...(can('admin') ? [{ title: 'Добавить панель', shown: t('Добавить панель'), hint: 'Команда', ic: 'plus', group: 'cmd', order: 0, run: () => panelForm() }] : []),
