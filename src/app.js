@@ -14,6 +14,7 @@ import { createBackups } from './backups.js';
 import { createAlerts } from './alerts.js';
 import { applyTimezone, getSavedTimezone } from './timezone.js';
 import { extraRoutes } from './routes-ext.js';
+import { createStatusPage } from './status-page.js';
 import { createManager } from './manager.js';
 import { createScheduler } from './scheduler.js';
 import { decrypt, encrypt } from './crypto.js';
@@ -168,6 +169,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
     }
   };
   const history = new Map();
+  const statusPage = createStatusPage({ db, manager, config, audit });
 
   /* ---------------- маршруты ---------------- */
   const routes = compile([
@@ -554,6 +556,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
       return new RawResponse('\ufeff' + csv, 'text/csv; charset=utf-8', { 'Content-Disposition': 'attachment; filename="easyadmin-audit.csv"' });
     }],
 
+    ...statusPage.routes,
     ...extraRoutes({ db, key, config, fetchImpl, ssh, hostRun, dataPollMs, loadmon, backups, addPanelRow, installPollMs, installHttpsPollMs, installHttpsTries, installDnsTimeoutMs, installExtTimeoutMs, consoleHub, manager, alerts, scheduler: () => scheduler, audit, mutateAudited, need, str, nameOf, asHttp, panelOr404, assertPanel, canPanel, svcRef, cleanSource }),
   ]);
 
@@ -564,6 +567,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
   async function handle(req, res) {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/metrics') return metrics(req, res);
+    if (url.pathname.startsWith('/status') && await statusPage.handlePublic(req, res, url)) return;
     if (!url.pathname.startsWith('/api/')) return serveStatic(PUBLIC_DIR, url.pathname, res);
     try {
       const route = routes.find((r) => r.method === req.method && r.re.test(url.pathname));
@@ -614,7 +618,7 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
   const server = http.createServer((req, res) => { handle(req, res); });
   let maintenance;
   const start = () => {
-    manager.startPolling(); scheduler.start(); loadmon.start(); backups.start();
+    manager.startPolling(); scheduler.start(); loadmon.start(); backups.start(); statusPage.start();
     const prune = () => {
       db.prepare('DELETE FROM audit WHERE ts < ?').run(now() - 90 * 86_400_000);
       db.prepare('DELETE FROM stats_history WHERE ts < ?').run(now() - 7 * 86_400_000);
@@ -622,6 +626,6 @@ export function createApp({ config, db, key, restart, hostRun, dataPollMs, mpMin
     };
     prune(); maintenance = setInterval(prune, 6 * 3600_000); maintenance.unref();
   };
-  const stop = () => { manager.stop(); scheduler.stop(); loadmon.stop(); backups.stop(); consoleHub.closeAll(); clearInterval(maintenance); };
+  const stop = () => { manager.stop(); scheduler.stop(); loadmon.stop(); backups.stop(); statusPage.stop(); consoleHub.closeAll(); clearInterval(maintenance); };
   return { server, manager, alerts, scheduler, loadmon, backups, start, stop };
 }

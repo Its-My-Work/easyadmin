@@ -23,6 +23,7 @@ const ACTION_NAMES_EXTRA = {
   'backup.run': 'Копия настроек EasyAdmin создана', 'backup.settings': 'Настройки копирования изменены', 'backup.delete': 'Копия удалена', 'backup.restore': 'EasyAdmin восстановлен из копии', 'backup.restore_service': 'Сервис восстановлен из копии', 'backup.panel_config': 'Конфигурация панели прочитана из копии',
   'template.update': 'Шаблон изменён', 'builder.update': 'Билдер Docker пересоздан', 'service.sshKey': 'SSH-ключ сервиса создан',
   'console.open': 'Консоль открыта', 'console.close': 'Консоль закрыта',
+  'status.settings': 'Настройки Status Page изменены', 'status.incident.create': 'Инцидент создан', 'status.incident.update': 'Инцидент изменён', 'status.incident.delete': 'Инцидент удалён',
 };
 /** Человекочитаемое название действия из журнала (service.*, bulk.*, schedule.* и т. д.). */
 export function actionLabel(action) {

@@ -125,6 +125,22 @@ export function openDb(dataDir) {
       type TEXT NOT NULL, project TEXT NOT NULL, name TEXT NOT NULL, action TEXT NOT NULL,
       created_at INTEGER NOT NULL, last_used INTEGER
     );
+    CREATE TABLE IF NOT EXISTS status_incidents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'investigating',
+      severity TEXT NOT NULL DEFAULT 'minor',
+      message TEXT NOT NULL DEFAULT '',
+      components TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      resolved_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS status_incidents_open ON status_incidents(status, created_at DESC);
+    CREATE TABLE IF NOT EXISTS status_daily (
+      slug TEXT NOT NULL, day TEXT NOT NULL, up INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (slug, day)
+    );
   `);
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!cols.includes('totp_secret_enc')) db.exec('ALTER TABLE users ADD COLUMN totp_secret_enc TEXT');

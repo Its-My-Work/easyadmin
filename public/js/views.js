@@ -12,6 +12,7 @@ import { loadSettingsCard, loadTab } from './load-tab.js';
 import { doctorTab } from './server-doctor.js';
 import { timeCard } from './time-card.js';
 import { aiDoctorCard } from './ai-doctor.js';
+import { statusPageCard } from './status-admin.js';
 import { actionLabel, detailLabel } from './action-names.js';
 import { channelsCard, cleanAllModal } from './views2.js';
 
@@ -343,7 +344,7 @@ export function settingsPage() {
           h('button', { class: 'btn icon ghost sm', disabled: i === 0, title: 'Выше', onclick: () => move(i, -1) }, icon('up', 14)),
           h('button', { class: 'btn icon ghost sm', disabled: i === store.panels.length - 1, title: 'Ниже', onclick: () => move(i, 1) }, icon('down', 14)),
           h('button', { class: 'btn icon ghost sm', title: 'Изменить', onclick: () => panelForm(p) }, icon('edit', 14)))))) : h('p', { class: 'muted' }, 'Панелей пока нет.')),
-    ...(can('admin') ? [timeCard(), loadSettingsCard(), aiDoctorCard(), channelsCard()] : []));
+    ...(can('admin') ? [timeCard(), loadSettingsCard(), aiDoctorCard(), statusPageCard(), channelsCard()] : []));
   return page;
 }
 async function move(i, d) {

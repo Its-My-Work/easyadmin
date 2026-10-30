@@ -2374,6 +2374,78 @@ const AIDOC = [
 ];
 for (const [ru, en, zh, de, es, pt] of AIDOC) { EN.push([ru, en]); ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
 
+/* --- Status Page: [ru, en, zh, de, es, pt] --- */
+const STATUSPAGE = [
+  ["Настройки Status Page изменены", "Status Page settings changed", "状态页面设置已更改", "Status-Page-Einstellungen geändert", "Ajustes de Status Page modificados", "Configurações da Status Page alteradas"],
+  ["Инцидент создан", "Incident created", "事件已创建", "Vorfall erstellt", "Incidente creado", "Incidente criado"],
+  ["Инцидент изменён", "Incident updated", "事件已更新", "Vorfall geändert", "Incidente modificado", "Incidente alterado"],
+  ["Инцидент удалён", "Incident deleted", "事件已删除", "Vorfall gelöscht", "Incidente eliminado", "Incidente excluído"],
+  ["90 дней назад", "90 days ago", "90 天前", "Vor 90 Tagen", "Hace 90 días", "Há 90 dias"],
+  ["Активные инциденты", "Active incidents", "进行中的事件", "Aktive Vorfälle", "Incidentes activos", "Incidentes ativos"],
+  ["Аптайм за 90 дней", "Uptime over 90 days", "90 天可用率", "Verfügbarkeit der letzten 90 Tage", "Disponibilidad en 90 días", "Disponibilidade em 90 dias"],
+  ["В норме", "Operational", "正常", "In Ordnung", "Operativo", "Operacional"],
+  ["Все системы в норме", "All systems operational", "所有系统运行正常", "Alle Systeme laufen normal", "Todos los sistemas operativos", "Todos os sistemas operacionais"],
+  ["Деградация", "Degraded", "性能下降", "Beeinträchtigt", "Degradado", "Degradado"],
+  ["Крупный сбой", "Major outage", "严重故障", "Größerer Ausfall", "Interrupción grave", "Interrupção grave"],
+  ["Частичный сбой", "Partial outage", "部分故障", "Teilausfall", "Interrupción parcial", "Interrupção parcial"],
+  ["Плановые работы", "Scheduled maintenance", "计划维护", "Geplante Wartung", "Mantenimiento programado", "Manutenção programada"],
+  ["Сегодня", "Today", "今天", "Heute", "Hoy", "Hoje"],
+  ["Сервисы не добавлены", "No services added", "尚未添加服务", "Keine Dienste hinzugefügt", "No hay servicios añadidos", "Nenhum serviço adicionado"],
+  ["Сменить тему", "Toggle theme", "切换主题", "Design wechseln", "Cambiar tema", "Alternar tema"],
+  ["Страница статуса недоступна", "Status page is unavailable", "状态页面不可用", "Statusseite nicht verfügbar", "La página de estado no está disponible", "A página de status está indisponível"],
+  ["Обновлено", "Updated", "更新于", "Aktualisiert", "Actualizado", "Atualizado"],
+  ["Расследуем", "Investigating", "调查中", "Wird untersucht", "Investigando", "Investigando"],
+  ["Причина найдена", "Identified", "已定位原因", "Ursache gefunden", "Causa identificada", "Causa identificada"],
+  ["Наблюдаем", "Monitoring", "监控中", "Wird beobachtet", "En observación", "Em observação"],
+  ["Решён", "Resolved", "已解决", "Behoben", "Resuelto", "Resolvido"],
+  ["Незначительный", "Minor", "轻微", "Geringfügig", "Menor", "Menor"],
+  ["Серьёзный", "Major", "严重", "Schwerwiegend", "Grave", "Grave"],
+  ["Адрес https:// или путь на этом сервере", "An https:// address or a path on this server", "https:// 地址或本服务器上的路径", "Eine https://-Adresse oder ein Pfad auf diesem Server", "Una dirección https:// o una ruta en este servidor", "Um endereço https:// ou um caminho neste servidor"],
+  ["Важность", "Severity", "严重程度", "Schweregrad", "Gravedad", "Gravidade"],
+  ["Заголовок", "Title", "标题", "Titel", "Título", "Título"],
+  ["Затронутые сервисы", "Affected services", "受影响的服务", "Betroffene Dienste", "Servicios afectados", "Serviços afetados"],
+  ["Изменить инцидент", "Edit incident", "编辑事件", "Vorfall bearbeiten", "Editar incidente", "Editar incidente"],
+  ["Новый инцидент", "New incident", "新建事件", "Neuer Vorfall", "Nuevo incidente", "Novo incidente"],
+  ["Удалить инцидент", "Delete incident", "删除事件", "Vorfall löschen", "Eliminar incidente", "Excluir incidente"],
+  ["Инцидентов нет", "No incidents", "暂无事件", "Keine Vorfälle", "Sin incidentes", "Sem incidentes"],
+  ["Инциденты", "Incidents", "事件", "Vorfälle", "Incidentes", "Incidentes"],
+  ["Логотип", "Logo", "标志", "Logo", "Logotipo", "Logotipo"],
+  ["Описание", "Description", "描述", "Beschreibung", "Descripción", "Descrição"],
+  ["Публичная страница статуса без входа. Публикуются только добавленные сервисы и их публичные имена — адреса, проекты и панели не раскрываются.", "A public status page with no login. Only the added services and their public names are published — addresses, projects and panels are not disclosed.", "无需登录的公开状态页面。仅发布已添加的服务及其公开名称——不会泄露地址、项目和面板。", "Öffentliche Statusseite ohne Anmeldung. Veröffentlicht werden nur die hinzugefügten Dienste mit ihren öffentlichen Namen — Adressen, Projekte und Panels bleiben verborgen.", "Página de estado pública sin inicio de sesión. Solo se publican los servicios añadidos y sus nombres públicos; no se revelan direcciones, proyectos ni paneles.", "Página de status pública sem login. Somente os serviços adicionados e seus nomes públicos são publicados — endereços, projetos e painéis não são revelados."],
+  ["Публичные сервисы", "Public services", "公开服务", "Öffentliche Dienste", "Servicios públicos", "Serviços públicos"],
+  ["Сообщение", "Message", "消息", "Nachricht", "Mensaje", "Mensagem"],
+  ["Страница включена", "Page enabled", "页面已启用", "Seite aktiviert", "Página activada", "Página ativada"],
+  ["Убрать", "Remove", "移除", "Entfernen", "Quitar", "Remover"],
+  ["Скопировать бейдж", "Copy badge", "复制徽章", "Badge kopieren", "Copiar insignia", "Copiar selo"],
+  ["Статус сервисов", "Service status", "服务状态", "Dienststatus", "Estado de los servicios", "Status dos serviços"],
+  ["Страница статуса отключена", "The status page is disabled", "状态页面已停用", "Die Statusseite ist deaktiviert", "La página de estado está desactivada", "A página de status está desativada"],
+  ["Инцидент не найден", "Incident not found", "未找到事件", "Vorfall nicht gefunden", "Incidente no encontrado", "Incidente não encontrado"],
+  ["Заголовок: от 1 до 80 символов", "Title: 1 to 80 characters", "标题：1 到 80 个字符", "Titel: 1 bis 80 Zeichen", "Título: de 1 a 80 caracteres", "Título: de 1 a 80 caracteres"],
+  ["Описание слишком длинное", "The description is too long", "描述过长", "Die Beschreibung ist zu lang", "La descripción es demasiado larga", "A descrição é muito longa"],
+  ["Логотип: адрес https:// или путь на этом сервере", "Logo: an https:// address or a path on this server", "标志：https:// 地址或本服务器上的路径", "Logo: eine https://-Adresse oder ein Pfad auf diesem Server", "Logotipo: una dirección https:// o una ruta en este servidor", "Logotipo: um endereço https:// ou um caminho neste servidor"],
+  ["Список сервисов: не более 50", "Service list: at most 50", "服务列表：最多 50 项", "Dienstliste: höchstens 50", "Lista de servicios: máximo 50", "Lista de serviços: no máximo 50"],
+  ["Некорректная панель", "Invalid panel", "无效的面板", "Ungültiges Panel", "Panel no válido", "Painel inválido"],
+  ["Публичное имя: от 1 до 60 символов", "Public name: 1 to 60 characters", "公开名称：1 到 60 个字符", "Öffentlicher Name: 1 bis 60 Zeichen", "Nombre público: de 1 a 60 caracteres", "Nome público: de 1 a 60 caracteres"],
+  ["Некорректный slug", "Invalid slug", "无效的 slug", "Ungültiger Slug", "Slug no válido", "Slug inválido"],
+  ["Повторяющийся slug", "Duplicate slug", "slug 重复", "Doppelter Slug", "Slug duplicado", "Slug duplicado"],
+  ["Название инцидента: от 1 до 120 символов", "Incident title: 1 to 120 characters", "事件标题：1 到 120 个字符", "Vorfalltitel: 1 bis 120 Zeichen", "Título del incidente: de 1 a 120 caracteres", "Título do incidente: de 1 a 120 caracteres"],
+  ["Неизвестный статус инцидента", "Unknown incident status", "未知的事件状态", "Unbekannter Vorfallstatus", "Estado de incidente desconocido", "Status de incidente desconhecido"],
+  ["Неизвестная важность инцидента", "Unknown incident severity", "未知的事件严重程度", "Unbekannter Schweregrad des Vorfalls", "Gravedad de incidente desconocida", "Gravidade de incidente desconhecida"],
+  ["Сообщение слишком длинное", "The message is too long", "消息过长", "Die Nachricht ist zu lang", "El mensaje es demasiado largo", "A mensagem é muito longa"],
+  ["Неизвестный компонент", "Unknown component", "未知的组件", "Unbekannte Komponente", "Componente desconocido", "Componente desconhecido"],
+];
+for (const [ru, en, zh, de, es, pt] of STATUSPAGE) { EN.push([ru, en]); ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
+const STATUSPAGE_GAPS = [ // строки, которые уже были в EN, но не имели перевода на остальные языки
+  ["Нет данных", "无数据", "Keine Daten", "Sin datos", "Sem dados"],
+  ["Включена", "已启用", "Aktiviert", "Activada", "Ativada"],
+  ["Выключена", "已停用", "Deaktiviert", "Desactivada", "Desativada"],
+  ["Сервис уже добавлен", "该服务已添加", "Der Dienst wurde bereits hinzugefügt", "El servicio ya está añadido", "O serviço já foi adicionado"],
+  ["Слишком много запросов", "请求过多", "Zu viele Anfragen", "Demasiadas solicitudes", "Muitas solicitações"],
+  ["Некорректный сервис", "无效的服务", "Ungültiger Dienst", "Servicio no válido", "Serviço inválido"],
+  ["Панель не найдена", "未找到面板", "Panel nicht gefunden", "Panel no encontrado", "Painel não encontrado"],
+];
+for (const [ru, zh, de, es, pt] of STATUSPAGE_GAPS) { ZH.push([ru, zh]); DE.push([ru, de]); ES.push([ru, es]); PT.push([ru, pt]); }
+
 
 function compileDict(entries) {
   const exact = new Map();
