@@ -10,6 +10,6 @@
     "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
     "demo": "node --disable-warning=ExperimentalWarning scripts/demo.js",
     "probe": "node scripts/probe.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=4 test/*.test.js"
   }
 }

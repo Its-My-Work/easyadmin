@@ -39,7 +39,7 @@ export function sendMail({ host, port = 587, security = 'starttls', user, pass, 
     const attach = (s) => { socket = s; s.on('data', onData); s.on('error', fail); s.on('close', () => { if (!done) fail(new Error('SMTP: соединение закрыто')); }); };
 
     (async () => {
-      const opts = { host, port: Number(port), servername: host, rejectUnauthorized: !insecureTls };
+      const opts = { host, port: Number(port), ...(net.isIP(host) ? {} : { servername: host }), rejectUnauthorized: !insecureTls };
       if (security === 'tls') await new Promise((r, j) => { const s = tls.connect(opts, r); attach(s); s.once('error', j); });
       else await new Promise((r, j) => { const s = net.connect({ host, port: Number(port) }, r); attach(s); s.once('error', j); });
       await cmd(null, [220]);

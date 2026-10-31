@@ -11,6 +11,9 @@ import { openDb } from '../src/db.js';
 import { SETTINGS, cleanValue, diffText } from '../src/panel-settings.js';
 import { createMockPanel } from './mock-easypanel.js';
 
+process.env.EASYADMIN_HOST_TIMEOUT_MS = '1500';
+process.env.EASYADMIN_HOST_READY_MS = '500';
+
 let app, base, tmp; const jars = {}; const panels = [];
 async function api(who, method, p, body) {
   const res = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'easyadmin', ...(jars[who] ? { Cookie: jars[who] } : {}) }, body: body ? JSON.stringify(body) : undefined });

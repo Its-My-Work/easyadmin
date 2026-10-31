@@ -8,7 +8,7 @@ import { HttpError } from './http.js';
  * Итог определяется по маркеру, вычисленному оболочкой (`$((a+b))`): эхо набранной строки содержит выражение, а не результат.
  * ВАЖНО: оболочка живёт в docker-контейнере и умирает вместе с Docker — долгие и опасные действия запускаются отдельным юнитом systemd.
  */
-export async function runOnHost(c, row, script, { timeoutMs = 45_000, readyMs = 8000, insecure = false } = {}) {
+export async function runOnHost(c, row, script, { timeoutMs = Number(process.env.EASYADMIN_HOST_TIMEOUT_MS || 45_000), readyMs = Number(process.env.EASYADMIN_HOST_READY_MS || 8000), insecure = false } = {}) {
   const a = 100 + crypto.randomInt(800); const b = 100 + crypto.randomInt(800); const sum = a + b;
   const ok = `__EAOK${sum}__`; const fail = `__EAFAIL${sum}__`;
   const line = `( ${script} ) && echo __EAOK$((${a}+${b}))__ || echo __EAFAIL$((${a}+${b}))__\n`;
