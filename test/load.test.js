@@ -158,8 +158,8 @@ describe('API', () => {
   });
   test('график панели и сервиса: период проверяется, не больше ~240 точек, права на панель учитываются', async () => {
     const { id, row } = await addPanel('P1');
-    for (let i = 0; i < 400; i++) { const ts = T0 + i * MIN; mon.onHost(row, { stats: { cpu: 10 + (i % 20), memPct: 30, memUsedMb: 1000, memTotalMb: 4000, cpus: 1 } }, ts); await mon.collectPanel(row, ts); }
-    const now = Date.now(); void now;
+    const startTs = Date.now() - 400 * MIN;
+    for (let i = 0; i < 400; i++) { const ts = startTs + i * MIN; mon.onHost(row, { stats: { cpu: 10 + (i % 20), memPct: 30, memUsedMb: 1000, memTotalMb: 4000, cpus: 1 } }, ts); await mon.collectPanel(row, ts); }
     const r = await api('admin', 'GET', `/api/panels/${id}/load?range=30d`); assert.equal(r.status, 200); assert.ok(r.data.points.length > 0 && r.data.points.length <= 241, `точек: ${r.data.points.length}`); assert.ok(r.data.services.length >= 2);
     assert.equal((await api('admin', 'GET', `/api/panels/${id}/load?range=5y`)).status, 400); assert.equal((await api('admin', 'GET', `/api/panels/${id}/load?project=web`)).status, 400);
     const sv = await api('admin', 'GET', `/api/panels/${id}/load?range=30d&project=web&service=site`); assert.equal(sv.status, 200); assert.ok(sv.data.points.length > 0 && sv.data.points.every((p) => p.mem > 0));
