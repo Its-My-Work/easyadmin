@@ -36,6 +36,6 @@ for (const [name, hash] of [['services', '#/services'], ['inventory', '#/invento
 await p.goto(U + '#/backups'); await p.waitForSelector('.tbl.compact tr.row').catch(() => {});
 await p.click('button:has-text("Настройки")'); await p.waitForSelector('.modal'); await check('backups-settings');
 await p.click('.modal .seg-btn:has-text("В S3")'); await check('backups-settings-s3'); await p.keyboard.press('Escape');
-await p.click('button:has-text("Журнал копий")'); await p.waitForSelector('.modal'); await check('backups-log'); await p.keyboard.press('Escape');
+await p.click('button:has-text("История"), button:has-text("Журнал копий")'); await p.waitForSelector('.modal'); await check('backups-log'); await p.keyboard.press('Escape');
 if (await p.locator('.tbl.compact tr.row').count()) { await p.locator('.tbl.compact tr.row').first().click(); await p.waitForSelector('.modal'); await check('backups-copies'); }
 await b.close(); process.exit(failed ? 1 : 0);

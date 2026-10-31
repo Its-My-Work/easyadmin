@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 
 const U = 'http://127.0.0.1:3100/';
 // данные пользователя (названия из демо), которые переводить не нужно
-const DATA = /Прод · (EU|US)|Стейджинг|Клиент Acme|Старый сервер|^Русский$|Language \/ Язык|^Панели?$/;
+const DATA = /Прод · (EU|US)|Стейджинг|Клиент Acme|Старый сервер|Русский|Language \/ Язык|^Панели?$/;
 const b = await chromium.launch({ ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}), args: ['--no-sandbox'] });
 const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark', locale: 'en-US' });
 await ctx.addInitScript(() => { try { localStorage.setItem('ea-lang', 'en'); } catch {} });
@@ -101,7 +101,7 @@ await step('backups section', async () => {
   await p.goto(U + '#/backups'); await p.waitForSelector('.kpis .kpi'); await p.waitForSelector('.tbl tbody tr'); await scan('backups page');
   await p.click('button:has-text("Settings")'); await p.waitForSelector('.modal .seg-btn:text-is("To S3")'); await scan('backups settings'); await p.click('.modal .seg-btn:text-is("To S3")'); await scan('backups settings s3');
   await p.click('.modal summary:has-text("Advanced")'); await scan('backups settings advanced'); await esc();
-  await p.click('button:has-text("Backup log")'); await p.waitForSelector('.modal'); await p.waitForTimeout(400); await scan('backups log'); await esc();
+  await p.click('button:has-text("History"), button:has-text("Backup log")'); await p.waitForSelector('.modal'); await p.waitForTimeout(400); await scan('backups log'); await esc();
   await p.locator('tr.row').first().click(); await p.waitForSelector('.modal'); await p.waitForTimeout(500); await scan('backups service copies'); await esc();
 });
 await step('settings', async () => {

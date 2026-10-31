@@ -86,8 +86,8 @@ await step('бэкапы: пароль, включение сервиса, ко�
   await p.locator('tbody tr.row.dim .toggle').first().click();
   await until((x) => document.querySelectorAll('tbody tr.row:not(.dim)').length > 0);
   await p.screenshot({ path: 'v2-backups.png' });
-  await p.click('button:has-text("Журнал копий")'); await p.waitForSelector('.modal:has-text("Журнал копирования")'); await p.keyboard.press('Escape');
-  await p.click('button:has-text("Создать копию")'); await p.waitForSelector('button:has-text("Копии (1)")', { timeout: 15000 });
+  await p.click('button:has-text("История"), button:has-text("Журнал копий")'); await p.waitForSelector('.modal:has-text("История"), .modal:has-text("Журнал")'); await p.keyboard.press('Escape');
+  await p.click('button:has-text("Запустить бэкап"), button:has-text("Создать копию")'); await p.waitForSelector('button:has-text("Копии (1)")', { timeout: 15000 });
   await p.click('button:has-text("Копии (1)")'); await p.waitForSelector('.modal .list-item .mono');
   await p.click('.modal button[aria-label="Проверить копию"]'); await p.click('.modal-foot button:has-text("Продолжить")');
   await p.waitForSelector('.modal:has-text("Копия в порядке")'); await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
