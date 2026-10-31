@@ -64,7 +64,18 @@ Easypanel is fantastic for managing a single VPS. But when you run **3, 10, or 2
 
 ## ⏱️ Quick Start in 60 Seconds
 
-### Option 1: Run with Docker Compose (Recommended)
+### 🚀 Option 1: 1-Line Automated Install (Recommended)
+
+Run this command as root on your server or VPS:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Its-My-Work/easyadmin/main/install.sh | bash
+```
+*Automatically detects Docker, writes `/opt/easyadmin/docker-compose.yml`, pulls the latest image, and boots EasyAdmin on port 3100.*
+
+---
+
+### Option 2: Run with Docker Compose
 
 Create a `docker-compose.yml`:
 

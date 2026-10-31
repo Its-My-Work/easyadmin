@@ -64,7 +64,18 @@ Easypanel отлично справляется с управлением отд
 
 ## ⏱️ Быстрый старт за 60 секунд
 
-### Вариант 1: Запуск через Docker Compose (Рекомендуется)
+### 🚀 Вариант 1: Установка в 1 команду (Рекомендуется)
+
+Выполните команду на чистом сервере или VPS с правами root:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Its-My-Work/easyadmin/main/install.sh | bash
+```
+*Скрипт сам проверит Docker, создаст `/opt/easyadmin/docker-compose.yml`, загрузит образ и запустит панель на порту 3100.*
+
+---
+
+### Вариант 2: Запуск через Docker Compose
 
 Создайте файл `docker-compose.yml`:
 
