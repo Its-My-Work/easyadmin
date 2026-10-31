@@ -12,11 +12,14 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](Dockerfile)
 [![Без зависимостей](https://img.shields.io/badge/Зависимости-Ноль-orange.svg)](#-архитектура-без-сборки)
 [![Статус: Бета](https://img.shields.io/badge/Статус-Бета_0.9-blueviolet.svg)](#)
+[![GitHub Repo stars](https://img.shields.io/github/stars/Its-My-Work/easyadmin?style=social)](https://github.com/Its-My-Work/easyadmin)
 [![English Documentation](https://img.shields.io/badge/🇬🇧_Documentation-English-blue)](README.md)
 
 [**Демо**](#-интерактивное-демо) • [**Быстрый старт**](#-быстрый-старт-за-60-секунд) • [**Возможности**](#-возможности) • [**Файловый менеджер**](#-файловый-менеджер-хоста-и-ide-редактор) • [**Server Doctor**](#-server-doctor-и-оптимизация-диска) • [**Скриншоты**](#-скриншоты) • [**Безопасность**](#-безопасность)
 
 </div>
+
+> ⭐️ **Поставьте звёздочку репозиторию** — если EasyAdmin вам полезен или интересен, поддержите проект звездой на GitHub! Это помогает проекту расти и привлекать новых пользователей и разработчиков.
 
 ---
 
@@ -226,6 +229,14 @@ EasyAdmin строго следует философии Zero Build & Zero Depen
 - **Время холодного старта**: ~100 мс
 - **Потребление памяти**: ~28 МБ RAM при стандартной нагрузке
 - **Поставка**: Один сверхлегкий Docker-образ
+
+---
+
+## ⭐ Поддержите проект
+
+Если EasyAdmin экономит ваше время и упрощает работу с серверами, пожалуйста, поставьте звёздочку репозиторию на GitHub — это лучшая поддержка автора и мотивация развивать проект дальше!
+
+[![Поставить звезду на GitHub](https://img.shields.io/badge/Поставить_звезду-⭐️-yellow?style=for-the-badge)](https://github.com/Its-My-Work/easyadmin)
 
 ---
 

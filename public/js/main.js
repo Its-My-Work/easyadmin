@@ -45,6 +45,7 @@ function authScreen(setup, sso) {
 const langToggle = (cls = '') => h('button', { class: `btn ghost sm lang-btn ${cls}`, type: 'button', title: 'Language / Язык', 'aria-label': 'Language / Язык', onclick: () => languagePickerModal() }, icon('globe', 14), h('span', { class: 'lang-txt' }, lang.toUpperCase()));
 /** Кнопка выбора темы оформления в шапке */
 const themeToggle = (cls = '') => h('button', { class: `btn icon ghost sm theme-btn ${cls}`, type: 'button', title: t('Тема оформления'), 'aria-label': t('Тема оформления'), onclick: () => themePickerModal() }, icon('palette', 14));
+const ghLink = (cls = '') => h('a', { class: `btn icon ghost sm gh-btn ${cls}`, href: 'https://github.com/Its-My-Work/easyadmin', target: '_blank', rel: 'noopener noreferrer', title: 'GitHub · Star on GitHub', 'aria-label': 'GitHub' }, icon('github', 15));
 const logoMark = () => h('span', { class: 'logo-mark' }, icon('layers', 16));
 
 /* ======================= каркас ======================= */
@@ -64,7 +65,7 @@ function buildShell() {
   const top = h('header', { class: 'topbar' },
     h('button', { class: 'btn icon ghost menu-btn', title: 'Свернуть / развернуть меню', onclick: toggleMenu, 'aria-label': 'Меню' }, icon('menu', 18)),
     h('button', { class: 'search-trigger', title: 'Поиск и команды', 'aria-label': 'Поиск и команды', onclick: openPalette }, icon('search', 15), h('span', null, 'Поиск и команды'), h('kbd', null, navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K')),
-    h('span', { class: 'spacer' }), clock, updated, refreshBtn, h('span', { class: 'top-sep' }), themeToggle(), langToggle(),
+    h('span', { class: 'spacer' }), clock, updated, refreshBtn, h('span', { class: 'top-sep' }), ghLink(), themeToggle(), langToggle(),
     h('a', { class: 'user user-chip', href: '#/profile', title: 'Профиль' }, avatar(store.user, 30), h('div', null, h('b', null, store.user.displayName || store.user.username), h('div', { class: 'muted small' }, ({ admin: 'администратор', operator: 'оператор', viewer: 'только чтение' })[store.user.role]))),
     h('button', { class: 'btn icon ghost', title: 'Выйти', 'aria-label': 'Выйти', onclick: async () => { await post('/api/logout'); location.hash = ''; boot(); } }, icon('logout', 16)));
   clear(root).append(h('div', { class: 'app' }, sidebar, back, h('div', { class: 'content' }, top, view)));

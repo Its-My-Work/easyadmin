@@ -12,11 +12,14 @@ Zero runtime dependencies • Zero frontend build • 100% self-hosted • Boots
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](Dockerfile)
 [![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-orange.svg)](#-zero-build-architecture)
 [![Status: Beta](https://img.shields.io/badge/Status-Beta_0.9-blueviolet.svg)](#)
+[![GitHub Repo stars](https://img.shields.io/github/stars/Its-My-Work/easyadmin?style=social)](https://github.com/Its-My-Work/easyadmin)
 [![Русская документация](https://img.shields.io/badge/🇷🇺_Документация-Русский-red)](README.ru.md)
 
 [**Live Demo**](#-interactive-demo) • [**Quick Start**](#-quick-start-in-60-seconds) • [**Features**](#-features) • [**Host File Manager**](#-host-file-manager--ide-editor) • [**Server Doctor**](#-server-doctor--disk-optimizer) • [**Screenshots**](#-screenshots) • [**Security**](#-security)
 
 </div>
+
+> ⭐️ **Star EasyAdmin on GitHub** — If you find this project useful, please give it a star! It takes 1 second and helps more sysadmins and homelabbers discover it.
 
 ---
 
@@ -226,6 +229,14 @@ EasyAdmin follows a strict zero-build philosophy:
 - **Boot Time**: ~100 ms
 - **Memory Footprint**: ~28 MB RAM under typical load
 - **Distribution**: Single lightweight Docker image
+
+---
+
+## ⭐ Support the Project
+
+If EasyAdmin saved you time or made managing your servers easier, please consider giving it a star on GitHub! It is the best way to support the project.
+
+[![Star on GitHub](https://img.shields.io/badge/Star_on_GitHub-⭐️-yellow?style=for-the-badge)](https://github.com/Its-My-Work/easyadmin)
 
 ---
 
