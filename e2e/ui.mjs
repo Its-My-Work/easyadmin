@@ -318,7 +318,7 @@ await step('palette favorites', async () => {
 await step('меню: порядок пунктов, «Сервисы», время сервера в шапке', async () => {
   await p.goto(U + '#/'); await p.waitForSelector('.nav-item');
   const nav = (await p.locator('.nav-item').allInnerTexts()).map((x) => x.trim()).join(',');
-  if (nav !== 'Обзор,Консоль,Сервисы,Инвентарь,Шаблоны,Расписания,Журнал,Бэкапы,Пользователи,Настройки') throw new Error('меню: ' + nav);
+  if (nav !== 'Обзор,Консоль,Сервисы,Инвентарь,Шаблоны,Расписания,Журнал,Файлы,Бэкапы,Пользователи,Настройки') throw new Error('меню: ' + nav);
   const t0 = await p.locator('.server-clock b').innerText(); await p.waitForTimeout(1300);
   const t1 = await p.locator('.server-clock b').innerText(); if (t0 === t1) throw new Error('часы не идут: ' + t0);
 });
