@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  body {
+    width: 1280px;
+    height: 640px;
+    background: #090d16;
+    color: #f1f5f9;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 54px 64px 46px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  /* Ambient glowing background */
+  .glow-top-left {
+    position: absolute;
+    width: 650px;
+    height: 650px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.22) 0%, rgba(99, 102, 241, 0) 70%);
+    top: -180px;
+    left: -120px;
+    pointer-events: none;
+  }
+  .glow-top-right {
+    position: absolute;
+    width: 550px;
+    height: 550px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.16) 0%, rgba(168, 85, 247, 0) 70%);
+    top: -140px;
+    right: -80px;
+    pointer-events: none;
+  }
+  .glow-bot {
+    position: absolute;
+    width: 700px;
+    height: 450px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0) 70%);
+    bottom: -160px;
+    right: 15%;
+    pointer-events: none;
+  }
+
+  /* Grid overlay */
+  .grid-pattern {
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  /* Frame border */
+  .card-border {
+    position: absolute;
+    inset: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 28px;
+    pointer-events: none;
+    box-shadow: inset 0 0 40px rgba(255, 255, 255, 0.02);
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 2;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .brand-icon {
+    width: 52px;
+    height: 52px;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+  }
+  .brand-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: #ffffff;
+    stroke-width: 2.2;
+    fill: none;
+  }
+  .brand-title {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #ffffff;
+  }
+  
+  .badges {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .badge {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .badge-beta {
+    background: rgba(139, 92, 246, 0.15);
+    color: #c4b5fd;
+    border: 1px solid rgba(139, 92, 246, 0.35);
+  }
+  .badge-oss {
+    background: rgba(16, 185, 129, 0.15);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+  }
+  .dot-pulse {
+    width: 7px;
+    height: 7px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #10b981;
+  }
+
+  /* Hero Headline */
+  .hero {
+    margin-top: 10px;
+    z-index: 2;
+  }
+  .headline {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+    line-height: 1.25;
+  }
+  .headline span {
+    background: linear-gradient(90deg, #818cf8 0%, #c084fc 50%, #38bdf8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subheadline {
+    font-size: 16.5px;
+    color: #94a3b8;
+    margin-top: 6px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  /* 6 Feature cards */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-top: 14px;
+    z-index: 2;
+  }
+  .feature-card {
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    backdrop-filter: blur(12px);
+  }
+  .feat-icon-wrap {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .feat-icon-wrap svg {
+    width: 19px;
+    height: 19px;
+    stroke-width: 2.2;
+    fill: none;
+  }
+  
+  .fi-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25); }
+  .fi-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
+  .fi-purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.25); }
+  .fi-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25); }
+  .fi-cyan { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.25); }
+  .fi-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.25); }
+
+  .feat-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .feat-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.01em;
+  }
+  .feat-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.35;
+  }
+
+  /* Footer */
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 2;
+  }
+  .specs {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .spec-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #cbd5e1;
+  }
+  .spec-item svg {
+    width: 15px;
+    height: 15px;
+    stroke: #818cf8;
+    stroke-width: 2.2;
+    fill: none;
+  }
+  .install-chip {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    border-radius: 10px;
+    padding: 7px 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    color: #a5b4fc;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  }
+  .install-chip svg {
+    width: 14px;
+    height: 14px;
+    stroke: #818cf8;
+    stroke-width: 2.2;
+    fill: none;
+  }
+  .install-chip b {
+    color: #ffffff;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="glow-top-left"></div>
+<div class="glow-top-right"></div>
+<div class="glow-bot"></div>
+<div class="grid-pattern"></div>
+<div class="card-border"></div>
+
+<!-- Header -->
+<div class="header">
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24">
+        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+        <polyline points="2 17 12 22 22 17"></polyline>
+        <polyline points="2 12 12 17 22 12"></polyline>
+      </svg>
+    </div>
+    <div class="brand-title">
+      EasyAdmin
+    </div>
+  </div>
+  <div class="badges">
+    <div class="badge badge-oss">
+      <span class="dot-pulse"></span>
+      Open Source (MIT)
+    </div>
+    <div class="badge badge-beta">
+      v0.9 BETA
+    </div>
+  </div>
+</div>
+
+<!-- Hero Headline -->
+<div class="hero">
+  <h1 class="headline">
+    Единая панель управления серверами <span>Easypanel</span>
+  </h1>
+  <p class="subheadline">
+    Централизованный контроль VPS, файловый менеджер хоста, метрики и AI-диагностика сбоев.
+  </p>
+</div>
+
+<!-- 6 Features with clean SVG icons -->
+<div class="features-grid">
+  <!-- 1. Host File Manager -->
+  <div class="feature-card">
+    <div class="feat-icon-wrap fi-blue">
+      <svg viewBox="0 0 24 24" stroke="currentColor">
+        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
+      </svg>
+    </div>
+    <div class="feat-content">
+      <div class="feat-title">Файловый менеджер (IDE)</div>
+      <div class="feat-desc">Боковое дерево файлов, переключение в 1 клик, поиск и замена Ctrl+F.</div>
+    </div>
+  </div>
+
+  <!-- 2. Server Doctor -->
+  <div class="feature-card">
+    <div class="feat-icon-wrap fi-emerald">
+      <svg viewBox="0 0 24 24" stroke="currentColor">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+      </svg>
+    </div>
+    <div class="feat-content">
+      <div class="feat-title">Server Doctor</div>
+      <div class="feat-desc">Очистка диска, ротация логов и Docker prune с живым терминальным выводом.</div>
+    </div>
+  </div>
+
+  <!-- 3. AI Doctor -->
+  <div class="feature-card">
+    <div class="feat-icon-wrap fi-purple">
+      <svg viewBox="0 0 24 24" stroke="currentColor">
+        <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path>
+      </svg>
+    </div>
+    <div class="feat-content">
+      <div class="feat-title">AI Crash Doctor</div>
+      <div class="feat-desc">Автоанализ причин падения контейнеров (OOM 137) с готовыми рекомендациями.</div>
+    </div>
+  </div>
+
+  <!-- 4. 1-Click Server Migration -->
+  <div class="feature-card">
+    <div class="feat-icon-wrap fi-amber">
+      <svg viewBox="0 0 24 24" stroke="currentColor">
+        <path d="m5 12 7-7 7 7"></path>
+        <path d="M12 19V5"></path>
+      </svg>
+    </div>
+    <div class="feat-content">
+      <div class="feat-title">Переезд серверов в 1 клик</div>
+      <div class="feat-desc">Миграция проектов, баз данных и томов по прямому SSH или одной команде.</div>
+    </div>
+  </div>
+
+  <!-- 5. Public Status Page -->
+  <div class="feature-card">
+    <div class="feat-icon-wrap fi-cyan">
+      <svg viewBox="0 0 24 24" stroke="currentColor">
+        <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+        <line x1="3" x2="21" y1="9" y2="9"></line>
+        <line x1="9" x2="9" y1="21" y2="9"></line>
+      </svg>
+    </div>
+    <div class="feat-content">
+      <div class="feat-title">Публичный Status Page</div>
+      <div class="feat-desc">90-дневные полосы аптайма, замер задержки и доступность всех нод.</div>
+    </div>
+  </div>
+
+  <!-- 6. Command Palette -->
+  <div class="feature-card">
+    <div class="feat-icon-wrap fi-rose">
+      <svg viewBox="0 0 24 24" stroke="currentColor">
+        <polyline points="4 17 10 11 4 5"></polyline>
+        <line x1="12" x2="20" y1="19" y2="19"></line>
+      </svg>
+    </div>
+    <div class="feat-content">
+      <div class="feat-title">Палитра команд (Ctrl+K)</div>
+      <div class="feat-desc">Быстрая навигация по серверам, приложениям, логам и массовым действиям.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer Specs & 1-line install -->
+<div class="footer">
+  <div class="specs">
+    <div class="spec-item">
+      <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+      <span>&lt; 100 мс запуск</span>
+    </div>
+    <div class="spec-item">
+      <svg viewBox="0 0 24 24"><path d="M6 19v-3"></path><path d="M10 19v-7"></path><path d="M14 19v-4"></path><path d="M18 19v-8"></path></svg>
+      <span>&lt; 30 МБ RAM</span>
+    </div>
+    <div class="spec-item">
+      <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+      <span>0 NPM зависимостей</span>
+    </div>
+  </div>
+
+  <div class="install-chip">
+    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line></svg>
+    <span>curl -sSL <b>.../install.sh</b> | bash</span>
+  </div>
+</div>
+
+</body>
+</html>
